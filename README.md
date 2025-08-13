@@ -300,14 +300,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Normalizing Flows**: Dinh et al. "Density estimation using Real NVP"
 - **PyTorch Team**: For the excellent deep learning framework
 
-## 📞 Contact & Support
-
-- **Issues**: Use GitHub issues for bug reports and feature requests
-- **Discussions**: GitHub Discussions for questions and community support
-- **Email**: [your-email@domain.com](mailto:your-email@domain.com)
-
----
-
 **⭐ If you find this project useful, please consider starring it on GitHub!**
 
 ## 📖 Citation
