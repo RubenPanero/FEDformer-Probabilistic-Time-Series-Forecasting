@@ -1,0 +1,46 @@
+# Financial data configuration for Vanguard-FEDformer
+
+# Model configuration (optimized for financial time series)
+model:
+  type: "fedformer"
+  d_model: 256
+  n_heads: 4
+  n_layers: 4
+  d_ff: 1024
+  dropout: 0.2
+  activation: "relu"
+  
+# Data configuration (daily financial data)
+data:
+  sequence_length: 252  # One trading year
+  prediction_length: 21  # One trading month
+  batch_size: 16
+  num_workers: 2
+  features: ["open", "high", "low", "close", "volume"]
+  
+# Training configuration
+training:
+  epochs: 200
+  learning_rate: 0.0005
+  weight_decay: 0.05
+  patience: 20
+  min_delta: 0.0001
+  
+# Flow configuration
+flows:
+  type: "maf"
+  n_flows: 6
+  hidden_dim: 256
+  
+# Regime detection (market regimes)
+regime:
+  enabled: true
+  n_regimes: 4  # Bull, Bear, Sideways, Crisis
+  detection_method: "gmm"
+  volatility_threshold: 0.02
+  
+# Financial-specific evaluation
+evaluation:
+  backtest_windows: 20
+  confidence_levels: [0.5, 0.8, 0.95, 0.99]
+  risk_metrics: ["var", "cvar", "sharpe", "max_drawdown"]

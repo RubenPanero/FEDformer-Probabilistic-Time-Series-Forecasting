@@ -1,0 +1,179 @@
+# Vanguard-FEDformer Demo
+
+Este notebook demuestra el uso básico del modelo Vanguard-FEDformer para pronósticos probabilísticos de series temporales.
+
+## 1. Configuración del Modelo
+
+```python
+# Cargar configuración
+config = ConfigManager("../configs/default.yaml")
+print("Configuración cargada exitosamente")
+print(f"Longitud de secuencia: {config.data.sequence_length}")
+print(f"Longitud de predicción: {config.data.prediction_length}")
+print(f"Tamaño de batch: {config.data.batch_size}")
+```
+
+## 2. Generación de Datos de Ejemplo
+
+```python
+def generate_sample_data(n_samples=1000, n_features=5):
+    """Generar datos de series temporales sintéticos para demostración."""
+    np.random.seed(42)
+    
+    # Generar tendencia y estacionalidad
+    t = np.linspace(0, 10, n_samples)
+    trend = 0.1 * t
+    seasonality = 0.5 * np.sin(2 * np.pi * t) + 0.3 * np.sin(4 * np.pi * t)
+    
+    # Generar características
+    data = []
+    for i in range(n_features):
+        noise = np.random.normal(0, 0.1, n_samples)
+        feature = trend + seasonality + noise
+        data.append(feature)
+    
+    # Agregar cambios de régimen
+    regime_change = np.where(t > 5, 1.5, 1.0)
+    data = [d * regime_change for d in data]
+    
+    return np.column_stack(data)
+
+# Generar datos
+sample_data = generate_sample_data()
+print(f"Datos generados: {sample_data.shape}")
+
+# Guardar datos de ejemplo
+data_dir = Path("../data/sample")
+data_dir.mkdir(parents=True, exist_ok=True)
+np.savetxt(data_dir / "sp500_sample.csv", sample_data, delimiter=",")
+print("Datos guardados en ../data/sample/sp500_sample.csv")
+```
+
+## 3. Creación del Dataset
+
+```python
+# Crear dataset
+dataset = TimeSeriesDataset(
+    data_path=str(data_dir / "sp500_sample.csv"),
+    sequence_length=config.data.sequence_length,
+    prediction_length=config.data.prediction_length,
+    batch_size=config.data.batch_size
+)
+print("Dataset creado exitosamente")
+
+# Obtener un batch de ejemplo
+sample_batch = next(iter(dataset))
+x, y = sample_batch
+print(f"Input shape: {x.shape}")
+print(f"Target shape: {y.shape}")
+```
+
+## 4. Creación del Modelo
+
+```python
+# Crear modelo
+model = VanguardFEDformer(
+    d_model=config.model.d_model,
+    n_heads=config.model.n_heads,
+    n_layers=config.model.n_layers,
+    d_ff=config.model.d_ff,
+    dropout=config.model.dropout,
+    activation=config.model.activation
+)
+print("Modelo creado exitosamente")
+
+# Resumen del modelo
+total_params = sum(p.numel() for p in model.parameters())
+trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+print(f"\nResumen del Modelo:")
+print(f"  Parámetros totales: {total_params:,}")
+print(f"  Parámetros entrenables: {trainable_params:,}")
+print(f"  Tamaño del modelo: {total_params * 4 / 1024 / 1024:.2f} MB")
+```
+
+## 5. Prueba del Forward Pass
+
+```python
+# Probar forward pass
+print("Probando forward pass...")
+try:
+    with torch.no_grad():
+        output = model(x)
+    
+    print("✓ Forward pass exitoso")
+    print(f"  Output shape: {output.shape}")
+    
+    # Verificar que la salida tiene la forma correcta
+    expected_shape = (x.shape[0], config.data.prediction_length, x.shape[2])
+    assert output.shape == expected_shape, f"Shape esperado: {expected_shape}, obtenido: {output.shape}"
+    
+except Exception as e:
+    print(f"✗ Forward pass falló: {e}")
+```
+
+## 6. Detección de Régimen
+
+```python
+# Demostrar detección de régimen
+print("Demostrando detección de régimen...")
+try:
+    # Detección simple basada en volatilidad
+    returns = np.diff(sample_data[:, 0])  # Retornos de la primera característica
+    volatility = np.abs(returns)
+    
+    # Detección de régimen basada en umbral
+    regime_threshold = np.percentile(volatility, 75)
+    regimes = (volatility > regime_threshold).astype(int)
+    
+    print(f"✓ Detección de régimen completada")
+    print(f"  Períodos de alta volatilidad: {np.sum(regimes)}")
+    print(f"  Puntos de cambio de régimen: {np.sum(np.diff(regimes) != 0)}")
+    
+except Exception as e:
+    print(f"✗ Detección de régimen falló: {e}")
+```
+
+## 7. Pronóstico Probabilístico
+
+```python
+# Demostrar pronóstico probabilístico
+print("Demostrando pronóstico probabilístico...")
+try:
+    # Generar múltiples pronósticos con ruido
+    n_forecasts = 100
+    forecasts = []
+    
+    for _ in range(n_forecasts):
+        # Agregar ruido al input para ensemble
+        noisy_x = x + torch.randn_like(x) * 0.01
+        with torch.no_grad():
+            forecast = model(noisy_x)
+        forecasts.append(forecast.numpy())
+    
+    forecasts = np.array(forecasts)
+    
+    # Calcular intervalos de confianza
+    mean_forecast = np.mean(forecasts, axis=0)
+    std_forecast = np.std(forecasts, axis=0)
+    
+    print(f"✓ Pronóstico probabilístico completado")
+    print(f"  Tamaño del ensemble: {n_forecasts}")
+    print(f"  Shape del pronóstico medio: {mean_forecast.shape}")
+    print(f"  Incertidumbre del pronóstico: {np.mean(std_forecast):.4f}")
+    
+except Exception as e:
+    print(f"✗ Pronóstico probabilístico falló: {e}")
+```
+
+## 8. Resumen y Próximos Pasos
+
+```python
+print("=== Demo Completado Exitosamente! ===\n")
+print("Próximos pasos:")
+print("1. Ejecutar entrenamiento: python ../scripts/train.py --data_path ../data/sample/sp500_sample.csv")
+print("2. Ejecutar evaluación: python ../scripts/evaluate.py --model models/vanguard_fedformer.pt --data ../data/sample/sp500_sample.csv")
+print("3. Explorar los archivos de configuración en ../configs/")
+print("4. Revisar el tutorial en tutorial.ipynb")
+print("5. Explorar características avanzadas en advanced_usage.ipynb")
+```

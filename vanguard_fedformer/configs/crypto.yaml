@@ -1,0 +1,47 @@
+# Cryptocurrency configuration for Vanguard-FEDformer
+
+# Model configuration (optimized for high-frequency crypto data)
+model:
+  type: "fedformer"
+  d_model: 128
+  n_heads: 2
+  n_layers: 3
+  d_ff: 512
+  dropout: 0.3
+  activation: "swish"
+  
+# Data configuration (hourly crypto data)
+data:
+  sequence_length: 168  # One week of hourly data
+  prediction_length: 24  # One day ahead
+  batch_size: 64
+  num_workers: 8
+  features: ["open", "high", "low", "close", "volume", "market_cap"]
+  
+# Training configuration
+training:
+  epochs: 300
+  learning_rate: 0.001
+  weight_decay: 0.1
+  patience: 30
+  min_delta: 0.0005
+  
+# Flow configuration
+flows:
+  type: "planar"
+  n_flows: 8
+  hidden_dim: 64
+  
+# Regime detection (crypto market regimes)
+regime:
+  enabled: true
+  n_regimes: 5  # Accumulation, Markup, Distribution, Markdown, Sideways
+  detection_method: "kmeans"
+  volatility_threshold: 0.05
+  
+# Crypto-specific evaluation
+evaluation:
+  backtest_windows: 50
+  confidence_levels: [0.5, 0.8, 0.9, 0.95, 0.99]
+  risk_metrics: ["var", "cvar", "sharpe", "sortino", "calmar"]
+  crypto_metrics: ["hodl", "buy_hold", "dca"]

@@ -1,0 +1,43 @@
+# Default configuration for Vanguard-FEDformer
+
+# Model configuration
+model:
+  type: "fedformer"
+  d_model: 512
+  n_heads: 8
+  n_layers: 6
+  d_ff: 2048
+  dropout: 0.1
+  activation: "gelu"
+  
+# Data configuration
+data:
+  sequence_length: 96
+  prediction_length: 24
+  batch_size: 32
+  num_workers: 4
+  
+# Training configuration
+training:
+  epochs: 100
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  patience: 10
+  min_delta: 0.001
+  
+# Flow configuration
+flows:
+  type: "real_nvp"
+  n_flows: 4
+  hidden_dim: 128
+  
+# Regime detection
+regime:
+  enabled: true
+  n_regimes: 3
+  detection_method: "hmm"
+  
+# Evaluation
+evaluation:
+  backtest_windows: 10
+  confidence_levels: [0.5, 0.8, 0.95]
