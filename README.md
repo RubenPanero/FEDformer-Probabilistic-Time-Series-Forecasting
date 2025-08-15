@@ -1,4 +1,10 @@
-# 🚀 Vanguard FEDformer: Advanced Probabilistic Time Series Forecasting
+# Vanguard FEDformer — Probabilistic Time-Series with Normalizing Flows
+
+[![CI](https://github.com/RbnGlz/Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting/actions/workflows/ci.yml/badge.svg)](https://github.com/RbnGlz/Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10|3.11|3.12-blue.svg)]()
+[![Code style: Black](https://img.shields.io/badge/code%20style-Black-000000.svg)]()
+[![Ruff](https://img.shields.io/badge/lint-ruff-46a)]()
 
 A production-ready, optimized implementation of FEDformer (Frequency Enhanced Decomposed Transformer) with **Normalizing Flows** for probabilistic time series forecasting. This system goes beyond point predictions to model the full probability distribution of future outcomes, making it ideal for financial markets, supply chain optimization, and any domain where uncertainty quantification is critical.
 
@@ -196,14 +202,15 @@ config = FEDformerConfig(
 )
 ```
 
-### Multi-GPU Training
-```python
-# Distributed training support (coming soon)
-config = FEDformerConfig(
-    distributed=True,
-    world_size=4
-)
-```
+### Multi-GPU Training (current status and alternatives)
+
+- Status: distributed multi-GPU training is not enabled yet in this repository.
+- Alternatives today:
+  - Use "gradient checkpointing" with `--use-checkpointing` to reduce memory.
+  - Increase effective batch size with `--grad-accum-steps <N>`.
+  - Run multiple independent processes (e.g., different seeds/datasets) to parallelize experiments.
+
+Note: When DDP support is added, usage of `torchrun` and the corresponding flags will be documented.
 
 ### Custom Risk Analysis
 ```python
@@ -243,10 +250,21 @@ The system automatically generates:
 - **Error Handling**: Robust exception management
 - **Logging**: Structured logging throughout
 
-### Testing (Coming Soon)
-- Unit tests for all components
-- Integration tests for end-to-end pipeline
-- Performance benchmarks
+### Testing
+
+- Training/backtest smoke test (CPU/GPU):
+  ```bash
+  python main.py \
+      --csv data/your_data.csv \
+      --targets "price" \
+      --pred-len 8 \
+      --seq-len 32 \
+      --epochs 1 \
+      --batch-size 8 \
+      --splits 2
+  ```
+- Quick metrics check: confirm that `train_loss`, `VaR`, `CVaR` are logged and that OOS predictions are generated.
+- Memory validation: if OOM occurs, enable `--use-checkpointing` and/or reduce `--batch-size` or use `--grad-accum-steps`.
 
 ### Contributing
 1. Fork the repository
