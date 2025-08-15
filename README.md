@@ -1,10 +1,8 @@
 # Vanguard FEDformer — Probabilistic Time-Series with Normalizing Flows
 
-[![CI](https://github.com/RbnGlz/Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting/actions/workflows/ci.yml/badge.svg)](https://github.com/RbnGlz/Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10|3.11|3.12-blue.svg)]()
 [![Code style: Black](https://img.shields.io/badge/code%20style-Black-000000.svg)]()
-[![Ruff](https://img.shields.io/badge/lint-ruff-46a)]()
 
 A production-ready, optimized implementation of FEDformer (Frequency Enhanced Decomposed Transformer) with **Normalizing Flows** for probabilistic time series forecasting. This system goes beyond point predictions to model the full probability distribution of future outcomes, making it ideal for financial markets, supply chain optimization, and any domain where uncertainty quantification is critical.
 
