@@ -93,7 +93,7 @@ pip install -r requirements.txt
 
 ```bash
 # Run with your CSV data
-python optimized_fedformer.py \
+python main.py \
     --csv data/your_data.csv \
     --targets "price,volume" \
     --date-col "timestamp" \
@@ -107,7 +107,7 @@ python optimized_fedformer.py \
 
 ```bash
 # Full configuration with optimization options
-python optimized_fedformer.py \
+python main.py \
     --csv data/financial_data.csv \
     --targets "close_price" \
     --date-col "date" \
