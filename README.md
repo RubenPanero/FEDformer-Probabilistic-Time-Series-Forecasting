@@ -318,16 +318,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⭐ If you find this project useful, please consider starring it on GitHub!**
 
-## 📖 Citation
 
-If you use this code in your research, please cite:
-
-```bibtex
-@misc{vanguard-fedformer-2024,
-  title={Vanguard FEDformer: Advanced Probabilistic Time Series Forecasting},
-  author={Your Name},
-  year={2024},
-  publisher={GitHub},
-  url={https://github.com/your-username/vanguard-fedformer}
-}
-```
