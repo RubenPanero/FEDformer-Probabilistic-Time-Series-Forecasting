@@ -4,6 +4,8 @@ Funciones auxiliares y utilidades generales.
 """
 
 import torch
+import random
+import numpy as np
 
 
 def _select_amp_dtype() -> torch.dtype:
@@ -34,4 +36,25 @@ def setup_cuda_optimizations():
 def get_device():
     """Get the appropriate device for computation"""
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+def set_seed(seed: int = 42, deterministic: bool = False):
+    """Set seeds for reproducibility across Python, NumPy, and PyTorch.
+
+    Args:
+        seed: Random seed to use.
+        deterministic: If True, enable deterministic cuDNN (slower but reproducible).
+    """
+    try:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+        if deterministic:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+    except Exception:
+        # Best-effort seeding; never hard fail
+        pass
 

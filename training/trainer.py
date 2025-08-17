@@ -15,11 +15,11 @@ from pathlib import Path
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, Subset
 
-from ..config import FEDformerConfig
-from ..data import TimeSeriesDataset
-from ..models import Flow_FEDformer
-from ..utils import MetricsTracker, get_device
-from .utils import mc_dropout_inference
+from config import FEDformerConfig
+from data import TimeSeriesDataset
+from models import Flow_FEDformer
+from utils import MetricsTracker, get_device
+from training.utils import mc_dropout_inference
 
 logger = logging.getLogger(__name__)
 device = get_device()
@@ -133,7 +133,7 @@ class WalkForwardTrainer:
                     num_workers=num_workers,
                     pin_memory=torch.cuda.is_available(),
                     persistent_workers=num_workers > 0,
-                    prefetch_factor=2 if num_workers > 0 else None  # OPTIMIZED: Better GPU utilization
+                    **({'prefetch_factor': 2} if num_workers > 0 else {})  # OPTIMIZED: Better GPU utilization
                 )
                 test_loader = DataLoader(
                     test_subset,
@@ -142,7 +142,7 @@ class WalkForwardTrainer:
                     num_workers=num_workers,
                     pin_memory=torch.cuda.is_available(),
                     persistent_workers=num_workers > 0,
-                    prefetch_factor=2 if num_workers > 0 else None  # OPTIMIZED: Better GPU utilization
+                    **({'prefetch_factor': 2} if num_workers > 0 else {})  # OPTIMIZED: Better GPU utilization
                 )
 
                 model = self._get_model()
@@ -230,7 +230,7 @@ class WalkForwardTrainer:
                 try:
                     for batch in test_loader:
                         try:
-                            samples = mc_dropout_inference(model, batch, n_samples=50)
+                            samples = mc_dropout_inference(model, batch, n_samples=50, use_flow_sampling=True)
                             fold_samples.append(samples.cpu().numpy())
                             fold_preds.append(torch.median(samples, dim=0)[0].cpu().numpy())
                             fold_gt.append(batch['y_true'].cpu().numpy())

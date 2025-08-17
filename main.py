@@ -22,10 +22,12 @@ import wandb
 from config import FEDformerConfig
 from data import TimeSeriesDataset
 from training import WalkForwardTrainer
-from simulation import RiskSimulator, PortfolioSimulator
+from simulations import RiskSimulator, PortfolioSimulator
 from utils import setup_cuda_optimizations, get_device
+from utils.helpers import set_seed
 
 # Setup global configurations
+set_seed(42, deterministic=False)
 setup_cuda_optimizations()
 device = get_device()
 logger = logging.getLogger(__name__)

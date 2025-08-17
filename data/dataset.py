@@ -12,7 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset
 from typing import Dict
 
-from ..config import FEDformerConfig
+from config import FEDformerConfig
 
 logger = logging.getLogger(__name__)
 

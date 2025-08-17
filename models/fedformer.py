@@ -8,7 +8,7 @@ import torch.nn as nn
 from typing import Tuple
 import torch.distributions
 
-from ..config import FEDformerConfig
+from config import FEDformerConfig
 from .layers import OptimizedSeriesDecomp
 from .encoder_decoder import EncoderLayer, DecoderLayer
 from .flows import NormalizingFlow

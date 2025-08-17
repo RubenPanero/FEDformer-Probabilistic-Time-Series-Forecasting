@@ -12,8 +12,13 @@ logger = logging.getLogger(__name__)
 device = get_device()
 
 
-def mc_dropout_inference(model, batch, n_samples=100):
-    """FIXED: Proper MC dropout inference with gradient management"""
+def mc_dropout_inference(model, batch, n_samples=100, use_flow_sampling: bool = True):
+    """Proper MC dropout inference with gradient management.
+
+    If use_flow_sampling is True and the model returns a distribution with a
+    .sample() method, draw stochastic samples from the distribution. Otherwise,
+    fall back to the predictive mean under dropout noise.
+    """
     def enable_dropout(m):
         if isinstance(m, nn.Dropout):
             m.train()
@@ -30,7 +35,12 @@ def mc_dropout_inference(model, batch, n_samples=100):
         for _ in range(n_samples):
             try:
                 dist = model(x_enc, x_dec, x_regime)
-                samples.append(dist.mean)
+                if use_flow_sampling and hasattr(dist, 'sample'):
+                    s = dist.sample(1)  # [1, B, T, F] or [1, B, T]
+                    # squeeze sample dimension
+                    samples.append(s[0])
+                else:
+                    samples.append(dist.mean)
             except Exception as e:
                 logger.warning(f"MC sample failed: {e}")
                 # Return zeros if sampling fails
