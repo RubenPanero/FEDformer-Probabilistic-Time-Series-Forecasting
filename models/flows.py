@@ -51,6 +51,7 @@ class NormalizingFlow(nn.Module):
     """FIXED: Proper device handling for base distribution"""
     def __init__(self, n_layers: int, d_model: int, hidden_dim: int, context_dim: int = 0):
         super().__init__()
+        assert d_model % 2 == 0, f"d_model ({d_model}) must be even for coupling splits"
         self.layers = nn.ModuleList([
             AffineCouplingLayer(d_model, hidden_dim, context_dim=context_dim) 
             for _ in range(n_layers)
@@ -65,10 +66,11 @@ class NormalizingFlow(nn.Module):
         return torch.distributions.Normal(self.base_mean, self.base_std)
 
     def forward(self, x: torch.Tensor, context: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        log_det_jacobian = 0
+        # log_det per batch element
+        log_det_jacobian = torch.zeros(x.size(0), device=x.device, dtype=x.dtype)
         for layer in self.layers:
             x, ldj = layer(x, context=context)
-            log_det_jacobian += ldj
+            log_det_jacobian = log_det_jacobian + ldj
         return x, log_det_jacobian
 
     def inverse(self, z: torch.Tensor, context: Optional[torch.Tensor] = None) -> torch.Tensor:

@@ -123,8 +123,14 @@ class WalkForwardTrainer:
                 test_indices = range(train_end_idx, min(test_end_idx, len(self.full_dataset)))
                 test_subset = Subset(self.full_dataset, list(test_indices))
                 
-                # OPTIMIZED: Enhanced data loading with prefetch_factor
+                # OPTIMIZED: Enhanced data loading with prefetch_factor and seeded workers
                 num_workers = min(4, os.cpu_count() // 2) if os.cpu_count() else 0
+                g = torch.Generator()
+                g.manual_seed(self.config.__dict__.get('seed', 42))
+                def _worker_init_fn(worker_id):
+                    base_seed = self.config.__dict__.get('seed', 42)
+                    np.random.seed(base_seed + worker_id)
+                    torch.manual_seed(base_seed + worker_id)
                 train_loader = DataLoader(
                     train_subset, 
                     batch_size=self.config.batch_size,
@@ -133,6 +139,8 @@ class WalkForwardTrainer:
                     num_workers=num_workers,
                     pin_memory=torch.cuda.is_available(),
                     persistent_workers=num_workers > 0,
+                    worker_init_fn=_worker_init_fn,
+                    generator=g,
                     **({'prefetch_factor': 2} if num_workers > 0 else {})  # OPTIMIZED: Better GPU utilization
                 )
                 test_loader = DataLoader(
@@ -142,6 +150,8 @@ class WalkForwardTrainer:
                     num_workers=num_workers,
                     pin_memory=torch.cuda.is_available(),
                     persistent_workers=num_workers > 0,
+                    worker_init_fn=_worker_init_fn,
+                    generator=g,
                     **({'prefetch_factor': 2} if num_workers > 0 else {})  # OPTIMIZED: Better GPU utilization
                 )
 
@@ -228,15 +238,16 @@ class WalkForwardTrainer:
                 fold_preds, fold_gt, fold_samples = [], [], []
                 
                 try:
-                    for batch in test_loader:
-                        try:
-                            samples = mc_dropout_inference(model, batch, n_samples=50, use_flow_sampling=True)
-                            fold_samples.append(samples.cpu().numpy())
-                            fold_preds.append(torch.median(samples, dim=0)[0].cpu().numpy())
-                            fold_gt.append(batch['y_true'].cpu().numpy())
-                        except Exception as e:
-                            logger.warning(f"Evaluation batch failed: {e}")
-                            continue
+                    with torch.inference_mode():
+                        for batch in test_loader:
+                            try:
+                                samples = mc_dropout_inference(model, batch, n_samples=50, use_flow_sampling=True)
+                                fold_samples.append(samples.cpu().numpy())
+                                fold_preds.append(torch.median(samples, dim=0)[0].cpu().numpy())
+                                fold_gt.append(batch['y_true'].cpu().numpy())
+                            except Exception as e:
+                                logger.warning(f"Evaluation batch failed: {e}")
+                                continue
                     
                     if fold_preds and fold_gt and fold_samples:
                         all_preds.append(np.concatenate(fold_preds, axis=0))

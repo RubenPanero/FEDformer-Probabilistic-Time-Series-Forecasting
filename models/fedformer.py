@@ -78,9 +78,9 @@ class Flow_FEDformer(nn.Module):
         
         # OPTIMIZED: Optional gradient checkpointing
         if self.use_gradient_checkpointing and self.training:
-            enc_out = torch.utils.checkpoint.checkpoint(self.encoder, enc_out, use_reentrant=False)
+            enc_out = torch.utils.checkpoint.checkpoint(lambda t: self.encoder(t), enc_out, use_reentrant=False)
             dec_out, trend_part = torch.utils.checkpoint.checkpoint(
-                self.decoder, dec_out, enc_out, use_reentrant=False
+                lambda a, b: self.decoder(a, b), dec_out, enc_out, use_reentrant=False
             )
         else:
             enc_out = self.encoder(enc_out)

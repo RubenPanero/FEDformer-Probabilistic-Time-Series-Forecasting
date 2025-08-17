@@ -62,6 +62,10 @@ class FEDformerConfig:
     # Data configuration
     date_column: Optional[str] = None
     
+    # Reproducibility
+    seed: int = 42
+    deterministic: bool = False
+    
     # Derived fields (set automatically)
     enc_in: int = None
     dec_in: int = None
@@ -74,7 +78,8 @@ class FEDformerConfig:
         
         # Set derived parameters
         try:
-            df_cols = pd.read_csv(self.file_path).columns
+            # Use header-only read to avoid heavy IO
+            df_cols = pd.read_csv(self.file_path, nrows=0).columns
             if self.date_column and self.date_column in df_cols:
                 feature_cols = [c for c in df_cols if c != self.date_column]
             else:
@@ -95,12 +100,14 @@ class FEDformerConfig:
         assert self.label_len <= self.seq_len, f"label_len ({self.label_len}) cannot exceed seq_len ({self.seq_len})"
         assert self.modes <= self.seq_len // 2, f"modes ({self.modes}) cannot exceed seq_len // 2 ({self.seq_len // 2})"
         assert self.activation in ['gelu', 'relu'], f"activation must be 'gelu' or 'relu', got {self.activation}"
-        assert all(col in pd.read_csv(self.file_path).columns for col in self.target_features), "All target features must exist in the dataset"
-        
+        # Check that targets exist using header-only read (avoid full read)
+        assert all(col in pd.read_csv(self.file_path, nrows=0).columns for col in self.target_features), "All target features must exist in the dataset"
         # OPTIMIZED: Additional validation for numerical stability
         assert 0 <= self.dropout < 1, f"Dropout must be in [0, 1), got {self.dropout}"
         assert self.learning_rate > 0, f"Learning rate must be positive, got {self.learning_rate}"
         assert self.weight_decay >= 0, f"Weight decay must be non-negative, got {self.weight_decay}"
         assert self.batch_size > 0, f"Batch size must be positive, got {self.batch_size}"
         assert self.gradient_accumulation_steps > 0, f"Gradient accumulation steps must be positive, got {self.gradient_accumulation_steps}"
+        # Ensure flow coupling split works
+        assert self.pred_len % 2 == 0, f"pred_len ({self.pred_len}) must be even for affine coupling"
 

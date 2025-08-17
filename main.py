@@ -49,8 +49,16 @@ def main():
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--use-checkpointing', action='store_true', help='Enable gradient checkpointing')
     parser.add_argument('--grad-accum-steps', type=int, default=1, help='Gradient accumulation steps')
+    # Nuevos flags de reproducibilidad y visualización
+    parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument('--deterministic', action='store_true', help='Enable deterministic mode (cuDNN)')
+    parser.add_argument('--save-fig', default=None, help='Path to save generated figures instead of showing')
+    parser.add_argument('--no-show', action='store_true', help='Do not display figures (useful for headless)')
     
     args = parser.parse_args()
+
+    # Reproducibilidad
+    set_seed(args.seed, deterministic=args.deterministic)
 
     # Validate inputs
     if not os.path.exists(args.csv):
@@ -77,7 +85,9 @@ def main():
             wandb_project=args.wandb_project,
             wandb_entity=args.wandb_entity,
             date_column=args.date_col,
-            wandb_run_name=f"Modular-Flow-FEDformer_{int(time.time())}"
+            wandb_run_name=f"Modular-Flow-FEDformer_{int(time.time())}",
+            seed=args.seed,
+            deterministic=args.deterministic,
         )
         
         logger.info("Configuration validated successfully")
@@ -182,7 +192,19 @@ def main():
                     except Exception as e:
                         logger.warning(f"W&B logging failed: {e}")
                     
-                    plt.show()
+                    # Guardado/visualización
+                    if args.save_fig:
+                        try:
+                            fig.savefig(args.save_fig, dpi=150, bbox_inches='tight')
+                            logger.info(f"Figure saved to {args.save_fig}")
+                        except Exception as e:
+                            logger.warning(f"Saving figure failed: {e}")
+                    if not args.no_show:
+                        try:
+                            plt.show()
+                        except Exception:
+                            pass
+                    plt.close(fig)
                     
                 except Exception as e:
                     logger.error(f"Visualization failed: {e}")

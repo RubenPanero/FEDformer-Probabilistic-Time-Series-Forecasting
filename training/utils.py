@@ -23,6 +23,7 @@ def mc_dropout_inference(model, batch, n_samples=100, use_flow_sampling: bool = 
         if isinstance(m, nn.Dropout):
             m.train()
     
+    prev_mode = model.training
     model.apply(enable_dropout)
     
     x_enc = batch['x_enc'].to(device, non_blocking=True)
@@ -53,7 +54,11 @@ def mc_dropout_inference(model, batch, n_samples=100, use_flow_sampling: bool = 
     if not samples:
         logger.error("All MC samples failed")
         dummy_shape = (x_enc.size(0), model.config.pred_len, model.config.c_out)
-        return torch.zeros((1,) + dummy_shape, device=device)
-        
-    return torch.stack(samples)
+        out = torch.zeros((1,) + dummy_shape, device=device)
+    else:
+        out = torch.stack(samples)
+
+    # Restore original mode
+    model.train(prev_mode)
+    return out
 

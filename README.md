@@ -60,7 +60,7 @@ Time Series → Volatility Regimes → Contextual Features → Fourier Attention
    - Advanced risk metrics (VaR, CVaR, Expected Shortfall)
    - Portfolio simulation with realistic trading strategies
 
-## 📊 Key Capabilities
+## 📈 Key Capabilities
 
 ### Probabilistic Outputs
 - **Point Estimates**: Mean predictions for traditional forecasting
@@ -84,10 +84,15 @@ Time Series → Volatility Regimes → Contextual Features → Fourier Attention
 
 ### Installation
 
-```bash
+```powershell
 # Clone the repository
-git clone https://github.com/your-username/vanguard-fedformer.git
-cd vanguard-fedformer
+git clone https://github.com/RbnGlz/Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting.git
+cd Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting
+
+# Create venv (Windows PowerShell)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 
 # Install dependencies
 pip install -r requirements.txt
@@ -95,7 +100,7 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
-```bash
+```powershell
 # Run with your CSV data
 python main.py \
     --csv data/your_data.csv \
@@ -109,8 +114,7 @@ python main.py \
 
 ### Advanced Configuration
 
-```bash
-# Full configuration with optimization options
+```powershell
 python main.py \
     --csv data/financial_data.csv \
     --targets "close_price" \
@@ -122,11 +126,15 @@ python main.py \
     --batch-size 64 \
     --splits 5 \
     --use-checkpointing \
+    --grad-accum-steps 2 \
     --wandb-project "fedformer-experiment" \
-    --wandb-entity "your-team"
+    --wandb-entity "your-team" \
+    --seed 123 \
+    --deterministic \
+    --no-show
 ```
 
-## 📁 Data Format
+## 🗃️ Data Format
 
 Your CSV should contain:
 - **Target columns**: Variables to predict (e.g., 'price', 'volume')
@@ -153,7 +161,7 @@ date,close_price,volume,volatility,rsi
 ### Sequence Configuration
 - `seq_len`: Input sequence length (default: 96)
 - `label_len`: Decoder start tokens (default: 48)
-- `pred_len`: Prediction horizon (default: 24)
+- `pred_len`: Prediction horizon (default: 24, must be even)
 
 ### Normalizing Flow
 - `n_flow_layers`: Number of coupling layers (default: 4)
@@ -165,8 +173,9 @@ date,close_price,volume,volatility,rsi
 - `n_epochs_per_fold`: Epochs per fold (default: 5)
 - `use_amp`: Mixed precision training (default: True)
 - `use_gradient_checkpointing`: Memory optimization (default: False)
+- `gradient_accumulation_steps`: Effective larger batch size (default: 1)
 
-## 📈 Performance Metrics
+## 📊 Performance Metrics
 
 ### Forecasting Metrics
 - **Mean Absolute Error (MAE)**
@@ -189,14 +198,14 @@ date,close_price,volume,volatility,rsi
 - **Conditional VaR (CVaR)**: Expected loss beyond VaR
 - **Expected Shortfall**: Average of worst-case scenarios
 
-## 🔧 Advanced Features
+## 🧰 Advanced Features
 
 ### Memory Optimization
 ```python
 config = FEDformerConfig(
-    use_gradient_checkpointing=True,  # Reduce memory usage
-    batch_size=16,                    # Smaller batches for large models
-    compile_mode='max-autotune'       # Optimize computation graph
+    use_gradient_checkpointing=True,
+    batch_size=16,
+    compile_mode='max-autotune'
 )
 ```
 
@@ -219,92 +228,40 @@ cvar_95 = risk_sim.calculate_cvar()
 expected_shortfall = risk_sim.calculate_expected_shortfall()
 ```
 
-## 📊 Visualization Examples
+## 🧪 Reproducibility
 
-The system automatically generates:
+- Set seeds and deterministic mode:
+  - `--seed 123 --deterministic`
+- DataLoader workers are seeded for consistent shuffling.
+- cuDNN deterministic may reduce speed; disable with `--deterministic` off.
 
-1. **Equity Curve**: Strategy performance over time
-2. **Risk Metrics**: VaR and CVaR evolution
-3. **Prediction Intervals**: Uncertainty bands around forecasts
-4. **Distribution Plots**: Learned probability distributions
+## 📈 Visualization
 
-## 🧪 Experimental Results
+- Use `--save-fig path.png` to save plots instead of showing them.
+- Use `--no-show` in headless environments.
 
-### Financial Data Performance
-- **S&P 500**: 15% improvement in Sharpe ratio over baseline
-- **Cryptocurrency**: 25% reduction in maximum drawdown
-- **Forex**: 20% better risk-adjusted returns
-
-### Computational Efficiency
-- **Training Time**: 3x faster than vanilla Transformer
-- **Memory Usage**: 40% reduction with gradient checkpointing
-- **Inference Speed**: 5x faster with model compilation
-
-## 🛠️ Development & Contribution
-
-### Code Quality
-- **Type Hints**: Full type annotation
-- **Documentation**: Comprehensive docstrings
-- **Error Handling**: Robust exception management
-- **Logging**: Structured logging throughout
-
-### Testing
+## 🧪 Testing (local smoke tests)
 
 - Training/backtest smoke test (CPU/GPU):
-  ```bash
+  ```powershell
   python main.py \
       --csv data/your_data.csv \
       --targets "price" \
       --pred-len 8 \
       --seq-len 32 \
+      --label-len 16 \
       --epochs 1 \
       --batch-size 8 \
-      --splits 2
+      --splits 2 \
+      --seed 123 \
+      --no-show
   ```
-- Quick metrics check: confirm that `train_loss`, `VaR`, `CVaR` are logged and that OOS predictions are generated.
-- Memory validation: if OOM occurs, enable `--use-checkpointing` and/or reduce `--batch-size` or use `--grad-accum-steps`.
 
-### Contributing
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Submit a pull request
+## ⚠️ Notes & Limitations
 
-## 📚 Technical Details
-
-### Normalizing Flows Implementation
-Uses Real NVP architecture with:
-- Affine coupling layers
-- Context conditioning from FEDformer features
-- Proper Jacobian determinant calculation
-- Numerical stability optimizations
-
-### Fourier Attention Mechanism
-- FFT-based attention in frequency domain
-- Learnable frequency selection
-- O(N log N) complexity instead of O(N²)
-- Efficient handling of long sequences
-
-### Regime Detection
-- Volatility-based regime identification
-- Adaptive quantile-based classification
-- Contextual embedding integration
-- Dynamic regime switching capability
-
-## 🔮 Roadmap
-
-### Version 2.0 (Coming Soon)
-- [ ] **Early Stopping**: Validation-based training termination
-- [ ] **Distributed Training**: Multi-GPU and multi-node support
-- [ ] **AutoML Integration**: Automated hyperparameter optimization
-- [ ] **Model Checkpointing**: Advanced save/resume functionality
-- [ ] **Profiling Tools**: Built-in performance analysis
-
-### Version 2.1 (Future)
-- [ ] **Real-time Inference**: Streaming prediction pipeline
-- [ ] **Model Ensemble**: Multiple model combination
-- [ ] **Custom Metrics**: User-defined evaluation functions
-- [ ] **API Server**: REST API for model serving
+- Current Fourier attention uses a simplified formulation that does not incorporate `V` explicitly; empirically effective but differs from standard attention.
+- `pred_len` must be even (affine coupling split requirement).
+- Distributed training (DDP) not implemented yet.
 
 ## 📄 License
 

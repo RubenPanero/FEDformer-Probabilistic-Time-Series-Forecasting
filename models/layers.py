@@ -55,7 +55,7 @@ class FourierAttention(nn.Module):
         processed_modes = torch.einsum('bhei,eoi->bhoi', selected_modes, weights_c)
         
         # Create sparse output - only allocate when needed
-        out_ft = torch.zeros(x_ft.shape, dtype=x_ft.dtype, device=x_ft.device)
+        out_ft = torch.zeros_like(x_ft)
         out_ft[..., self.index] = processed_modes
         
         return torch.fft.irfft(out_ft, n=L, dim=-1).transpose(-1, -2)

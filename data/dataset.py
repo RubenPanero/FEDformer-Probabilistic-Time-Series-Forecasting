@@ -75,8 +75,20 @@ class TimeSeriesDataset(Dataset):
             
             num_train = int(len(df_raw) * 0.7)
             num_val = int(len(df_raw) * 0.2)
-            border1s = {'train': 0, 'val': num_train - self.config.seq_len, 'test': len(df_raw) - num_val - self.config.seq_len}
-            border2s = {'train': num_train, 'val': len(df_raw), 'test': len(df_raw)}
+            border1s = {
+                'train': 0,
+                'val': max(0, num_train - self.config.seq_len),
+                'test': max(0, len(df_raw) - num_val - self.config.seq_len),
+                'all': 0,
+            }
+            border2s = {
+                'train': num_train,
+                'val': len(df_raw),
+                'test': len(df_raw),
+                'all': len(df_raw),
+            }
+            if self.flag not in border1s:
+                raise ValueError(f"flag must be one of {list(border1s.keys())}, got {self.flag}")
             
             train_data = self.df_data.iloc[:num_train].values
             self.scaler.fit(train_data)
