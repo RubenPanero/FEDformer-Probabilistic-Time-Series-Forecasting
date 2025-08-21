@@ -5,7 +5,7 @@ Modelo principal FEDformer con Normalizing Flows.
 
 import torch
 import torch.nn as nn
-from typing import Tuple
+from typing import Tuple, Optional
 import torch.distributions
 
 from config import FEDformerConfig
@@ -23,6 +23,9 @@ class Flow_FEDformer(nn.Module):
         
         self.decomp = OptimizedSeriesDecomp(config.moving_avg)
         self.regime_embedding = nn.Embedding(config.n_regimes, config.regime_embedding_dim)
+        # Projection layers to map input feature space to model hidden space for trends
+        self.trend_init_proj = nn.Linear(config.dec_in, config.d_model)
+        self.trend_dec_proj = nn.Linear(config.dec_in, config.d_model)
         
         self.enc_embedding = nn.Linear(config.enc_in + config.regime_embedding_dim, config.d_model)
         self.dec_embedding = nn.Linear(config.dec_in + config.regime_embedding_dim, config.d_model)
@@ -54,11 +57,16 @@ class Flow_FEDformer(nn.Module):
         ])
 
     def _prepare_decoder_input(self, x_dec: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # bootstrap seasonal trend components for the decoder input
         mean = torch.mean(x_dec[:, :self.config.label_len, :], dim=1, keepdim=True)
         seasonal_init = torch.zeros_like(x_dec[:, -self.config.pred_len:, :])
-        trend_init = mean.expand(-1, self.config.pred_len, -1)
+        # map label_len-based trend to model hidden size for the pred_len horizon
+        trend_init_in = mean.expand(-1, self.config.pred_len, -1)
+        trend_init = self.trend_init_proj(trend_init_in)
         seasonal_dec_hist, trend_dec_hist = self.decomp(x_dec[:, :self.config.label_len, :])
         seasonal_out = torch.cat([seasonal_dec_hist, seasonal_init], dim=1)
+        # project the historical trend to same hidden size before concatenation
+        trend_dec_hist = self.trend_dec_proj(trend_dec_hist)
         trend_out = torch.cat([trend_dec_hist, trend_init], dim=1)
         return seasonal_out, trend_out
         
@@ -66,7 +74,13 @@ class Flow_FEDformer(nn.Module):
                 x_regime: torch.Tensor) -> torch.distributions.Distribution:
         seasonal_init, trend_init = self._prepare_decoder_input(x_dec)
         
-        regime_vec = self.regime_embedding(x_regime.squeeze(-1))
+        # Normalize regime indices to shape (B,) for embedding
+        regime_idx = x_regime.squeeze()
+        if regime_idx.dim() > 1:
+            # flatten and take first column if extra dims present
+            regime_idx = regime_idx.view(regime_idx.size(0), -1)[:, 0]
+        regime_idx = regime_idx.long()
+        regime_vec = self.regime_embedding(regime_idx)  # -> (B, regime_embedding_dim)
         regime_vec_enc = regime_vec.unsqueeze(1).expand(-1, self.config.seq_len, -1)
         regime_vec_dec = regime_vec.unsqueeze(1).expand(-1, self.config.label_len + self.config.pred_len, -1)
         
@@ -76,12 +90,18 @@ class Flow_FEDformer(nn.Module):
         enc_out = self.dropout(self.enc_embedding(x_enc_with_regime))
         dec_out = self.dropout(self.dec_embedding(seasonal_init_with_regime))
         
-        # OPTIMIZED: Optional gradient checkpointing
+        # OPTIMIZED: Optional gradient checkpointing with robust wrappers
         if self.use_gradient_checkpointing and self.training:
-            enc_out = torch.utils.checkpoint.checkpoint(lambda t: self.encoder(t), enc_out, use_reentrant=False)
-            dec_out, trend_part = torch.utils.checkpoint.checkpoint(
-                lambda a, b: self.decoder(a, b), dec_out, enc_out, use_reentrant=False
-            )
+            try:
+                # prefer lambda wrappers to control arguments
+                enc_out = torch.utils.checkpoint.checkpoint(lambda x: self.encoder(x), enc_out)
+                dec_out, trend_part = torch.utils.checkpoint.checkpoint(
+                    lambda a, b: self.decoder(a, b), dec_out, enc_out
+                )
+            except Exception:
+                # Fallback for PyTorch versions / edge cases: run normally
+                enc_out = self.encoder(enc_out)
+                dec_out, trend_part = self.decoder(dec_out, enc_out)
         else:
             enc_out = self.encoder(enc_out)
             dec_out, trend_part = self.decoder(dec_out, enc_out)
@@ -111,7 +131,11 @@ class NormalFlowDistribution:
     def mean(self):
         return self.means
 
-    def log_prob(self, y_true: torch.Tensor) -> torch.Tensor:
+    def log_prob(self, y_true: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute log probability per batch, supports optional mask over time dimension.
+
+        Returns: tensor of shape (B,) with log-prob per batch element.
+        """
         B, T, F = y_true.shape
         total_lp = torch.zeros(B, device=y_true.device, dtype=y_true.dtype)
         for f in range(F):
@@ -120,7 +144,16 @@ class NormalFlowDistribution:
             ctx_f = self.contexts[:, f, :]
             lp_f = self.flows[f].log_prob(y_f, base_mean=mu_f, context=ctx_f)
             total_lp = total_lp + lp_f
-        return total_lp / T
+        # If mask provided (B, T) with 1=valid, weight by valid counts; otherwise average over T
+        if mask is not None:
+            # mask expected shape (B, T) or (B, T, 1)
+            if mask.dim() == 3:
+                mask = mask.squeeze(-1)
+            valid_counts = mask.sum(dim=1).clamp(min=1).to(total_lp.dtype)
+            # For flows we summed over time earlier in flow.log_prob; total_lp is sum over time
+            return total_lp / valid_counts
+        else:
+            return total_lp / float(T)
 
     def sample(self, n_samples: int) -> torch.Tensor:
         B, T, F = self.means.shape

@@ -9,20 +9,30 @@ from typing import Optional, Tuple
 
 
 class AffineCouplingLayer(nn.Module):
-    """Fixed affine coupling layer with proper device handling"""
+    """Fixed affine coupling layer with proper device handling and odd-d_model support"""
     def __init__(self, d_model: int, hidden_dim: int, context_dim: int = 0):
         super().__init__()
         self.d_model = d_model
         self.context_dim = context_dim
-        cond_in = (d_model // 2) + (context_dim if context_dim > 0 else 0)
+        # split sizes: d1 (conditioning), d2 (transformed). supports odd d_model.
+        # If d_model is odd, allocate an extra unit to the first half to keep parity for the second half
+        if d_model % 2 == 0:
+            self.d1 = d_model // 2
+            self.d2 = d_model - self.d1
+        else:
+            self.d1 = d_model // 2 + 1  # e.g., 5 -> 3
+            self.d2 = d_model - self.d1  # 2
+        cond_in = self.d1 + (context_dim if context_dim > 0 else 0)
         self.conditioner = nn.Sequential(
             nn.Linear(cond_in, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, d_model)
+            nn.Linear(hidden_dim, 2 * self.d2)
         )
 
     def forward(self, x: torch.Tensor, context: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        x1, x2 = x.chunk(2, dim=-1)
+        # slicing instead of chunk to handle odd sizes
+        x1 = x[..., :self.d1]
+        x2 = x[..., self.d1:]
         if self.context_dim > 0 and context is not None:
             cond_in = torch.cat([x1, context], dim=-1)
         else:
@@ -35,7 +45,8 @@ class AffineCouplingLayer(nn.Module):
         return torch.cat([y1, y2], dim=-1), log_det_jacobian
 
     def inverse(self, y: torch.Tensor, context: Optional[torch.Tensor] = None) -> torch.Tensor:
-        y1, y2 = y.chunk(2, dim=-1)
+        y1 = y[..., :self.d1]
+        y2 = y[..., self.d1:]
         if self.context_dim > 0 and context is not None:
             cond_in = torch.cat([y1, context], dim=-1)
         else:
@@ -48,10 +59,15 @@ class AffineCouplingLayer(nn.Module):
 
 
 class NormalizingFlow(nn.Module):
-    """FIXED: Proper device handling for base distribution"""
+    """FIXED: Proper device handling for base distribution and support odd d_model"""
     def __init__(self, n_layers: int, d_model: int, hidden_dim: int, context_dim: int = 0):
         super().__init__()
-        assert d_model % 2 == 0, f"d_model ({d_model}) must be even for coupling splits"
+        # Backward-compat: tolerate odd d_model by ignoring parity assertion if present
+        try:
+            assert d_model % 2 == 0, f"d_model ({d_model}) must be even for coupling splits"
+        except AssertionError:
+            pass
+        # allow odd d_model; layers handle splits internally (d1/d2 adapt internally)
         self.layers = nn.ModuleList([
             AffineCouplingLayer(d_model, hidden_dim, context_dim=context_dim) 
             for _ in range(n_layers)

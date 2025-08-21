@@ -91,6 +91,15 @@ class FEDformerConfig:
             logger.error(f"Failed to read CSV file {self.file_path}: {e}")
             raise
         
+        # Adjust and validate modes to avoid runtime assertion failures
+        max_modes = max(1, self.seq_len // 2)
+        if self.modes > max_modes:
+            logger.warning(f"modes ({self.modes}) > seq_len//2 ({max_modes}), clamping modes to {max_modes}")
+            self.modes = max_modes
+        if self.modes < 1:
+            logger.warning(f"modes ({self.modes}) < 1, setting to 1")
+            self.modes = 1
+        
         # Validate configuration
         self.validate()
     
@@ -98,7 +107,7 @@ class FEDformerConfig:
         """Validate configuration consistency"""
         assert self.d_model % self.n_heads == 0, f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
         assert self.label_len <= self.seq_len, f"label_len ({self.label_len}) cannot exceed seq_len ({self.seq_len})"
-        assert self.modes <= self.seq_len // 2, f"modes ({self.modes}) cannot exceed seq_len // 2 ({self.seq_len // 2})"
+        assert 1 <= self.modes <= max(1, self.seq_len // 2), f"modes ({self.modes}) must be in [1, seq_len//2] ({self.seq_len // 2})"
         assert self.activation in ['gelu', 'relu'], f"activation must be 'gelu' or 'relu', got {self.activation}"
         # Check that targets exist using header-only read (avoid full read)
         assert all(col in pd.read_csv(self.file_path, nrows=0).columns for col in self.target_features), "All target features must exist in the dataset"
