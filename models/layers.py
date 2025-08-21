@@ -89,23 +89,30 @@ class AttentionLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        B, Lq, _ = q.shape
-        q_h = self.query_proj(q).view(B, Lq, self.n_heads, self.d_keys).transpose(1, 2)
-        Lk = k.shape[1]
-        k_h = self.key_proj(k).view(B, Lk, self.n_heads, self.d_keys).transpose(1, 2)
+        # Support mismatched sequence lengths between query and key (e.g., cross-attention)
+        B_q, Lq, _ = q.shape
+        B_k, Lk, _ = k.shape
+        # project and reshape to [B, n_heads, L, d_keys]
+        q_h = self.query_proj(q).view(B_q, Lq, self.n_heads, self.d_keys).transpose(1, 2)
+        k_h = self.key_proj(k).view(B_k, Lk, self.n_heads, self.d_keys).transpose(1, 2)
+
+        # Align lengths by padding the shorter sequence to the longer one along the length dim
         max_len = max(Lq, Lk)
-        if Lq != max_len:
+        if Lq < max_len:
             pad_len = max_len - Lq
-            pad_q = torch.zeros(B, self.n_heads, pad_len, self.d_keys, device=q.device, dtype=q.dtype)
+            pad_q = torch.zeros(B_q, self.n_heads, pad_len, self.d_keys, device=q.device, dtype=q.dtype)
             q_h = torch.cat([q_h, pad_q], dim=2)
-        if Lk != max_len:
+        if Lk < max_len:
             pad_len = max_len - Lk
-            pad_k = torch.zeros(B, self.n_heads, pad_len, self.d_keys, device=k.device, dtype=k.dtype)
+            pad_k = torch.zeros(B_k, self.n_heads, pad_len, self.d_keys, device=k.device, dtype=k.dtype)
             k_h = torch.cat([k_h, pad_k], dim=2)
+
         attn_out = self.fourier_attention(q_h * k_h)
-        attn_out = attn_out.transpose(1, 2).contiguous().view(B, max_len, -1)
-        # If we padded to max_len, slice back to the original query length
+        attn_out = attn_out.transpose(1, 2).contiguous().view(B_q, max_len, -1)
+
+        # Trim to original query length if we padded
         if max_len != Lq:
             attn_out = attn_out[:, :Lq, :]
+
         return self.dropout(self.out_proj(attn_out))
 

@@ -23,9 +23,8 @@ class Flow_FEDformer(nn.Module):
         
         self.decomp = OptimizedSeriesDecomp(config.moving_avg)
         self.regime_embedding = nn.Embedding(config.n_regimes, config.regime_embedding_dim)
-        # Projection layers to map input feature space to model hidden space for trends
-        self.trend_init_proj = nn.Linear(config.dec_in, config.d_model)
-        self.trend_dec_proj = nn.Linear(config.dec_in, config.d_model)
+        # Projection to map decoder input feature space (dec_in) to model hidden size (d_model)
+        self.trend_proj = nn.Linear(config.dec_in, config.d_model)
         
         self.enc_embedding = nn.Linear(config.enc_in + config.regime_embedding_dim, config.d_model)
         self.dec_embedding = nn.Linear(config.dec_in + config.regime_embedding_dim, config.d_model)
@@ -57,17 +56,24 @@ class Flow_FEDformer(nn.Module):
         ])
 
     def _prepare_decoder_input(self, x_dec: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # bootstrap seasonal trend components for the decoder input
+        """Prepare decoder seasonal and trend initial components.
+
+        Returns seasonal_out (B, label_len+pred_len, dec_in) and
+        trend_out projected to model hidden size (B, label_len+pred_len, d_model).
+        """
         mean = torch.mean(x_dec[:, :self.config.label_len, :], dim=1, keepdim=True)
         seasonal_init = torch.zeros_like(x_dec[:, -self.config.pred_len:, :])
-        # map label_len-based trend to model hidden size for the pred_len horizon
+
+        # Expand mean to prediction horizon and project to model hidden dim
         trend_init_in = mean.expand(-1, self.config.pred_len, -1)
-        trend_init = self.trend_init_proj(trend_init_in)
+        trend_init = self.trend_proj(trend_init_in)
+
         seasonal_dec_hist, trend_dec_hist = self.decomp(x_dec[:, :self.config.label_len, :])
         seasonal_out = torch.cat([seasonal_dec_hist, seasonal_init], dim=1)
-        # project the historical trend to same hidden size before concatenation
-        trend_dec_hist = self.trend_dec_proj(trend_dec_hist)
-        trend_out = torch.cat([trend_dec_hist, trend_init], dim=1)
+
+        # Project historical trend to hidden size and concatenate with projected init
+        trend_dec_hist_proj = self.trend_proj(trend_dec_hist)
+        trend_out = torch.cat([trend_dec_hist_proj, trend_init], dim=1)
         return seasonal_out, trend_out
         
     def forward(self, x_enc: torch.Tensor, x_dec: torch.Tensor, 
@@ -106,6 +112,13 @@ class Flow_FEDformer(nn.Module):
             enc_out = self.encoder(enc_out)
             dec_out, trend_part = self.decoder(dec_out, enc_out)
 
+        # Ensure trend_init and trend_part have matching hidden dimensions before adding.
+        if trend_init.shape[-1] != trend_part.shape[-1]:
+            # Project trend_init to decoder hidden dimension if needed
+            # Create a temporary projection if model doesn't already have one
+            # (Prefer to have a persistent module, but for minimal change we create inline)
+            proj = nn.Linear(trend_init.shape[-1], trend_part.shape[-1]).to(trend_init.device)
+            trend_init = proj(trend_init)
         final_trend = trend_init + trend_part
         
         dec_ctx = dec_out[:, -self.config.pred_len:, :]
