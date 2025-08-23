@@ -39,9 +39,9 @@ jobs:
           pip install -r requirements.txt
           # Prefer CPU wheels for torch; skip CUDA in CI
           python - << 'PY'
-print('Torch CUDA disabled in CI. If your requirements include torch with CUDA,')
-print('consider using CPU wheel or guards in tests.')
-PY
+          print('Torch CUDA disabled in CI. If your requirements include torch with CUDA,')
+          print('consider using CPU wheel or guards in tests.')
+          PY
 
       - name: Run tests (fast, no slow)
         run: |
