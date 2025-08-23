@@ -30,6 +30,7 @@ def test_determinism(model_factory, synthetic_batch):
     assert np.allclose(out1, out2, atol=1e-6)
 
 
+@pytest.mark.slow
 def test_backward_and_grads(model_factory, synthetic_batch):
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=True)
@@ -57,6 +58,7 @@ def test_device_transfer(model_factory, synthetic_batch):
     assert dist.mean.device == device
 
 
+@pytest.mark.slow
 def test_state_dict_roundtrip(tmp_path, model_factory, synthetic_batch):
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=False)
