@@ -14,16 +14,19 @@ class RiskSimulator:
 
     def calculate_var(self) -> np.ndarray:
         """Value at Risk calculation"""
-        return np.quantile(self.samples, 1 - self.confidence_level, axis=0)
+        # VaR is a measure of loss, so we look at the negative of the samples
+        losses = -self.samples
+        return np.quantile(losses, self.confidence_level, axis=0)
 
     def calculate_cvar(self) -> np.ndarray:
         """Conditional Value at Risk calculation"""
+        losses = -self.samples
         var = self.calculate_var()
         cvar_result = np.zeros_like(var)
         
         for t in range(self.samples.shape[1]):
             for f in range(self.samples.shape[2]):
-                tail_samples = self.samples[self.samples[:, t, f] <= var[t, f], t, f]
+                tail_samples = losses[losses[:, t, f] >= var[t, f], t, f]
                 if len(tail_samples) > 0:
                     cvar_result[t, f] = tail_samples.mean()
                 else:

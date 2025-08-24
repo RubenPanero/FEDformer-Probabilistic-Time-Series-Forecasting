@@ -1,0 +1,8 @@
+........s.......                                                         [100%]
+============================== warnings summary ===============================
+tests/test_fedformer_basic.py::test_amp_optional
+  C:\Users\rbglz\Documents\GitHub\Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting\.venv\Lib\site-packages\torch\amp\grad_scaler.py:136: UserWarning: torch.cuda.amp.GradScaler is enabled, but CUDA is not available.  Disabling.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+15 passed, 1 skipped, 1 warning in 2.82s

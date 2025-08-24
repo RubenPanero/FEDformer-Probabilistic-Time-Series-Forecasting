@@ -90,9 +90,13 @@ class TimeSeriesDataset(Dataset):
             if self.flag not in border1s:
                 raise ValueError(f"flag must be one of {list(border1s.keys())}, got {self.flag}")
             
-            train_data = self.df_data.iloc[:num_train].values
+
+            # Select only numeric columns for scaling
+            numeric_cols = self.df_data.select_dtypes(include=np.number).columns
+            train_data = self.df_data.loc[:num_train-1, numeric_cols].values
+            
             self.scaler.fit(train_data)
-            self.full_data_scaled = self.scaler.transform(self.df_data.values)
+            self.full_data_scaled = self.scaler.transform(self.df_data[numeric_cols].values)
             
             self.regime_detector = RegimeDetector(n_regimes=self.config.n_regimes)
             self.regime_detector.fit(train_data[:, self.target_indices])

@@ -78,10 +78,10 @@ def test_amp_optional(model_factory, synthetic_batch):
     model = model_factory(train=True)
     scaler = None
     if hasattr(torch.cuda.amp, 'GradScaler'):
-        scaler = torch.cuda.amp.GradScaler()
+        scaler = torch.amp.GradScaler('cuda')
     dist = None
     if scaler is not None:
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast('cuda', enabled=False):
             dist = model(x_enc, x_dec, x_regime)
             loss = -dist.log_prob(y).mean()
         scaler.scale(loss).backward()
