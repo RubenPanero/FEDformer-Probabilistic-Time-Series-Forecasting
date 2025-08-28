@@ -89,11 +89,31 @@ class AttentionLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        B, L, _ = q.shape
-        q_h = self.query_proj(q).view(B, L, self.n_heads, self.d_keys).transpose(1, 2)
-        k_h = self.key_proj(k).view(B, L, self.n_heads, self.d_keys).transpose(1, 2)
-        
+        # Support cross-attention where query and key/value sequence lengths differ.
+        B_q, L_q, _ = q.shape
+        B_k, L_k, _ = k.shape
+
+        q_h = self.query_proj(q).view(B_q, L_q, self.n_heads, self.d_keys).transpose(1, 2)
+        k_h = self.key_proj(k).view(B_k, L_k, self.n_heads, self.d_keys).transpose(1, 2)
+        v_h = self.key_proj(v).view(B_k, L_k, self.n_heads, self.d_keys).transpose(1, 2)
+
+        # If key/value sequence length differs from query length, resample k_h and v_h to L_q
+        if L_k != L_q:
+            # interpolate along the sequence axis (dim=2)
+            # reshape to (B*n_heads, d_keys, L_k) for interpolation
+            bh = B_k * self.n_heads
+            k_h_reshaped = k_h.transpose(1, 2).contiguous().view(bh, self.d_keys, L_k)
+            v_h_reshaped = v_h.transpose(1, 2).contiguous().view(bh, self.d_keys, L_k)
+            k_h_resampled = F.interpolate(k_h_reshaped, size=L_q, mode='linear', align_corners=False)
+            v_h_resampled = F.interpolate(v_h_reshaped, size=L_q, mode='linear', align_corners=False)
+            # restore shape to (B, n_heads, L_q, d_keys)
+            k_h = k_h_resampled.view(B_k, self.n_heads, self.d_keys, L_q).transpose(2, 3)
+            v_h = v_h_resampled.view(B_k, self.n_heads, self.d_keys, L_q).transpose(2, 3)
+
+        # Now q_h and k_h share the same sequence length (L_q)
         attn_out = self.fourier_attention(q_h * k_h)
-        attn_out = attn_out.transpose(1, 2).contiguous().view(B, L, -1)
+        # Use the query batch/length for final reshape
+        B_out, L_out = q.shape[0], q.shape[1]
+        attn_out = attn_out.transpose(1, 2).contiguous().view(B_out, L_out, -1)
         return self.dropout(self.out_proj(attn_out))
 
