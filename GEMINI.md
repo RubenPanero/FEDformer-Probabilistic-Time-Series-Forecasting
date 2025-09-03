@@ -5,7 +5,7 @@
 
 This project is a production-ready implementation of FEDformer (Frequency Enhanced Decomposed Transformer) with Normalizing Flows for probabilistic time series forecasting. It is designed for financial markets, supply chain optimization, and other domains where uncertainty quantification is critical.
 
-The model uses a FEDformer backbone for time series forecasting and a Normalizing Flow network to model the full probability distribution of future outcomes. This allows for not only point predictions but also for generating prediction intervals, calculating risk metrics (VaR, CVaR), and running portfolio simulations.
+The model uses a FEDformer backbone for time series forecasting and a Normalizing Flow network to model the full probability distribution of future outcomes. This allows for not only point predictions but also for generating prediction intervals, calculating risk metrics (VaR, CVaR), and running portfolio simulations. The model can also identify and adapt to different market regimes (e.g., high/low volatility) to improve forecasting accuracy.
 
 The project is written in Python and uses PyTorch as the deep learning framework. It includes features like walk-forward backtesting, comprehensive performance metrics, and integration with Weights & Biases for experiment tracking.
 
@@ -31,7 +31,7 @@ pip install -r requirements.txt
 
 ### 2. Running the Model
 
-The main entry point for the project is `main.py`. You can run the model with your own CSV data using the following command:
+The main entry point for the project is `main.py`. You can run the model with your own CSV data using the following command, which includes essential parameters for a typical run:
 
 ```powershell
 python main.py \
@@ -40,11 +40,14 @@ python main.py \
     --date-col "timestamp" \
     --pred-len 24 \
     --seq-len 96 \
+    --label-len 48 \
     --epochs 10 \
-    --batch-size 32
+    --batch-size 32 \
+    --splits 5 \
+    --seed 42
 ```
 
-For a full list of available command-line arguments, you can run:
+For a full list of available command-line arguments, including options for performance tuning and reproducibility, you can run:
 
 ```powershell
 python main.py --help
@@ -70,8 +73,10 @@ python main.py \
 
 ## Development Conventions
 
-*   **Configuration:** The project uses a dataclass-based configuration system (`config.py`) to manage all the parameters for the model, training, and data.
+*   **Configuration:** The project uses a dataclass-based configuration system (`config.py`) to manage all parameters for the model, training, and data.
 *   **Training:** The training process is implemented using a walk-forward cross-validation strategy (`training/trainer.py`) to ensure robust evaluation of the time series model.
+*   **Performance:** Includes modern performance optimizations such as PyTorch 2.0 compilation (`torch.compile`), gradient checkpointing, and gradient accumulation to handle large models and datasets efficiently.
+*   **Reproducibility:** Provides options for setting random seeds and enabling deterministic algorithms to ensure that experiments can be reproduced.
 *   **Modularity:** The code is organized into modules for data loading, model definition, training, and simulation, which makes it easier to understand and maintain.
 *   **Error Handling:** The code includes comprehensive error handling to gracefully handle potential issues during execution.
 *   **Logging:** The project uses the `logging` module to provide informative output during execution.

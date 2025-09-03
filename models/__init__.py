@@ -8,13 +8,12 @@ from .flows import AffineCouplingLayer, NormalizingFlow
 from .fedformer import Flow_FEDformer
 
 __all__ = [
-    'OptimizedSeriesDecomp',
-    'FourierAttention', 
-    'AttentionLayer',
-    'EncoderLayer',
-    'DecoderLayer',
-    'AffineCouplingLayer',
-    'NormalizingFlow',
-    'Flow_FEDformer'
+    "OptimizedSeriesDecomp",
+    "FourierAttention",
+    "AttentionLayer",
+    "EncoderLayer",
+    "DecoderLayer",
+    "AffineCouplingLayer",
+    "NormalizingFlow",
+    "Flow_FEDformer",
 ]
-

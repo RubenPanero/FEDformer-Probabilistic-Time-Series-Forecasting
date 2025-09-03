@@ -1,15 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Vanguard FEDformer: A Production-Ready Time Series Forecasting System (Modularizado).
-
-Este script implementa la versión modularizada del FEDformer optimizado con critical bug fixes,
-mejoras de rendimiento, y mejor mantenibilidad.
-
-Uso:
-1. Asegurar que todas las dependencias estén instaladas
-2. Tener listo el dataset CSV
-3. Ejecutar: python main.py --csv path/to/data.csv --targets col1,col2 [opciones]
-"""
 
 import os
 import time
@@ -28,12 +16,8 @@ from simulations import RiskSimulator, PortfolioSimulator
 from utils import setup_cuda_optimizations, get_device
 from utils.helpers import set_seed
 
-# Setup global configurations
-set_seed(42, deterministic=False)
-setup_cuda_optimizations()
-device = get_device()
 logger = logging.getLogger(__name__)
-
+device = get_device()
 
 def _parse_arguments() -> argparse.Namespace:
     """Parses command-line arguments."""
@@ -276,37 +260,3 @@ def _run_simulations_and_visualize(
             logger.error(f"Portfolio simulation failed: {e}")
     else:
         logger.info("Skipping portfolio simulation (single timestep prediction)")
-
-
-def main() -> None:
-    """Main function to run the FEDformer forecasting and simulation pipeline."""
-    try:
-        args = _parse_arguments()
-        set_seed(args.seed, deterministic=args.deterministic)
-
-        targets = _validate_inputs(args)
-        config = _create_config(args, targets)
-        full_dataset = _load_dataset(config)
-
-        predictions_oos, ground_truth_oos, samples_oos = _run_backtest(
-            config, full_dataset, args.splits
-        )
-
-        _run_simulations_and_visualize(
-            predictions_oos,
-            ground_truth_oos,
-            samples_oos,
-            full_dataset,
-            args,
-            config,
-        )
-
-        logger.info("Analysis completed successfully!")
-
-    except Exception as e:
-        logger.error(f"Main execution failed: {e}")
-        raise
-
-
-if __name__ == "__main__":
-    main()

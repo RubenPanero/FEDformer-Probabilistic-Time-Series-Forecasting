@@ -20,7 +20,7 @@ def _select_amp_dtype() -> torch.dtype:
         return torch.float16
 
 
-def setup_cuda_optimizations():
+def setup_cuda_optimizations() -> None:
     """Configure CUDA optimizations for better performance"""
     try:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -28,17 +28,17 @@ def setup_cuda_optimizations():
         torch.backends.cudnn.benchmark = True
     except Exception:
         pass
-    
-    if hasattr(torch, 'set_float32_matmul_precision'):
-        torch.set_float32_matmul_precision('high')
+
+    if hasattr(torch, "set_float32_matmul_precision"):
+        torch.set_float32_matmul_precision("high")
 
 
-def get_device():
+def get_device() -> torch.device:
     """Get the appropriate device for computation"""
-    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def set_seed(seed: int = 42, deterministic: bool = False):
+def set_seed(seed: int = 42, deterministic: bool = False) -> None:
     """Set seeds for reproducibility across Python, NumPy, and PyTorch.
 
     Args:
@@ -57,4 +57,3 @@ def set_seed(seed: int = 42, deterministic: bool = False):
     except Exception:
         # Best-effort seeding; never hard fail
         pass
-
