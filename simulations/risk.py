@@ -8,7 +8,8 @@ import numpy as np
 
 class RiskSimulator:
     """Enhanced risk simulator with additional metrics"""
-    def __init__(self, samples: np.ndarray, confidence_level=0.95):
+
+    def __init__(self, samples: np.ndarray, confidence_level: float = 0.95) -> None:
         self.samples = samples
         self.confidence_level = confidence_level
 
@@ -23,7 +24,7 @@ class RiskSimulator:
         losses = -self.samples
         var = self.calculate_var()
         cvar_result = np.zeros_like(var)
-        
+
         for t in range(self.samples.shape[1]):
             for f in range(self.samples.shape[2]):
                 tail_samples = losses[losses[:, t, f] >= var[t, f], t, f]
@@ -36,4 +37,3 @@ class RiskSimulator:
     def calculate_expected_shortfall(self) -> np.ndarray:
         """Expected Shortfall (same as CVaR)"""
         return self.calculate_cvar()
-

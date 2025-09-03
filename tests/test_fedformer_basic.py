@@ -1,11 +1,16 @@
-import os
-import tempfile
 import torch
 import numpy as np
 import pytest
+from typing import Callable, Tuple
+from pathlib import Path
+from config import FEDformerConfig
+from models.fedformer import Flow_FEDformer
 
 
-def test_forward_smoke(model_factory, synthetic_batch):
+def test_forward_smoke(
+    model_factory: Callable[[bool], Flow_FEDformer],
+    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=False)
     dist = model(x_enc, x_dec, x_regime)
@@ -19,7 +24,10 @@ def test_forward_smoke(model_factory, synthetic_batch):
     assert torch.isfinite(lp).all()
 
 
-def test_determinism(model_factory, synthetic_batch):
+def test_determinism(
+    model_factory: Callable[[bool], Flow_FEDformer],
+    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=3)
     m1 = model_factory(train=False)
     m2 = model_factory(train=False)
@@ -31,7 +39,10 @@ def test_determinism(model_factory, synthetic_batch):
 
 
 @pytest.mark.slow
-def test_backward_and_grads(model_factory, synthetic_batch):
+def test_backward_and_grads(
+    model_factory: Callable[[bool], Flow_FEDformer],
+    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=True)
     # ensure gradients flow to a parameter
@@ -42,14 +53,19 @@ def test_backward_and_grads(model_factory, synthetic_batch):
     optim.zero_grad()
     loss.backward()
     # check at least one param has grad
-    assert any(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
+    assert any(
+        p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters()
+    )
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="No CUDA")
-def test_device_transfer(model_factory, synthetic_batch):
+def test_device_transfer(
+    model_factory: Callable[[bool], Flow_FEDformer],
+    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=False)
-    device = torch.device('cuda')
+    device = torch.device("cuda")
     model = model.to(device)
     x_enc = x_enc.to(device)
     x_dec = x_dec.to(device)
@@ -59,7 +75,11 @@ def test_device_transfer(model_factory, synthetic_batch):
 
 
 @pytest.mark.slow
-def test_state_dict_roundtrip(tmp_path, model_factory, synthetic_batch):
+def test_state_dict_roundtrip(
+    tmp_path: Path,
+    model_factory: Callable[[bool], Flow_FEDformer],
+    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=False)
     # forward before save
@@ -67,21 +87,24 @@ def test_state_dict_roundtrip(tmp_path, model_factory, synthetic_batch):
     p = tmp_path / "m.pt"
     torch.save(model.state_dict(), str(p))
     m2 = model_factory(train=False)
-    m2.load_state_dict(torch.load(str(p), map_location='cpu'))
+    m2.load_state_dict(torch.load(str(p), map_location="cpu"))
     out2 = m2(x_enc, x_dec, x_regime).mean.detach()
     assert torch.allclose(out1, out2, atol=1e-6)
 
 
-def test_amp_optional(model_factory, synthetic_batch):
+def test_amp_optional(
+    model_factory: Callable[[bool], Flow_FEDformer],
+    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+) -> None:
     # Run a tiny AMP-enabled forward/backward if available
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=True)
     scaler = None
-    if hasattr(torch.cuda.amp, 'GradScaler'):
-        scaler = torch.amp.GradScaler('cuda')
+    if hasattr(torch.cuda.amp, "GradScaler"):
+        scaler = torch.amp.GradScaler("cuda")
     dist = None
     if scaler is not None:
-        with torch.amp.autocast('cuda', enabled=False):
+        with torch.amp.autocast("cuda", enabled=False):
             dist = model(x_enc, x_dec, x_regime)
             loss = -dist.log_prob(y).mean()
         scaler.scale(loss).backward()
@@ -93,7 +116,9 @@ def test_amp_optional(model_factory, synthetic_batch):
         loss.backward()
 
 
-def test_decoder_input_path_shape(model_factory, config):
+def test_decoder_input_path_shape(
+    model_factory: Callable[[bool], Flow_FEDformer], config: FEDformerConfig
+) -> None:
     # Ensure _prepare_decoder_input computes seasonal/trend paths with correct shapes
     model = model_factory(train=False)
     B = 2
