@@ -1,0 +1,27 @@
+name: 'Ruff Lint & Format'
+
+on:
+  push:
+    branches: [ ruff_linter ]
+  pull_request:
+    branches: [ ruff_linter ]
+
+jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: "**/requirements.txt"
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+      - name: Ruff Format Check
+        run: ruff format --check .
+      - name: Ruff Lint Check
+        run: ruff check .
