@@ -11,15 +11,18 @@ Uso:
 3. Ejecutar: python main.py --csv path/to/data.csv --targets col1,col2 [opciones]
 """
 
+import argparse
+import contextlib
+import logging
 import os
 import time
-import argparse
-import logging
-import contextlib
+from dataclasses import dataclass
+from typing import Any, Dict, List, Tuple
+
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import numpy as np
 import wandb
-from typing import List, Tuple
 
 from config import FEDformerConfig
 from data import TimeSeriesDataset
@@ -33,6 +36,16 @@ set_seed(42, deterministic=False)
 setup_cuda_optimizations()
 device = get_device()
 logger = logging.getLogger(__name__)
+
+@dataclass(frozen=True)
+class SimulationData:
+    """Container for artifacts shared with visualization steps."""
+
+    predictions: np.ndarray
+    ground_truth: np.ndarray
+    samples: np.ndarray
+    dataset: TimeSeriesDataset
+
 
 
 def _parse_arguments() -> argparse.Namespace:
@@ -81,7 +94,7 @@ def _parse_arguments() -> argparse.Namespace:
 def _validate_inputs(args: argparse.Namespace) -> List[str]:
     """Validates input arguments and returns target column names."""
     if not os.path.exists(args.csv):
-        logger.error(f"Dataset not found at {args.csv}")
+        logger.error("Dataset not found at %s", args.csv)
         raise FileNotFoundError(f"Dataset not found at {args.csv}")
 
     targets = [t.strip() for t in args.targets.split(",") if t.strip()]
@@ -113,10 +126,14 @@ def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerCon
 
     logger.info("Configuration validated successfully")
     logger.info(
-        f"Model parameters: d_model={config.d_model}, n_heads={config.n_heads}"
+        "Model parameters: d_model=%s, n_heads=%s",
+        config.d_model,
+        config.n_heads,
     )
     logger.info(
-        f"Training: epochs_per_fold={config.n_epochs_per_fold}, batch_size={config.batch_size}"
+        "Training: epochs_per_fold=%s, batch_size=%s",
+        config.n_epochs_per_fold,
+        config.batch_size,
     )
     return config
 
@@ -125,7 +142,7 @@ def _load_dataset(config: FEDformerConfig) -> TimeSeriesDataset:
     """Loads and processes the time series dataset."""
     logger.info("Loading and processing dataset...")
     full_dataset = TimeSeriesDataset(config=config, flag="all")
-    logger.info(f"Dataset loaded: {len(full_dataset)} samples")
+    logger.info("Dataset loaded: %s samples", len(full_dataset))
     return full_dataset
 
 
@@ -144,139 +161,172 @@ def _run_backtest(
         raise RuntimeError("No predictions generated from backtest.")
 
     logger.info("Backtest completed successfully")
-    logger.info(f"Generated {len(predictions_oos)} out-of-sample predictions")
+    logger.info("Generated %s out-of-sample predictions", len(predictions_oos))
     return predictions_oos, ground_truth_oos, samples_oos
 
 
+def _log_risk_summary(var: np.ndarray, cvar: np.ndarray) -> None:
+    """Log aggregate risk statistics."""
+    logger.info("Average VaR (95%%): %.4f", float(np.mean(var)))
+    logger.info("Average CVaR (95%%): %.4f", float(np.mean(cvar)))
+
+
+def _log_portfolio_metrics(metrics: Dict[str, Any]) -> None:
+    """Log derived portfolio performance metrics."""
+    logger.info("Portfolio Performance Metrics:")
+    logger.info("  Annualized Sharpe Ratio: %.3f", float(metrics.get("sharpe_ratio", 0.0)))
+    logger.info("  Maximum Drawdown: %.2f%%", float(metrics.get("max_drawdown", 0.0)) * 100)
+    logger.info("  Annualized Volatility: %.2f%%", float(metrics.get("volatility", 0.0)) * 100)
+    logger.info("  Sortino Ratio: %.3f", float(metrics.get("sortino_ratio", 0.0)))
+
+
+def _prepare_unscaled_series(
+    data: SimulationData,
+    config: FEDformerConfig,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Rescale model predictions and ground truth back to original units."""
+    scaler = getattr(data.dataset, "scaler", None)
+    target_indices = getattr(data.dataset, "target_indices", None)
+    if scaler is None or not target_indices:
+        raise ValueError("Dataset scaler or target indices are missing.")
+
+    target_idx = target_indices[0]
+
+    dummy_preds = np.zeros(
+        (data.predictions.shape[0], data.predictions.shape[1], config.enc_in)
+    )
+    dummy_preds[..., target_idx] = data.predictions[..., 0]
+    unscaled_preds = scaler.inverse_transform(
+        dummy_preds.reshape(-1, config.enc_in)
+    ).reshape(dummy_preds.shape)[..., target_idx : target_idx + 1]
+
+    dummy_gt = np.zeros(
+        (data.ground_truth.shape[0], data.ground_truth.shape[1], config.enc_in)
+    )
+    dummy_gt[..., target_idx] = data.ground_truth[..., 0]
+    unscaled_gt = scaler.inverse_transform(
+        dummy_gt.reshape(-1, config.enc_in)
+    ).reshape(dummy_gt.shape)[..., target_idx : target_idx + 1]
+
+    return unscaled_preds, unscaled_gt
+
+
+def _create_portfolio_figure(
+    metrics: Dict[str, Any],
+    var: np.ndarray,
+    cvar: np.ndarray,
+) -> Figure:
+    """Create matplotlib visualizations for portfolio and risk metrics."""
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+
+    ax1.plot(
+        metrics.get("cumulative_returns", np.array([0.0])),
+        label="Strategy Returns",
+        color="#1f77b4",
+        linewidth=2,
+    )
+    ax1.set_title("Portfolio Strategy Performance", fontsize=14, fontweight="bold")
+    ax1.set_xlabel("Time Steps")
+    ax1.set_ylabel("Cumulative Returns")
+    ax1.grid(True, linestyle="--", alpha=0.6)
+    ax1.legend()
+
+    time_steps = range(var.shape[0])
+    ax2.plot(time_steps, np.mean(var, axis=1), label="VaR (95%)", color="red", alpha=0.8)
+    ax2.plot(time_steps, np.mean(cvar, axis=1), label="CVaR (95%)", color="darkred", alpha=0.8)
+    ax2.set_title("Risk Metrics Over Time", fontsize=14, fontweight="bold")
+    ax2.set_xlabel("Time Steps")
+    ax2.set_ylabel("Risk Value")
+    ax2.grid(True, linestyle="--", alpha=0.6)
+    ax2.legend()
+
+    plt.tight_layout()
+    return fig
+
+
+def _log_metrics_to_wandb(
+    fig: Figure,
+    metrics: Dict[str, Any],
+    var: np.ndarray,
+    cvar: np.ndarray,
+) -> None:
+    """Log portfolio metrics to Weights & Biases when available."""
+    if not wandb.run or not hasattr(wandb.run, "log"):
+        return
+
+    with contextlib.suppress(RuntimeError, ValueError, AttributeError):
+        wandb.run.log(
+            {
+                "sharpe_ratio": float(metrics.get("sharpe_ratio", 0.0)),
+                "max_drawdown": float(metrics.get("max_drawdown", 0.0)),
+                "volatility": float(metrics.get("volatility", 0.0)),
+                "sortino_ratio": float(metrics.get("sortino_ratio", 0.0)),
+                "avg_var": float(np.mean(var)),
+                "avg_cvar": float(np.mean(cvar)),
+                "performance_chart": wandb.Image(fig),
+            }
+        )
+        logger.info("Metrics logged to W&B successfully")
+
+
+def _handle_visualization_output(fig: Figure, args: argparse.Namespace) -> None:
+    """Persist or display the generated figure based on CLI arguments."""
+    if args.save_fig:
+        try:
+            fig.savefig(args.save_fig, dpi=150, bbox_inches="tight")
+            logger.info("Figure saved to %s", args.save_fig)
+        except OSError as exc:
+            logger.warning("Saving figure failed: %s", exc)
+
+    if not args.no_show:
+        with contextlib.suppress(RuntimeError):
+            plt.show()
+
+    plt.close(fig)
+
+
+def _run_portfolio_simulation(
+    data: SimulationData,
+    config: FEDformerConfig,
+    risk_stats: Tuple[np.ndarray, np.ndarray],
+) -> Tuple[Dict[str, Any], Figure]:
+    """Execute portfolio simulation and return metrics with visualization."""
+    var, cvar = risk_stats
+    unscaled_preds, unscaled_gt = _prepare_unscaled_series(data, config)
+
+    portfolio_sim = PortfolioSimulator(unscaled_preds, unscaled_gt)
+    strategy_returns = portfolio_sim.run_simple_strategy()
+    metrics = portfolio_sim.calculate_metrics(strategy_returns)
+    fig = _create_portfolio_figure(metrics, var, cvar)
+    return metrics, fig
+
+
 def _run_simulations_and_visualize(
-    predictions_oos: np.ndarray,
-    ground_truth_oos: np.ndarray,
-    samples_oos: np.ndarray,
-    full_dataset: TimeSeriesDataset,
+    data: SimulationData,
     args: argparse.Namespace,
     config: FEDformerConfig,
 ) -> None:
-    """Runs risk and portfolio simulations and handles visualization."""
+    """Run risk analysis, portfolio simulation, and visualization."""
     logger.info("Running risk and portfolio simulation...")
 
-    risk_sim = RiskSimulator(samples_oos)
+    risk_sim = RiskSimulator(data.samples)
     var = risk_sim.calculate_var()
     cvar = risk_sim.calculate_cvar()
+    _log_risk_summary(var, cvar)
 
-    logger.info(f"Average VaR (95%): {np.mean(var):.4f}")
-    logger.info(f"Average CVaR (95%): {np.mean(cvar):.4f}")
-
-    if ground_truth_oos.shape[1] > 1:
-        try:
-            scaler = full_dataset.scaler
-            target_idx = full_dataset.target_indices[0]
-
-            dummy_preds = np.zeros(
-                (predictions_oos.shape[0], predictions_oos.shape[1], config.enc_in)
-            )
-            dummy_preds[..., target_idx] = predictions_oos[..., 0]
-            unscaled_preds = scaler.inverse_transform(
-                dummy_preds.reshape(-1, config.enc_in)
-            ).reshape(dummy_preds.shape)[..., target_idx : target_idx + 1]
-
-            dummy_gt = np.zeros(
-                (
-                    ground_truth_oos.shape[0],
-                    ground_truth_oos.shape[1],
-                    config.enc_in,
-                )
-            )
-            dummy_gt[..., target_idx] = ground_truth_oos[..., 0]
-            unscaled_gt = scaler.inverse_transform(
-                dummy_gt.reshape(-1, config.enc_in)
-            ).reshape(dummy_gt.shape)[..., target_idx : target_idx + 1]
-
-            portfolio_sim = PortfolioSimulator(unscaled_preds, unscaled_gt)
-            strategy_returns = portfolio_sim.run_simple_strategy()
-            metrics = portfolio_sim.calculate_metrics(strategy_returns)
-
-            logger.info("Portfolio Performance Metrics:")
-            logger.info(f"  Annualized Sharpe Ratio: {metrics['sharpe_ratio']:.3f}")
-            logger.info(f"  Maximum Drawdown: {metrics['max_drawdown']:.2%}")
-            logger.info(f"  Annualized Volatility: {metrics['volatility']:.2%}")
-            logger.info(f"  Sortino Ratio: {metrics['sortino_ratio']:.3f}")
-
-            try:
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
-
-                ax1.plot(
-                    metrics["cumulative_returns"],
-                    label="Strategy Returns",
-                    color="#1f77b4",
-                    linewidth=2,
-                )
-                ax1.set_title(
-                    "Portfolio Strategy Performance", fontsize=14, fontweight="bold"
-                )
-                ax1.set_xlabel("Time Steps")
-                ax1.set_ylabel("Cumulative Returns")
-                ax1.grid(True, linestyle="--", alpha=0.6)
-                ax1.legend()
-
-                time_steps = range(var.shape[0])
-                ax2.plot(
-                    time_steps,
-                    np.mean(var, axis=1),
-                    label="VaR (95%)",
-                    color="red",
-                    alpha=0.8,
-                )
-                ax2.plot(
-                    time_steps,
-                    np.mean(cvar, axis=1),
-                    label="CVaR (95%)",
-                    color="darkred",
-                    alpha=0.8,
-                )
-                ax2.set_title(
-                    "Risk Metrics Over Time", fontsize=14, fontweight="bold"
-                )
-                ax2.set_xlabel("Time Steps")
-                ax2.set_ylabel("Risk Value")
-                ax2.grid(True, linestyle="--", alpha=0.6)
-                ax2.legend()
-
-                plt.tight_layout()
-
-                with contextlib.suppress(Exception):
-                    if wandb.run and hasattr(wandb.run, "log"):
-                        wandb.run.log(
-                            {
-                                "sharpe_ratio": metrics["sharpe_ratio"],
-                                "max_drawdown": metrics["max_drawdown"],
-                                "volatility": metrics["volatility"],
-                                "sortino_ratio": metrics["sortino_ratio"],
-                                "avg_var": np.mean(var),
-                                "avg_cvar": np.mean(cvar),
-                                "performance_chart": wandb.Image(fig),
-                            }
-                        )
-                        logger.info("Metrics logged to W&B successfully")
-
-                if args.save_fig:
-                    try:
-                        fig.savefig(args.save_fig, dpi=150, bbox_inches="tight")
-                        logger.info(f"Figure saved to {args.save_fig}")
-                    except Exception as e:
-                        logger.warning(f"Saving figure failed: {e}")
-                if not args.no_show:
-                    with contextlib.suppress(Exception):
-                        plt.show()
-                plt.close(fig)
-
-            except Exception as e:
-                logger.error(f"Visualization failed: {e}")
-
-        except Exception as e:
-            logger.error(f"Portfolio simulation failed: {e}")
-    else:
+    if data.ground_truth.shape[1] <= 1:
         logger.info("Skipping portfolio simulation (single timestep prediction)")
+        return
 
+    try:
+        metrics, fig = _run_portfolio_simulation(data, config, (var, cvar))
+    except ValueError as exc:
+        logger.warning("Portfolio simulation skipped: %s", exc)
+        return
+
+    _log_portfolio_metrics(metrics)
+    _log_metrics_to_wandb(fig, metrics, var, cvar)
+    _handle_visualization_output(fig, args)
 
 def main() -> None:
     """Main function to run the FEDformer forecasting and simulation pipeline."""
@@ -292,19 +342,19 @@ def main() -> None:
             config, full_dataset, args.splits
         )
 
-        _run_simulations_and_visualize(
-            predictions_oos,
-            ground_truth_oos,
-            samples_oos,
-            full_dataset,
-            args,
-            config,
+        sim_data = SimulationData(
+            predictions=predictions_oos,
+            ground_truth=ground_truth_oos,
+            samples=samples_oos,
+            dataset=full_dataset,
         )
+
+        _run_simulations_and_visualize(sim_data, args, config)
 
         logger.info("Analysis completed successfully!")
 
-    except Exception as e:
-        logger.error(f"Main execution failed: {e}")
+    except (FileNotFoundError, ValueError, RuntimeError):
+        logger.exception('Main execution failed')
         raise
 
 
