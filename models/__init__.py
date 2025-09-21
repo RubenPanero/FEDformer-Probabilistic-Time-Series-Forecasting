@@ -3,7 +3,7 @@ Módulos del modelo FEDformer.
 """
 
 from .layers import OptimizedSeriesDecomp, FourierAttention, AttentionLayer
-from .encoder_decoder import EncoderLayer, DecoderLayer
+from .encoder_decoder import EncoderLayer, DecoderLayer, LayerConfig
 from .flows import AffineCouplingLayer, NormalizingFlow
 from .fedformer import Flow_FEDformer
 
@@ -13,6 +13,7 @@ __all__ = [
     "AttentionLayer",
     "EncoderLayer",
     "DecoderLayer",
+    "LayerConfig",
     "AffineCouplingLayer",
     "NormalizingFlow",
     "Flow_FEDformer",

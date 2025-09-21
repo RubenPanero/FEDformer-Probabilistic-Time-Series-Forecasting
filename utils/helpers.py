@@ -3,20 +3,21 @@
 Funciones auxiliares y utilidades generales.
 """
 
-import torch
 import random
+
 import numpy as np
+import torch
 
 
 def _select_amp_dtype() -> torch.dtype:
     """Select appropriate mixed precision dtype"""
     try:
         if torch.cuda.is_available():
-            major, minor = torch.cuda.get_device_capability()
+            major, _minor = torch.cuda.get_device_capability()
             if major >= 8:
                 return torch.bfloat16
         return torch.float16
-    except Exception:
+    except (RuntimeError, AttributeError):
         return torch.float16
 
 
@@ -26,7 +27,7 @@ def setup_cuda_optimizations() -> None:
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
-    except Exception:
+    except (RuntimeError, AttributeError):
         pass
 
     if hasattr(torch, "set_float32_matmul_precision"):
@@ -54,6 +55,6 @@ def set_seed(seed: int = 42, deterministic: bool = False) -> None:
         if deterministic:
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
-    except Exception:
+    except (RuntimeError, ValueError):
         # Best-effort seeding; never hard fail
         pass

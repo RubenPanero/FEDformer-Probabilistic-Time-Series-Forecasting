@@ -4,10 +4,12 @@ Utilidades para entrenamiento del modelo FEDformer.
 """
 
 import logging
-import torch
-import torch.nn as nn
-from utils import get_device
 from typing import Dict
+
+import torch
+from torch import nn
+
+from utils import get_device
 
 logger = logging.getLogger(__name__)
 device = get_device()
@@ -49,8 +51,8 @@ def mc_dropout_inference(
                     samples.append(s[0])
                 else:
                     samples.append(dist.mean)
-            except Exception as e:
-                logger.warning(f"MC sample failed: {e}")
+            except (RuntimeError, ValueError) as exc:
+                logger.warning("MC sample failed: %s", exc)
                 # Return zeros if sampling fails
                 if samples:
                     samples.append(torch.zeros_like(samples[0]))

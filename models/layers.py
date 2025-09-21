@@ -1,13 +1,47 @@
 # -*- coding: utf-8 -*-
 """
-Componentes básicos del modelo FEDformer: capas de atención y descomposición.
+Componentes basicos del modelo FEDformer: capas de atencion y descomposicion.
 """
 
 import math
+from dataclasses import dataclass
+from typing import Any, Callable, List, Tuple, cast
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import List, Tuple
+from torch import nn
+from torch.fft import irfft, rfft
+from torch.nn.functional import conv1d, interpolate, pad
+
+
+
+def _apply_conv1d(input_tensor: torch.Tensor, weight: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+    """Wrapper around torch.nn.functional.conv1d for static analysis."""
+    conv = cast(Callable[..., torch.Tensor], conv1d)  # pylint: disable=not-callable
+    return conv(input_tensor, weight, **kwargs)  # pylint: disable=not-callable
+
+
+def _apply_rfft(x: torch.Tensor, *, dim: int) -> torch.Tensor:
+    """Wrapper around torch.fft.rfft for static analysis."""
+    rfft_fn = cast(Callable[..., torch.Tensor], rfft)  # pylint: disable=not-callable
+    return rfft_fn(x, dim=dim)  # pylint: disable=not-callable
+
+
+def _apply_irfft(x: torch.Tensor, *, n: int, dim: int) -> torch.Tensor:
+    """Wrapper around torch.fft.irfft for static analysis."""
+    irfft_fn = cast(Callable[..., torch.Tensor], irfft)  # pylint: disable=not-callable
+    return irfft_fn(x, n=n, dim=dim)  # pylint: disable=not-callable
+
+
+@dataclass(frozen=True)
+class AttentionConfig:
+    """Configuration for AttentionLayer construction."""
+
+    d_model: int
+    n_heads: int
+    seq_len: int
+    modes: int
+    dropout: float
+
 
 
 class OptimizedSeriesDecomp(nn.Module):
@@ -18,29 +52,27 @@ class OptimizedSeriesDecomp(nn.Module):
         self.kernel_sizes = kernel_sizes
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # OPTIMIZED: Compute moving average via grouped conv1d with explicit asymmetric padding
-        # This ensures output length equals input length for both odd and even kernel sizes.
-        x_t = x.transpose(1, 2)  # [B, L, C] -> [B, C, L]
-        B, C, L = x_t.shape
+        """Split input into seasonal and trend signals via moving averages."""
+        x_t = x.transpose(1, 2)  # [batch, len, channels] -> [batch, channels, len]
+        _, num_channels, _ = x_t.shape
         trends = []
-        for k in self.kernel_sizes:
-            if k <= 1:
+        for kernel_size in self.kernel_sizes:
+            if kernel_size <= 1:
                 trends.append(x_t)
                 continue
-            left = (k - 1) // 2
-            right = k - 1 - left
-            # Pad with replication to avoid artificial zeros at borders
-            x_padded = F.pad(
+            left = (kernel_size - 1) // 2
+            right = kernel_size - 1 - left
+            x_padded = pad(
                 x_t, (left, right), mode="replicate"
-            )  # [B, C, L + left + right]
-            # Create grouped conv weights: one filter per channel
-            weight = torch.ones(C, 1, k, device=x_t.device, dtype=x_t.dtype) / float(k)
-            # Apply grouped conv to compute per-channel moving average
-            trend = F.conv1d(x_padded, weight, groups=C)
-            # After conv, trend shape [B, C, L]
+            )  # [batch, channels, len + left + right]
+            weight = torch.ones(
+                num_channels, 1, kernel_size, device=x_t.device, dtype=x_t.dtype
+            ) / float(kernel_size)
+            trend = _apply_conv1d(x_padded, weight, groups=num_channels)
             trends.append(trend)
-        trend = torch.stack(trends).mean(0).transpose(1, 2)  # Back to [B, L, C]
+        trend = torch.stack(trends).mean(0).transpose(1, 2)  # Back to [batch, len, channels]
         return x - trend, trend
+
 
 
 class FourierAttention(nn.Module):
@@ -60,78 +92,82 @@ class FourierAttention(nn.Module):
         self.weights_imag = nn.Parameter(torch.randn(d_keys, d_keys, self.modes) * std)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, H, L, E = x.shape
-        x = x.transpose(-1, -2)  # OPTIMIZED: More efficient than permute
+        """Apply Fourier attention over the provided multi-head representations."""
+        _, _, seq_len, _ = x.shape
+        x = x.transpose(-1, -2)
 
-        # OPTIMIZED: Sparse memory management for FFT
-        x_ft = torch.fft.rfft(x, dim=-1)
+        x_ft = _apply_rfft(x, dim=-1)
 
-        # Build complex weights explicitly
         weights_c = torch.complex(self.weights_real, self.weights_imag)
-        # selected modes safe indexing
         selected = x_ft[..., self.index]
-        # Perform complex multiplication in a controlled manner
         processed_modes = torch.einsum("bhei,eoi->bhoi", selected, weights_c)
 
         out_ft = torch.zeros_like(x_ft)
         out_ft[..., self.index] = processed_modes
 
-        # If L was odd and rfft produced a different length, irfft with n=L ensures correct output length
-        return torch.fft.irfft(out_ft, n=L, dim=-1).transpose(-1, -2)
+        return _apply_irfft(out_ft, n=seq_len, dim=-1).transpose(-1, -2)
+
 
 
 class AttentionLayer(nn.Module):
     """Enhanced attention layer with better memory management"""
 
-    def __init__(
-        self, d_model: int, n_heads: int, seq_len: int, modes: int, dropout: float
-    ) -> None:
+    def __init__(self, config: AttentionConfig) -> None:
         super().__init__()
-        self.n_heads = n_heads
-        self.d_keys = d_model // n_heads
-        self.fourier_attention = FourierAttention(self.d_keys, seq_len, modes)
-        self.query_proj = nn.Linear(d_model, d_model)
-        self.key_proj = nn.Linear(d_model, d_model)
-        self.out_proj = nn.Linear(d_model, d_model)
-        self.dropout = nn.Dropout(dropout)
+        self.n_heads = config.n_heads
+        self.d_keys = config.d_model // config.n_heads
+        self.fourier_attention = FourierAttention(self.d_keys, config.seq_len, config.modes)
+        self.query_proj = nn.Linear(config.d_model, config.d_model)
+        self.key_proj = nn.Linear(config.d_model, config.d_model)
+        self.out_proj = nn.Linear(config.d_model, config.d_model)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor
     ) -> torch.Tensor:
-        # Support cross-attention where query and key/value sequence lengths differ.
-        B_q, L_q, _ = q.shape
-        B_k, L_k, _ = k.shape
+        """Project queries/keys/values and apply Fourier attention."""
+        # pylint: disable=too-many-locals
+        batch_q, len_q, _ = q.shape
+        batch_k, len_k, _ = k.shape
 
-        q_h = (
-            self.query_proj(q).view(B_q, L_q, self.n_heads, self.d_keys).transpose(1, 2)
+        q_heads = (
+            self.query_proj(q)
+            .view(batch_q, len_q, self.n_heads, self.d_keys)
+            .transpose(1, 2)
         )
-        k_h = self.key_proj(k).view(B_k, L_k, self.n_heads, self.d_keys).transpose(1, 2)
-        v_h = self.key_proj(v).view(B_k, L_k, self.n_heads, self.d_keys).transpose(1, 2)
+        k_heads = (
+            self.key_proj(k)
+            .view(batch_k, len_k, self.n_heads, self.d_keys)
+            .transpose(1, 2)
+        )
+        v_heads = (
+            self.key_proj(v)
+            .view(batch_k, len_k, self.n_heads, self.d_keys)
+            .transpose(1, 2)
+        )
 
-        # If key/value sequence length differs from query length, resample k_h and v_h to L_q
-        if L_k != L_q:
-            # interpolate along the sequence axis (dim=2)
-            # reshape to (B*n_heads, d_keys, L_k) for interpolation
-            bh = B_k * self.n_heads
-            k_h_reshaped = k_h.transpose(1, 2).contiguous().view(bh, self.d_keys, L_k)
-            v_h_reshaped = v_h.transpose(1, 2).contiguous().view(bh, self.d_keys, L_k)
-            k_h_resampled = F.interpolate(
-                k_h_reshaped, size=L_q, mode="linear", align_corners=False
+        if len_k != len_q:
+            head_batch = batch_k * self.n_heads
+            k_reshaped = (
+                k_heads.transpose(1, 2).contiguous().view(head_batch, self.d_keys, len_k)
             )
-            v_h_resampled = F.interpolate(
-                v_h_reshaped, size=L_q, mode="linear", align_corners=False
+            v_reshaped = (
+                v_heads.transpose(1, 2).contiguous().view(head_batch, self.d_keys, len_k)
             )
-            # restore shape to (B, n_heads, L_q, d_keys)
-            k_h = k_h_resampled.view(B_k, self.n_heads, self.d_keys, L_q).transpose(
-                2, 3
+            k_resampled = interpolate(
+                k_reshaped, size=len_q, mode="linear", align_corners=False
             )
-            v_h = v_h_resampled.view(B_k, self.n_heads, self.d_keys, L_q).transpose(
-                2, 3
+            v_resampled = interpolate(
+                v_reshaped, size=len_q, mode="linear", align_corners=False
+            )
+            k_heads = (
+                k_resampled.view(batch_k, self.n_heads, self.d_keys, len_q).transpose(2, 3)
+            )
+            v_heads = (
+                v_resampled.view(batch_k, self.n_heads, self.d_keys, len_q).transpose(2, 3)
             )
 
-        # Now q_h and k_h share the same sequence length (L_q)
-        attn_out = self.fourier_attention(q_h * k_h)
-        # Use the query batch/length for final reshape
-        B_out, L_out = q.shape[0], q.shape[1]
-        attn_out = attn_out.transpose(1, 2).contiguous().view(B_out, L_out, -1)
+        attn_out = self.fourier_attention(q_heads * k_heads)
+        batch_out, len_out = q.shape[:2]
+        attn_out = attn_out.transpose(1, 2).contiguous().view(batch_out, len_out, -1)
         return self.dropout(self.out_proj(attn_out))
