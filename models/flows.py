@@ -3,11 +3,12 @@
 Implementación de Normalizing Flows para el modelo FEDformer.
 """
 
-import torch
-import torch.nn as nn
-from typing import Optional, Tuple
 import contextlib
-from torch.distributions import Distribution
+from typing import Optional, Tuple
+
+import torch
+from torch import nn
+from torch.distributions import Distribution, Normal
 
 
 class AffineCouplingLayer(nn.Module):
@@ -35,6 +36,7 @@ class AffineCouplingLayer(nn.Module):
     def forward(
         self, x: torch.Tensor, context: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Transform the second split with context-aware affine parameters."""
         # slicing instead of chunk to handle odd sizes
         x1 = x[..., : self.d1]
         x2 = x[..., self.d1 :]
@@ -52,6 +54,7 @@ class AffineCouplingLayer(nn.Module):
     def inverse(
         self, y: torch.Tensor, context: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Invert the affine coupling transformation."""
         y1 = y[..., : self.d1]
         y2 = y[..., self.d1 :]
         if self.context_dim > 0 and context is not None:
@@ -91,11 +94,12 @@ class NormalizingFlow(nn.Module):
     @property
     def base_dist(self) -> Distribution:
         """Base distribution that automatically handles device placement"""
-        return torch.distributions.Normal(self.base_mean, self.base_std)
+        return Normal(self.base_mean, self.base_std)
 
     def forward(
         self, x: torch.Tensor, context: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply each coupling layer and accumulate the log-determinant."""
         # log_det per batch element
         log_det_jacobian = torch.zeros(x.size(0), device=x.device, dtype=x.dtype)
         for layer in self.layers:
@@ -106,6 +110,7 @@ class NormalizingFlow(nn.Module):
     def inverse(
         self, z: torch.Tensor, context: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Invert the flow by applying the coupling layers in reverse."""
         for layer in reversed(self.layers):
             z = layer.inverse(z, context=context)
         return z
@@ -116,6 +121,7 @@ class NormalizingFlow(nn.Module):
         base_mean: Optional[torch.Tensor] = None,
         context: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Compute log-probability under the transformed base distribution."""
         # OPTIMIZED: In-place operations where possible
         centered = x if base_mean is None else x - base_mean
         z, log_det_jacobian = self.forward(centered, context=context)
@@ -124,5 +130,6 @@ class NormalizingFlow(nn.Module):
         return base_log_prob + log_det_jacobian
 
     def sample(self, n_samples: int) -> torch.Tensor:
+        """Draw samples by inverting latent Gaussian draws."""
         z = self.base_dist.sample((n_samples,))
         return self.inverse(z)

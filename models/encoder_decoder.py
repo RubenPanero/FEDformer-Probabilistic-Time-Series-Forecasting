@@ -7,15 +7,17 @@ from dataclasses import dataclass
 from typing import List, Tuple
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+from torch.nn.functional import gelu, relu
 
-from .layers import OptimizedSeriesDecomp, AttentionLayer
+from .layers import AttentionConfig, AttentionLayer, OptimizedSeriesDecomp
 
 
 @dataclass(frozen=True)
 class LayerConfig:
     """Configuration container for encoder and decoder layers."""
+
+    # pylint: disable=too-many-instance-attributes
 
     d_model: int
     n_heads: int
@@ -32,31 +34,59 @@ class EncoderLayer(nn.Module):
 
     def __init__(self, config: LayerConfig) -> None:
         super().__init__()
-        self.attention = AttentionLayer(
-            config.d_model,
-            config.n_heads,
-            config.seq_len,
-            config.modes,
-            config.dropout,
+        attention_cfg = AttentionConfig(
+            d_model=config.d_model,
+            n_heads=config.n_heads,
+            seq_len=config.seq_len,
+            modes=config.modes,
+            dropout=config.dropout,
         )
-        self.decomp1 = OptimizedSeriesDecomp(config.moving_avg)
-        self.decomp2 = OptimizedSeriesDecomp(config.moving_avg)
-        self.conv1 = nn.Conv1d(config.d_model, config.d_ff, 1)
-        self.conv2 = nn.Conv1d(config.d_ff, config.d_model, 1)
-        self.norm1 = nn.LayerNorm(config.d_model)
-        self.norm2 = nn.LayerNorm(config.d_model)
-        self.dropout = nn.Dropout(config.dropout)
-        self.activation = F.gelu if config.activation == "gelu" else F.relu
+        self.layers = nn.ModuleDict(
+            {
+                "attention": AttentionLayer(attention_cfg),
+                "decomp": nn.ModuleList(
+                    [
+                        OptimizedSeriesDecomp(config.moving_avg),
+                        OptimizedSeriesDecomp(config.moving_avg),
+                    ]
+                ),
+                "conv": nn.ModuleList(
+                    [
+                        nn.Conv1d(config.d_model, config.d_ff, 1),
+                        nn.Conv1d(config.d_ff, config.d_model, 1),
+                    ]
+                ),
+                "norm": nn.ModuleList(
+                    [
+                        nn.LayerNorm(config.d_model),
+                        nn.LayerNorm(config.d_model),
+                    ]
+                ),
+                "dropout": nn.Dropout(config.dropout),
+            }
+        )
+        self._use_gelu = config.activation == "gelu"
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_norm = self.norm1(x)
-        attn_out = self.attention(x_norm, x_norm, x_norm)
-        x, _ = self.decomp1(x + attn_out)
+        """Apply encoder self-attention with seasonal-trend decomposition."""
+        # pylint: disable=too-many-locals
+        attention = self.layers["attention"]
+        decomp_layers = self.layers["decomp"]
+        conv_layers = self.layers["conv"]
+        norm_layers = self.layers["norm"]
+        dropout = self.layers["dropout"]
 
-        x_norm2 = self.norm2(x)
-        y = self.dropout(self.activation(self.conv1(x_norm2.transpose(1, 2))))
-        y = self.dropout(self.conv2(y)).transpose(1, 2)
-        res, _ = self.decomp2(x + y)
+        x_norm = norm_layers[0](x)
+        attn_out = attention(x_norm, x_norm, x_norm)
+        x, _ = decomp_layers[0](x + attn_out)
+
+        x_norm2 = norm_layers[1](x)
+        y = conv_layers[0](x_norm2.transpose(1, 2))
+        y = gelu(y) if self._use_gelu else relu(y)  # pylint: disable=not-callable
+        y = dropout(y)
+        y = conv_layers[1](y)
+        y = dropout(y).transpose(1, 2)
+        res, _ = decomp_layers[1](x + y)
         return res
 
 
@@ -65,46 +95,69 @@ class DecoderLayer(nn.Module):
 
     def __init__(self, config: LayerConfig) -> None:
         super().__init__()
-        self.self_attention = AttentionLayer(
-            config.d_model,
-            config.n_heads,
-            config.seq_len,
-            config.modes,
-            config.dropout,
+        attention_cfg = AttentionConfig(
+            d_model=config.d_model,
+            n_heads=config.n_heads,
+            seq_len=config.seq_len,
+            modes=config.modes,
+            dropout=config.dropout,
         )
-        self.cross_attention = AttentionLayer(
-            config.d_model,
-            config.n_heads,
-            config.seq_len,
-            config.modes,
-            config.dropout,
+        self.layers = nn.ModuleDict(
+            {
+                "self_attention": AttentionLayer(attention_cfg),
+                "cross_attention": AttentionLayer(attention_cfg),
+                "decomp": nn.ModuleList(
+                    [
+                        OptimizedSeriesDecomp(config.moving_avg),
+                        OptimizedSeriesDecomp(config.moving_avg),
+                        OptimizedSeriesDecomp(config.moving_avg),
+                    ]
+                ),
+                "conv": nn.ModuleList(
+                    [
+                        nn.Conv1d(config.d_model, config.d_ff, 1),
+                        nn.Conv1d(config.d_ff, config.d_model, 1),
+                    ]
+                ),
+                "norm": nn.ModuleList(
+                    [
+                        nn.LayerNorm(config.d_model),
+                        nn.LayerNorm(config.d_model),
+                        nn.LayerNorm(config.d_model),
+                    ]
+                ),
+                "dropout": nn.Dropout(config.dropout),
+            }
         )
-        self.decomp1 = OptimizedSeriesDecomp(config.moving_avg)
-        self.decomp2 = OptimizedSeriesDecomp(config.moving_avg)
-        self.decomp3 = OptimizedSeriesDecomp(config.moving_avg)
-        self.conv1 = nn.Conv1d(config.d_model, config.d_ff, 1)
-        self.conv2 = nn.Conv1d(config.d_ff, config.d_model, 1)
-        self.norm1 = nn.LayerNorm(config.d_model)
-        self.norm2 = nn.LayerNorm(config.d_model)
-        self.norm3 = nn.LayerNorm(config.d_model)
-        self.dropout = nn.Dropout(config.dropout)
-        self.activation = F.gelu if config.activation == "gelu" else F.relu
+        self._use_gelu = config.activation == "gelu"
 
     def forward(
         self, x: torch.Tensor, cross: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        x_norm = self.norm1(x)
-        x_res, trend1 = self.decomp1(
-            x + self.self_attention(x_norm, x_norm, x_norm)
+        """Apply decoder self/cross-attention and return residual/trend."""
+        # pylint: disable=too-many-locals
+        self_attn = self.layers["self_attention"]
+        cross_attn = self.layers["cross_attention"]
+        decomp_layers = self.layers["decomp"]
+        conv_layers = self.layers["conv"]
+        norm_layers = self.layers["norm"]
+        dropout = self.layers["dropout"]
+
+        x_norm = norm_layers[0](x)
+        x_res, trend1 = decomp_layers[0](
+            x + self_attn(x_norm, x_norm, x_norm)
         )
 
-        x_norm2 = self.norm2(x_res)
-        cross_norm = self.norm3(cross)
-        x_res, trend2 = self.decomp2(
-            x_res + self.cross_attention(x_norm2, cross_norm, cross_norm)
+        x_norm2 = norm_layers[1](x_res)
+        cross_norm = norm_layers[2](cross)
+        x_res, trend2 = decomp_layers[1](
+            x_res + cross_attn(x_norm2, cross_norm, cross_norm)
         )
 
-        y = self.dropout(self.activation(self.conv1(x_res.transpose(1, 2))))
-        y = self.dropout(self.conv2(y)).transpose(1, 2)
-        x_res, trend3 = self.decomp3(x_res + y)
+        y = conv_layers[0](x_res.transpose(1, 2))
+        y = gelu(y) if self._use_gelu else relu(y)  # pylint: disable=not-callable
+        y = dropout(y)
+        y = conv_layers[1](y)
+        y = dropout(y).transpose(1, 2)
+        x_res, trend3 = decomp_layers[2](x_res + y)
         return x_res, trend1 + trend2 + trend3

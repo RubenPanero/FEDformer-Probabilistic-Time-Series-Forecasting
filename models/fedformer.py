@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 import torch
 import torch.distributions
-import torch.nn as nn
+from torch import nn
 
 from config import FEDformerConfig
 from .encoder_decoder import DecoderLayer, EncoderLayer, LayerConfig
@@ -18,25 +18,31 @@ from .layers import OptimizedSeriesDecomp
 class Flow_FEDformer(nn.Module):
     """Enhanced FEDformer with gradient checkpointing and better error handling"""
 
+    # pylint: disable=invalid-name
+
     def __init__(self, config: FEDformerConfig) -> None:
         super().__init__()
         self.config = config
-        self.use_gradient_checkpointing = config.use_gradient_checkpointing
 
-        self.decomp = OptimizedSeriesDecomp(config.moving_avg)
-        self.regime_embedding = nn.Embedding(
-            config.n_regimes, config.regime_embedding_dim
+        self.components = nn.ModuleDict(
+            {
+                "decomp": OptimizedSeriesDecomp(config.moving_avg),
+                "regime_embedding": nn.Embedding(
+                    config.n_regimes, config.regime_embedding_dim
+                ),
+                "trend_proj": nn.Linear(config.dec_in, config.d_model),
+                "enc_embedding": nn.Linear(
+                    config.enc_in + config.regime_embedding_dim, config.d_model
+                ),
+                "dec_embedding": nn.Linear(
+                    config.dec_in + config.regime_embedding_dim, config.d_model
+                ),
+                "dropout": nn.Dropout(config.dropout),
+                "flow_conditioner_proj": nn.Linear(
+                    config.d_model, config.c_out * config.flow_hidden_dim
+                ),
+            }
         )
-        self.trend_proj = nn.Linear(config.dec_in, config.d_model)
-
-        self.enc_embedding = nn.Linear(
-            config.enc_in + config.regime_embedding_dim, config.d_model
-        )
-        self.dec_embedding = nn.Linear(
-            config.dec_in + config.regime_embedding_dim, config.d_model
-        )
-
-        self.dropout = nn.Dropout(config.dropout)
 
         encoder_config = LayerConfig(
             d_model=config.d_model,
@@ -48,8 +54,6 @@ class Flow_FEDformer(nn.Module):
             activation=config.activation,
             moving_avg=config.moving_avg,
         )
-        self.encoder = EncoderLayer(encoder_config)
-
         decoder_config = LayerConfig(
             d_model=config.d_model,
             n_heads=config.n_heads,
@@ -60,10 +64,11 @@ class Flow_FEDformer(nn.Module):
             activation=config.activation,
             moving_avg=config.moving_avg,
         )
-        self.decoder = DecoderLayer(decoder_config)
-
-        self.flow_conditioner_proj = nn.Linear(
-            config.d_model, config.c_out * config.flow_hidden_dim
+        self.sequence_layers = nn.ModuleDict(
+            {
+                "encoder": EncoderLayer(encoder_config),
+                "decoder": DecoderLayer(decoder_config),
+            }
         )
 
         self.flows = nn.ModuleList(
@@ -82,6 +87,9 @@ class Flow_FEDformer(nn.Module):
         self, x_dec: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Prepare decoder seasonal and trend initial components."""
+        trend_proj = self.components["trend_proj"]
+        decomp = self.components["decomp"]
+
         mean = torch.mean(
             x_dec[:, : self.config.label_len, :], dim=1, keepdim=True
         )
@@ -90,56 +98,71 @@ class Flow_FEDformer(nn.Module):
         )
 
         trend_init_in = mean.expand(-1, self.config.pred_len, -1)
-        trend_init = self.trend_proj(trend_init_in)
+        trend_init = trend_proj(trend_init_in)
 
-        seasonal_dec_hist, trend_dec_hist = self.decomp(
+        seasonal_dec_hist, trend_dec_hist = decomp(
             x_dec[:, : self.config.label_len, :]
         )
         seasonal_out = torch.cat([seasonal_dec_hist, seasonal_init], dim=1)
 
-        trend_dec_hist_proj = self.trend_proj(trend_dec_hist)
+        trend_dec_hist_proj = trend_proj(trend_dec_hist)
         trend_out = torch.cat([trend_dec_hist_proj, trend_init], dim=1)
         return seasonal_out, trend_out
 
-    def forward(
-        self, x_enc: torch.Tensor, x_dec: torch.Tensor, x_regime: torch.Tensor
-    ) -> torch.distributions.Distribution:
-        seasonal_init, trend_init = self._prepare_decoder_input(x_dec)
-
+    def _attach_regime_vectors(
+        self,
+        x_enc: torch.Tensor,
+        seasonal_init: torch.Tensor,
+        x_regime: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Concatenate regime embeddings with encoder/decoder tensors."""
         regime_idx = x_regime.squeeze()
         if regime_idx.dim() > 1:
             regime_idx = regime_idx.view(regime_idx.size(0), -1)[:, 0]
-        regime_idx = regime_idx.long()
-        regime_vec = self.regime_embedding(regime_idx)
+        regime_vec = self.components["regime_embedding"](regime_idx.long())
         regime_vec_enc = regime_vec.unsqueeze(1).expand(
             -1, self.config.seq_len, -1
         )
         regime_vec_dec = regime_vec.unsqueeze(1).expand(
             -1, self.config.label_len + self.config.pred_len, -1
         )
-
-        x_enc_with_regime = torch.cat([x_enc, regime_vec_enc], dim=-1)
-        seasonal_init_with_regime = torch.cat(
-            [seasonal_init, regime_vec_dec], dim=-1
+        return (
+            torch.cat([x_enc, regime_vec_enc], dim=-1),
+            torch.cat([seasonal_init, regime_vec_dec], dim=-1),
         )
 
-        enc_out = self.dropout(self.enc_embedding(x_enc_with_regime))
-        dec_out = self.dropout(self.dec_embedding(seasonal_init_with_regime))
+    def _embed_with_dropout(self, tensor: torch.Tensor, key: str) -> torch.Tensor:
+        """Apply the requested embedding followed by shared dropout."""
+        return self.components["dropout"](self.components[key](tensor))
 
-        if self.use_gradient_checkpointing and self.training:
+    def forward(
+        self, x_enc: torch.Tensor, x_dec: torch.Tensor, x_regime: torch.Tensor
+    ) -> torch.distributions.Distribution:
+        """Propagate encoder/decoder inputs and produce a flow distribution."""
+        # pylint: disable=too-many-locals
+        seasonal_init, trend_init = self._prepare_decoder_input(x_dec)
+
+        x_enc_with_regime, seasonal_init_with_regime = self._attach_regime_vectors(
+            x_enc, seasonal_init, x_regime
+        )
+
+        enc_out = self._embed_with_dropout(x_enc_with_regime, "enc_embedding")
+        dec_out = self._embed_with_dropout(seasonal_init_with_regime, "dec_embedding")
+
+        if self.config.use_gradient_checkpointing and self.training:
             try:
                 enc_out = torch.utils.checkpoint.checkpoint(
-                    lambda x: self.encoder(x), enc_out
+                    self.sequence_layers["encoder"], enc_out
                 )
                 dec_out, trend_part = torch.utils.checkpoint.checkpoint(
-                    lambda a, b: self.decoder(a, b), dec_out, enc_out
+                    self.sequence_layers["decoder"], dec_out, enc_out
                 )
             except RuntimeError:
-                enc_out = self.encoder(enc_out)
-                dec_out, trend_part = self.decoder(dec_out, enc_out)
+                enc_out = self.sequence_layers["encoder"](enc_out)
+                dec_out, trend_part = self.sequence_layers["decoder"](dec_out, enc_out)
         else:
-            enc_out = self.encoder(enc_out)
-            dec_out, trend_part = self.decoder(dec_out, enc_out)
+            enc_out = self.sequence_layers["encoder"](enc_out)
+            dec_out, trend_part = self.sequence_layers["decoder"](dec_out, enc_out)
 
         if trend_init.shape[-1] != trend_part.shape[-1]:
             proj = nn.Linear(trend_init.shape[-1], trend_part.shape[-1]).to(
@@ -149,14 +172,14 @@ class Flow_FEDformer(nn.Module):
         final_trend = trend_init + trend_part
 
         dec_ctx = dec_out[:, -self.config.pred_len :, :]
-        cond_proj = self.flow_conditioner_proj(dec_ctx)
-        cond_proj = cond_proj.view(
-            cond_proj.size(0),
-            cond_proj.size(1),
+        flow_conditioned = self.components["flow_conditioner_proj"](dec_ctx)
+        flow_conditioned = flow_conditioned.view(
+            flow_conditioned.size(0),
+            flow_conditioned.size(1),
             self.config.c_out,
             self.config.flow_hidden_dim,
         )
-        feature_context = cond_proj.mean(dim=1)
+        feature_context = flow_conditioned.mean(dim=1)
         mean_pred = final_trend[:, -self.config.pred_len :, : self.config.c_out]
 
         return NormalizingFlowDistribution(mean_pred, self.flows, feature_context)
@@ -168,12 +191,14 @@ class NormalizingFlowDistribution:
     def __init__(
         self, means: torch.Tensor, flows: nn.ModuleList, contexts: torch.Tensor
     ) -> None:
+        """Store flow distribution parameters."""
         self.means = means
         self.flows = flows
         self.contexts = contexts
 
     @property
     def mean(self) -> torch.Tensor:
+        """Return the predictive mean."""
         return self.means
 
     def log_prob(
@@ -200,6 +225,7 @@ class NormalizingFlowDistribution:
         return total_lp / float(time_steps)
 
     def sample(self, n_samples: int) -> torch.Tensor:
+        """Generate samples by inverting the learned flows."""
         batch_size, time_steps, num_features = self.means.shape
         samples = []
         for _ in range(n_samples):
