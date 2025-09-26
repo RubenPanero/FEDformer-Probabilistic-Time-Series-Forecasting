@@ -1,4 +1,4 @@
-# Vanguard FEDformer — Probabilistic Time-Series with Normalizing Flows
+# FEDformer — Probabilistic Time-Series Forecasting
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10|3.11|3.12-blue.svg)]()
@@ -86,8 +86,8 @@ Time Series → Volatility Regimes → Contextual Features → Fourier Attention
 
 ```powershell
 # Clone the repository
-git clone https://github.com/RbnGlz/Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting.git
-cd Vanguard-FEDformer-Advanced-Probabilistic-Time-Series-Forecasting
+git clone https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting.git
+cd FEDformer-Probabilistic-Time-Series-Forecasting
 
 # Create venv (Windows PowerShell)
 python -m venv .venv
@@ -274,5 +274,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **PyTorch Team**: For the excellent deep learning framework
 
 **⭐ If you find this project useful, please consider starring it on GitHub!**
+
 
 
