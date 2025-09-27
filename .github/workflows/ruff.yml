@@ -2,9 +2,7 @@ name: 'Ruff Lint & Format'
 
 on:
   push:
-    branches: [ ruff_linter ]
   pull_request:
-    branches: [ ruff_linter ]
 
 jobs:
   lint:
