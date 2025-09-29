@@ -12,8 +12,7 @@ from config import FEDformerConfig
 from data import TimeSeriesDataset
 from training import WalkForwardTrainer
 from simulations import RiskSimulator, PortfolioSimulator
-from utils import setup_cuda_optimizations, get_device
-from utils.helpers import set_seed
+from utils import get_device
 
 logger = logging.getLogger(__name__)
 device = get_device()

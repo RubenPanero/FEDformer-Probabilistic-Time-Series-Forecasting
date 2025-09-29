@@ -1,17 +1,19 @@
+import contextlib
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable, Generator, Tuple
+
 import numpy as np
-import torch
 import pytest
-import contextlib
-from typing import Generator, Callable, Tuple
+import torch
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import FEDformerConfig
-from models.fedformer import Flow_FEDformer
+if TYPE_CHECKING:
+    from config import FEDformerConfig
+    from models.fedformer import Flow_FEDformer
 
 # Path to a small CSV included in the repo; FEDformer config reads headers to infer dims
 DATA_CSV = str(ROOT / "data" / "nvidia_stock_2024-08-20_to_2025-08-20.csv")
@@ -30,14 +32,18 @@ def deterministic_seed() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def config() -> FEDformerConfig:
+def config() -> "FEDformerConfig":
+    from config import FEDformerConfig
+
     return FEDformerConfig(target_features=["Close"], file_path=DATA_CSV)
 
 
 @pytest.fixture
 def model_factory(
-    config: FEDformerConfig,
-) -> Callable[[bool], Flow_FEDformer]:
+    config: "FEDformerConfig",
+) -> Callable[[bool], "Flow_FEDformer"]:
+    from models.fedformer import Flow_FEDformer
+
     def _make(train: bool = False) -> Flow_FEDformer:
         m = Flow_FEDformer(config)
         if not train:
@@ -49,7 +55,7 @@ def model_factory(
 
 @pytest.fixture
 def synthetic_batch(
-    config: FEDformerConfig,
+    config: "FEDformerConfig",
 ) -> Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
     """Create a synthetic batch matching config-derived shapes.
 
