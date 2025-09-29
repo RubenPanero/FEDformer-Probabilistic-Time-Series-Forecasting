@@ -1,0 +1,89 @@
+# Project: FEDformer Probabilistic Time Series (Python / PyTorch)
+# Reference templates: https://github.com/github/gitignore/blob/main/Python.gitignore
+#                     https://github.com/github/gitignore/blob/main/Global/Windows.gitignore
+#                     https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
+
+# === Python artifacts ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+
+# === Build & packaging ===
+build/
+dist/
+*.egg-info/
+.eggs/
+MANIFEST
+pip-wheel-metadata/
+
+# === Test & coverage outputs ===
+.pytest_cache/
+.pytest_tmp/
+htmlcov/
+.coverage*
+coverage.xml
+
+# === Tool caches & logs ===
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.pyre/
+*.log
+*.tmp
+*.bak
+
+# === Virtual environments ===
+.venv/
+venv/
+env/
+ENV/
+.env/
+.envrc
+*.env
+*.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# === Machine learning artifacts ===
+checkpoints/
+wandb/
+lightning_logs/
+tensorboard/
+artifacts/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.tfevents*
+
+# === Data & generated reports ===
+data/**
+!data/**/*.py
+!data/**/*.md
+reports/**
+!reports/.gitkeep
+
+# === Runtime & CLI outputs ===
+logs/
+outputs/
+run*/
+
+# === IDE & editor settings ===
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*.orig
+.history/
+.ipynb_checkpoints/
+
+# === OS-specific metadata ===
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
