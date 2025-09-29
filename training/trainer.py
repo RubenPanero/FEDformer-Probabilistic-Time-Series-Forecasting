@@ -55,7 +55,9 @@ class BatchTensors:
 class WalkForwardTrainer:
     """Enhanced walk-forward trainer with better error handling and monitoring."""
 
-    def __init__(self, config: FEDformerConfig, full_dataset: TimeSeriesDataset) -> None:
+    def __init__(
+        self, config: FEDformerConfig, full_dataset: TimeSeriesDataset
+    ) -> None:
         self.config = config
         self.full_dataset = full_dataset
         self.wandb_run = None
@@ -153,9 +155,13 @@ class WalkForwardTrainer:
         return loss
 
     @staticmethod
-    def _should_step(batch_idx: int, total_batches: int, accumulation_steps: int) -> bool:
+    def _should_step(
+        batch_idx: int, total_batches: int, accumulation_steps: int
+    ) -> bool:
         """Determine whether to perform an optimizer step."""
-        return (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == total_batches
+        return (batch_idx + 1) % accumulation_steps == 0 or (
+            batch_idx + 1
+        ) == total_batches
 
     @staticmethod
     def _optimizer_step(
@@ -178,7 +184,9 @@ class WalkForwardTrainer:
         self, train_subset: Subset, test_subset: Subset, fold_idx: int
     ) -> TrainingComponents:
         """Instantiate model, optimizer, scaler and loaders for a fold."""
-        train_loader, test_loader = self._prepare_data_loaders(train_subset, test_subset)
+        train_loader, test_loader = self._prepare_data_loaders(
+            train_subset, test_subset
+        )
         model = self._get_model()
         optimizer = torch.optim.AdamW(
             model.parameters(),
@@ -386,12 +394,12 @@ class WalkForwardTrainer:
         train_subset = Subset(
             self.full_dataset, range(min(train_end_idx, len(self.full_dataset)))
         )
-        test_indices = range(
-            train_end_idx, min(test_end_idx, len(self.full_dataset))
-        )
+        test_indices = range(train_end_idx, min(test_end_idx, len(self.full_dataset)))
         test_subset = Subset(self.full_dataset, list(test_indices))
 
-        components = self._build_training_components(train_subset, test_subset, fold_idx)
+        components = self._build_training_components(
+            train_subset, test_subset, fold_idx
+        )
 
         best_loss = float("inf")
         for epoch in range(self.config.n_epochs_per_fold):

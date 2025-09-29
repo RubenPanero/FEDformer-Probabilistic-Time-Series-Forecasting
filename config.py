@@ -152,6 +152,7 @@ class ConfigSections:
 @dataclass(init=False)
 class FEDformerConfig:
     """Enhanced configuration class with validation and better organization."""
+
     # pylint: disable=missing-function-docstring,too-many-public-methods,too-many-instance-attributes
 
     target_features: List[str]
@@ -221,9 +222,7 @@ class FEDformerConfig:
             self.dec_in = len(feature_cols)
             self.c_out = len(self.target_features)
         except Exception as exc:
-            logger.error(
-                "Failed to read CSV file %s: %s", self.file_path, exc
-            )
+            logger.error("Failed to read CSV file %s: %s", self.file_path, exc)
             raise
 
         max_modes = max(1, self.seq_len // 2)
@@ -258,9 +257,9 @@ class FEDformerConfig:
         assert self.activation in ["gelu", "relu"], (
             f"activation must be 'gelu' or 'relu', got {self.activation}"
         )
-        assert all(
-            col in df_columns for col in self.target_features
-        ), "All target features must exist in the dataset"
+        assert all(col in df_columns for col in self.target_features), (
+            "All target features must exist in the dataset"
+        )
         assert 0 <= self.dropout < 1, f"Dropout must be in [0, 1), got {self.dropout}"
         assert self.learning_rate > 0, (
             f"Learning rate must be positive, got {self.learning_rate}"

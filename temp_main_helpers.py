@@ -1,4 +1,3 @@
-
 import os
 import time
 import argparse
@@ -18,6 +17,7 @@ from utils.helpers import set_seed
 
 logger = logging.getLogger(__name__)
 device = get_device()
+
 
 def _parse_arguments() -> argparse.Namespace:
     """Parses command-line arguments."""
@@ -96,9 +96,7 @@ def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerCon
     )
 
     logger.info("Configuration validated successfully")
-    logger.info(
-        f"Model parameters: d_model={config.d_model}, n_heads={config.n_heads}"
-    )
+    logger.info(f"Model parameters: d_model={config.d_model}, n_heads={config.n_heads}")
     logger.info(
         f"Training: epochs_per_fold={config.n_epochs_per_fold}, batch_size={config.batch_size}"
     )
@@ -217,9 +215,7 @@ def _run_simulations_and_visualize(
                     color="darkred",
                     alpha=0.8,
                 )
-                ax2.set_title(
-                    "Risk Metrics Over Time", fontsize=14, fontweight="bold"
-                )
+                ax2.set_title("Risk Metrics Over Time", fontsize=14, fontweight="bold")
                 ax2.set_xlabel("Time Steps")
                 ax2.set_ylabel("Risk Value")
                 ax2.grid(True, linestyle="--", alpha=0.6)

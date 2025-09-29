@@ -37,6 +37,7 @@ setup_cuda_optimizations()
 device = get_device()
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class SimulationData:
     """Container for artifacts shared with visualization steps."""
@@ -45,7 +46,6 @@ class SimulationData:
     ground_truth: np.ndarray
     samples: np.ndarray
     dataset: TimeSeriesDataset
-
 
 
 def _parse_arguments() -> argparse.Namespace:
@@ -174,9 +174,15 @@ def _log_risk_summary(var: np.ndarray, cvar: np.ndarray) -> None:
 def _log_portfolio_metrics(metrics: Dict[str, Any]) -> None:
     """Log derived portfolio performance metrics."""
     logger.info("Portfolio Performance Metrics:")
-    logger.info("  Annualized Sharpe Ratio: %.3f", float(metrics.get("sharpe_ratio", 0.0)))
-    logger.info("  Maximum Drawdown: %.2f%%", float(metrics.get("max_drawdown", 0.0)) * 100)
-    logger.info("  Annualized Volatility: %.2f%%", float(metrics.get("volatility", 0.0)) * 100)
+    logger.info(
+        "  Annualized Sharpe Ratio: %.3f", float(metrics.get("sharpe_ratio", 0.0))
+    )
+    logger.info(
+        "  Maximum Drawdown: %.2f%%", float(metrics.get("max_drawdown", 0.0)) * 100
+    )
+    logger.info(
+        "  Annualized Volatility: %.2f%%", float(metrics.get("volatility", 0.0)) * 100
+    )
     logger.info("  Sortino Ratio: %.3f", float(metrics.get("sortino_ratio", 0.0)))
 
 
@@ -204,9 +210,9 @@ def _prepare_unscaled_series(
         (data.ground_truth.shape[0], data.ground_truth.shape[1], config.enc_in)
     )
     dummy_gt[..., target_idx] = data.ground_truth[..., 0]
-    unscaled_gt = scaler.inverse_transform(
-        dummy_gt.reshape(-1, config.enc_in)
-    ).reshape(dummy_gt.shape)[..., target_idx : target_idx + 1]
+    unscaled_gt = scaler.inverse_transform(dummy_gt.reshape(-1, config.enc_in)).reshape(
+        dummy_gt.shape
+    )[..., target_idx : target_idx + 1]
 
     return unscaled_preds, unscaled_gt
 
@@ -232,8 +238,16 @@ def _create_portfolio_figure(
     ax1.legend()
 
     time_steps = range(var.shape[0])
-    ax2.plot(time_steps, np.mean(var, axis=1), label="VaR (95%)", color="red", alpha=0.8)
-    ax2.plot(time_steps, np.mean(cvar, axis=1), label="CVaR (95%)", color="darkred", alpha=0.8)
+    ax2.plot(
+        time_steps, np.mean(var, axis=1), label="VaR (95%)", color="red", alpha=0.8
+    )
+    ax2.plot(
+        time_steps,
+        np.mean(cvar, axis=1),
+        label="CVaR (95%)",
+        color="darkred",
+        alpha=0.8,
+    )
     ax2.set_title("Risk Metrics Over Time", fontsize=14, fontweight="bold")
     ax2.set_xlabel("Time Steps")
     ax2.set_ylabel("Risk Value")
@@ -328,6 +342,7 @@ def _run_simulations_and_visualize(
     _log_metrics_to_wandb(fig, metrics, var, cvar)
     _handle_visualization_output(fig, args)
 
+
 def main() -> None:
     """Main function to run the FEDformer forecasting and simulation pipeline."""
     try:
@@ -354,7 +369,7 @@ def main() -> None:
         logger.info("Analysis completed successfully!")
 
     except (FileNotFoundError, ValueError, RuntimeError):
-        logger.exception('Main execution failed')
+        logger.exception("Main execution failed")
         raise
 
 

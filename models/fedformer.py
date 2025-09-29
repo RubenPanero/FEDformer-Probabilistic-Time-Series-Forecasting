@@ -90,19 +90,13 @@ class Flow_FEDformer(nn.Module):
         trend_proj = self.components["trend_proj"]
         decomp = self.components["decomp"]
 
-        mean = torch.mean(
-            x_dec[:, : self.config.label_len, :], dim=1, keepdim=True
-        )
-        seasonal_init = torch.zeros_like(
-            x_dec[:, -self.config.pred_len :, :]
-        )
+        mean = torch.mean(x_dec[:, : self.config.label_len, :], dim=1, keepdim=True)
+        seasonal_init = torch.zeros_like(x_dec[:, -self.config.pred_len :, :])
 
         trend_init_in = mean.expand(-1, self.config.pred_len, -1)
         trend_init = trend_proj(trend_init_in)
 
-        seasonal_dec_hist, trend_dec_hist = decomp(
-            x_dec[:, : self.config.label_len, :]
-        )
+        seasonal_dec_hist, trend_dec_hist = decomp(x_dec[:, : self.config.label_len, :])
         seasonal_out = torch.cat([seasonal_dec_hist, seasonal_init], dim=1)
 
         trend_dec_hist_proj = trend_proj(trend_dec_hist)
@@ -120,9 +114,7 @@ class Flow_FEDformer(nn.Module):
         if regime_idx.dim() > 1:
             regime_idx = regime_idx.view(regime_idx.size(0), -1)[:, 0]
         regime_vec = self.components["regime_embedding"](regime_idx.long())
-        regime_vec_enc = regime_vec.unsqueeze(1).expand(
-            -1, self.config.seq_len, -1
-        )
+        regime_vec_enc = regime_vec.unsqueeze(1).expand(-1, self.config.seq_len, -1)
         regime_vec_dec = regime_vec.unsqueeze(1).expand(
             -1, self.config.label_len + self.config.pred_len, -1
         )
@@ -206,9 +198,7 @@ class NormalizingFlowDistribution:
     ) -> torch.Tensor:
         """Compute log probability per batch, supports optional mask over time dimension."""
         batch_size, time_steps, num_features = y_true.shape
-        total_lp = torch.zeros(
-            batch_size, device=y_true.device, dtype=y_true.dtype
-        )
+        total_lp = torch.zeros(batch_size, device=y_true.device, dtype=y_true.dtype)
         for feature_idx in range(num_features):
             y_feature = y_true[..., feature_idx]
             mu_feature = self.means[..., feature_idx]

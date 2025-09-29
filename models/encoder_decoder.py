@@ -144,9 +144,7 @@ class DecoderLayer(nn.Module):
         dropout = self.layers["dropout"]
 
         x_norm = norm_layers[0](x)
-        x_res, trend1 = decomp_layers[0](
-            x + self_attn(x_norm, x_norm, x_norm)
-        )
+        x_res, trend1 = decomp_layers[0](x + self_attn(x_norm, x_norm, x_norm))
 
         x_norm2 = norm_layers[1](x_res)
         cross_norm = norm_layers[2](cross)

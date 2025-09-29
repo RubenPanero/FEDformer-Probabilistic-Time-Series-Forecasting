@@ -13,8 +13,9 @@ from torch.fft import irfft, rfft
 from torch.nn.functional import conv1d, interpolate, pad
 
 
-
-def _apply_conv1d(input_tensor: torch.Tensor, weight: torch.Tensor, **kwargs: Any) -> torch.Tensor:
+def _apply_conv1d(
+    input_tensor: torch.Tensor, weight: torch.Tensor, **kwargs: Any
+) -> torch.Tensor:
     """Wrapper around torch.nn.functional.conv1d for static analysis."""
     conv = cast(Callable[..., torch.Tensor], conv1d)  # pylint: disable=not-callable
     return conv(input_tensor, weight, **kwargs)  # pylint: disable=not-callable
@@ -43,7 +44,6 @@ class AttentionConfig:
     dropout: float
 
 
-
 class OptimizedSeriesDecomp(nn.Module):
     """Optimized decomposition with reduced memory footprint"""
 
@@ -70,9 +70,10 @@ class OptimizedSeriesDecomp(nn.Module):
             ) / float(kernel_size)
             trend = _apply_conv1d(x_padded, weight, groups=num_channels)
             trends.append(trend)
-        trend = torch.stack(trends).mean(0).transpose(1, 2)  # Back to [batch, len, channels]
+        trend = (
+            torch.stack(trends).mean(0).transpose(1, 2)
+        )  # Back to [batch, len, channels]
         return x - trend, trend
-
 
 
 class FourierAttention(nn.Module):
@@ -108,7 +109,6 @@ class FourierAttention(nn.Module):
         return _apply_irfft(out_ft, n=seq_len, dim=-1).transpose(-1, -2)
 
 
-
 class AttentionLayer(nn.Module):
     """Enhanced attention layer with better memory management"""
 
@@ -116,7 +116,9 @@ class AttentionLayer(nn.Module):
         super().__init__()
         self.n_heads = config.n_heads
         self.d_keys = config.d_model // config.n_heads
-        self.fourier_attention = FourierAttention(self.d_keys, config.seq_len, config.modes)
+        self.fourier_attention = FourierAttention(
+            self.d_keys, config.seq_len, config.modes
+        )
         self.query_proj = nn.Linear(config.d_model, config.d_model)
         self.key_proj = nn.Linear(config.d_model, config.d_model)
         self.out_proj = nn.Linear(config.d_model, config.d_model)
@@ -149,10 +151,14 @@ class AttentionLayer(nn.Module):
         if len_k != len_q:
             head_batch = batch_k * self.n_heads
             k_reshaped = (
-                k_heads.transpose(1, 2).contiguous().view(head_batch, self.d_keys, len_k)
+                k_heads.transpose(1, 2)
+                .contiguous()
+                .view(head_batch, self.d_keys, len_k)
             )
             v_reshaped = (
-                v_heads.transpose(1, 2).contiguous().view(head_batch, self.d_keys, len_k)
+                v_heads.transpose(1, 2)
+                .contiguous()
+                .view(head_batch, self.d_keys, len_k)
             )
             k_resampled = interpolate(
                 k_reshaped, size=len_q, mode="linear", align_corners=False
@@ -160,12 +166,12 @@ class AttentionLayer(nn.Module):
             v_resampled = interpolate(
                 v_reshaped, size=len_q, mode="linear", align_corners=False
             )
-            k_heads = (
-                k_resampled.view(batch_k, self.n_heads, self.d_keys, len_q).transpose(2, 3)
-            )
-            v_heads = (
-                v_resampled.view(batch_k, self.n_heads, self.d_keys, len_q).transpose(2, 3)
-            )
+            k_heads = k_resampled.view(
+                batch_k, self.n_heads, self.d_keys, len_q
+            ).transpose(2, 3)
+            v_heads = v_resampled.view(
+                batch_k, self.n_heads, self.d_keys, len_q
+            ).transpose(2, 3)
 
         attn_out = self.fourier_attention(q_heads * k_heads)
         batch_out, len_out = q.shape[:2]

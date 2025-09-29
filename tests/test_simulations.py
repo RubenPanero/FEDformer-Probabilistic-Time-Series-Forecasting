@@ -26,7 +26,7 @@ def test_risk_simulator(sample_data: Tuple[np.ndarray, np.ndarray, np.ndarray]) 
 
 
 def test_portfolio_simulator(
-    sample_data: Tuple[np.ndarray, np.ndarray, np.ndarray]
+    sample_data: Tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
     _, predictions, ground_truth = sample_data
     portfolio_sim = PortfolioSimulator(predictions, ground_truth)

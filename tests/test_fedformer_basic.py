@@ -9,7 +9,9 @@ from models.fedformer import Flow_FEDformer
 
 def test_forward_smoke(
     model_factory: Callable[[bool], Flow_FEDformer],
-    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+    synthetic_batch: Callable[
+        [int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    ],
 ) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=False)
@@ -26,7 +28,9 @@ def test_forward_smoke(
 
 def test_determinism(
     model_factory: Callable[[bool], Flow_FEDformer],
-    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+    synthetic_batch: Callable[
+        [int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    ],
 ) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=3)
     m1 = model_factory(train=False)
@@ -41,7 +45,9 @@ def test_determinism(
 @pytest.mark.slow
 def test_backward_and_grads(
     model_factory: Callable[[bool], Flow_FEDformer],
-    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+    synthetic_batch: Callable[
+        [int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    ],
 ) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=True)
@@ -61,7 +67,9 @@ def test_backward_and_grads(
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="No CUDA")
 def test_device_transfer(
     model_factory: Callable[[bool], Flow_FEDformer],
-    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+    synthetic_batch: Callable[
+        [int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    ],
 ) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=False)
@@ -78,7 +86,9 @@ def test_device_transfer(
 def test_state_dict_roundtrip(
     tmp_path: Path,
     model_factory: Callable[[bool], Flow_FEDformer],
-    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+    synthetic_batch: Callable[
+        [int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    ],
 ) -> None:
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
     model = model_factory(train=False)
@@ -94,7 +104,9 @@ def test_state_dict_roundtrip(
 
 def test_amp_optional(
     model_factory: Callable[[bool], Flow_FEDformer],
-    synthetic_batch: Callable[[int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
+    synthetic_batch: Callable[
+        [int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    ],
 ) -> None:
     # Run a tiny AMP-enabled forward/backward if available
     x_enc, x_dec, x_regime, y = synthetic_batch(batch_size=2)
