@@ -100,7 +100,7 @@ class NormalizingFlow(nn.Module):
         self, x: torch.Tensor, context: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Apply each coupling layer and accumulate the log-determinant.
-        
+
         FIXED: Normalize log_det_jacobian by number of layers to prevent
         exponential scaling with depth. This improves stability of gradient flow.
         """
@@ -109,13 +109,13 @@ class NormalizingFlow(nn.Module):
         for layer in self.layers:
             x, ldj = layer(x, context=context)
             log_det_jacobian = log_det_jacobian + ldj
-        
+
         # Normalize by number of layers for stability
         # Without normalization, log_det scales exponentially: O(n_layers)
         n_layers = len(self.layers)
         if n_layers > 0:
             log_det_jacobian = log_det_jacobian / n_layers
-        
+
         return x, log_det_jacobian
 
     def inverse(
