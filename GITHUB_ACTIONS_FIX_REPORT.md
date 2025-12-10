@@ -19,25 +19,41 @@ ruff format data/dataset.py models/layers.py
 
 ---
 
-### 2. Error de Importación de wandb (Python 3.9 Compatibility Test)
+### 2. Error de Importación de wandb (Python 3.9, 3.10, 3.11 Compatibility Tests)
 **Error detectado en el log:**
 ```
 ModuleNotFoundError: No module named 'wandb'
+  File "/home/runner/work/.../training/trainer.py", line 20, in <module>
+    import wandb
 ```
 
-**Análisis:**
-- `wandb` está correctamente especificado en `requirements.txt` (línea 17)
-- El error ocurrió durante la importación en `training/trainer.py` (línea 20)
-- El workflow instala requirements.txt correctamente (ver línea "Successfully installed ... wandb-0.23.1")
+**Causa raíz:** 
+El workflow `compatibility.yml` instalaba solo paquetes específicos:
+```yaml
+pip install torch pandas numpy pytest scikit-learn -q
+```
 
-**Conclusión:** Este error fue transitorio durante la ejecución del workflow. El re-run debería instalar correctamente wandb gracias a la caché de pip y requirements.txt correcto.
+Esto **NO incluía `wandb`** ni otros paquetes de `requirements.txt`, causando error al importar `WalkForwardTrainer`.
+
+**Solución aplicada:**
+Se cambió el workflow para instalar todas las dependencias desde `requirements.txt`:
+
+```diff
+- pip install torch pandas numpy pytest scikit-learn -q
++ pip install -r requirements.txt -q
+```
+
+**Verificación:**
+- ✅ `wandb>=0.15.0` está presente en `requirements.txt` (línea 17)
+- ✅ Todas las dependencias del proyecto están ahora instaladas
+- ✅ El workflow usará el cache de pip de GitHub Actions para optimizar
 
 ---
 
 ### 3. Estado de requirements.txt
-✅ `wandb>=0.15.0` está presente (línea 17)
+✅ `wandb>=0.15.0` ya estaba presente (línea 17)
 ✅ Todas las dependencias necesarias están especificadas
-✅ No se requieren cambios
+✅ No se requieren cambios adicionales
 
 ---
 
@@ -47,8 +63,29 @@ ModuleNotFoundError: No module named 'wandb'
 |---------|----------|--------|----------|
 | `data/dataset.py` | Formato incorrecta | ✅ FIJO | ruff format aplicado |
 | `models/layers.py` | Formato incorrecta | ✅ FIJO | ruff format aplicado |
-| `requirements.txt` | Falta wandb | ✅ OK | wandb ya estaba presente |
 | `models/flows.py` | Trailing whitespace | ✅ FIJO | Corregido en paso anterior |
+| `.github/workflows/compatibility.yml` | No instala requirements.txt completo | ✅ FIJO | Cambio `pip install ...` → `pip install -r requirements.txt` |
+| `requirements.txt` | Falta wandb | ✅ OK | wandb ya estaba presente (línea 17) |
+
+---
+
+## Cambio Específico del Workflow
+
+**Archivo:** `.github/workflows/compatibility.yml` (línea 29)
+
+```diff
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+-       pip install torch pandas numpy pytest scikit-learn -q
++       pip install -r requirements.txt -q
+```
+
+**Impacto:**
+- Instala TODAS las dependencias del proyecto (wandb, scipy, matplotlib, tqdm, etc.)
+- Evita errores de `ModuleNotFoundError` por dependencias faltantes
+- Usa el cache de pip de GitHub Actions para mayor velocidad
+- Asegura consistencia con el archivo `requirements.txt`
 
 ---
 
@@ -56,43 +93,23 @@ ModuleNotFoundError: No module named 'wandb'
 
 1. **Push cambios a GitHub:**
    ```bash
-   git add data/dataset.py models/layers.py
-   git commit -m "Fix code formatting with ruff to pass linting checks"
+   git add .github/workflows/compatibility.yml data/dataset.py models/layers.py
+   git commit -m "Fix CI/CD: Install requirements.txt in compatibility workflow + fix code formatting"
    git push origin main
    ```
 
 2. **Verificar workflows:**
-   - ✅ Lint & Format Check - Debe pasar ahora
-   - ✅ Test Compatibility & Integrations - Debe pasar ahora con wandb instalado correctamente
+   - ✅ Lint & Format Check - Debe pasar ahora (formato fijo)
+   - ✅ Test Compatibility & Integrations - Debe pasar ahora (wandb instalado)
+   - ✅ Security workflow - Debe pasar sin cambios
 
 3. **Monitoring:**
    - Verificar que todos los Python 3.9, 3.10, 3.11 tests pasen
    - Verificar que PyLint mantenga 10.0/10 rating
+   - Confirmar que no hay más `ModuleNotFoundError`
 
----
-
-## Log Files Analizados
-
-1. `0_Lint & Format Check.txt` (411 líneas)
-   - Muestra setup correcto de Python 3.11
-   - pip install de requirements.txt completado
-   - Ruff format check falló porque necesitaba reformatear 2 archivos
-   - Exit code: 1 (falló)
-
-2. `0_Test Compatibility & Integrations (3.9).txt` (221 líneas)
-   - Setup correcto de Python 3.9
-   - Error de ModuleNotFoundError: No module named 'wandb' durante import test
-   - El workflow luego mostró resumen de pruebas esperadas (aunque no completó)
-   - Exit code: Cancelado
-
----
-
-## Verificación de Cambios
-
-```bash
-# Ver cambios en formato
-git diff data/dataset.py
-git diff models/layers.py
-```
-
-Todos los cambios son solo de formateo de código (espacios, line breaks) sin cambios de lógica.
+4. **Validación local (opcional):**
+   ```bash
+   pip install -r requirements.txt
+   python -c "from training.trainer import WalkForwardTrainer; print('✓ wandb imports OK')"
+   ```
