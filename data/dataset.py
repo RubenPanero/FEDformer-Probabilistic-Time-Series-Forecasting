@@ -26,22 +26,23 @@ class RegimeDetector:
 
     def fit(self, data: np.ndarray) -> None:
         """Fit quantile thresholds based on rolling volatility.
-        
+
         FIXED: Correctly computes rolling volatility (std, not mean).
         Handles 1D and 2D arrays properly with correct axis handling.
         """
         try:
             returns = np.diff(data, axis=0) / (np.abs(data[:-1]) + 1e-9)
-            
+
             # Calculate rolling volatility correctly (std, not mean)
-            rolling_vol = pd.DataFrame(returns).rolling(
-                window=min(24, len(returns) // 2),
-                min_periods=1
-            ).std(ddof=1)  # Use sample std (ddof=1)
-            
+            rolling_vol = (
+                pd.DataFrame(returns)
+                .rolling(window=min(24, len(returns) // 2), min_periods=1)
+                .std(ddof=1)
+            )  # Use sample std (ddof=1)
+
             # Compute overall volatility per period
             volatility = rolling_vol.dropna().values.std(axis=0)
-            
+
             if len(volatility) > 1:
                 self.quantiles = np.quantile(
                     volatility, np.linspace(0, 1, self.n_regimes + 1)[1:-1]
