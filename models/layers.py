@@ -82,8 +82,15 @@ class FourierAttention(nn.Module):
     def __init__(self, d_keys: int, seq_len: int, modes: int = 64) -> None:
         super().__init__()
         self.modes = min(modes, max(1, seq_len // 2))
-        # FIXED: Use register_buffer for proper device handling
-        indices = torch.randperm(max(1, seq_len // 2))[: self.modes].sort()[0]
+        # FIXED: Use deterministic seed for Fourier mode selection
+        # Ensures reproducibility across runs with same seq_len and modes
+        generator = torch.Generator()
+        # Create deterministic seed from seq_len and modes (hash)
+        seed = (seq_len * 1009 + self.modes * 1013) % (2 ** 31 - 1)
+        generator.manual_seed(seed)
+        indices = torch.randperm(
+            max(1, seq_len // 2), generator=generator
+        )[: self.modes].sort()[0]
         self.register_buffer("index", indices)
 
         # OPTIMIZED: Stable weight initialization (separate real/imag)

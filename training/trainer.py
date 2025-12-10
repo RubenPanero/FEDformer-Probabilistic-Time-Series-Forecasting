@@ -391,9 +391,11 @@ class WalkForwardTrainer:
             test_end_idx,
         )
 
-        train_subset = Subset(
-            self.full_dataset, range(min(train_end_idx, len(self.full_dataset)))
-        )
+        # FIXED: Prevent data leakage - only use historical data before test period
+        # Fold 1: train=[0:split], test=[split:2*split]
+        # Fold 2: train=[0:2*split], test=[2*split:3*split], NOT train=[0:3*split]
+        train_indices = list(range(fold_idx * split_size))
+        train_subset = Subset(self.full_dataset, train_indices)
         test_indices = range(train_end_idx, min(test_end_idx, len(self.full_dataset)))
         test_subset = Subset(self.full_dataset, list(test_indices))
 

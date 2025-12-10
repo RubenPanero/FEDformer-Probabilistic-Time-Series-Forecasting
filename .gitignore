@@ -87,3 +87,18 @@ Thumbs.db
 desktop.ini
 $RECYCLE.BIN/
 
+# === Documentation (personal/internal) ===
+CRITICAL_FIXES.md
+IMPLEMENTATION_SUMMARY.md
+VERIFICATION.md
+COMPLETION_REPORT.txt
+GITHUB_PUSH_GUIDE.md
+README_READY_TO_PUSH.md
+READY_FOR_PUSH.txt
+push_to_github.sh
+
+# === Internal tests (use GitHub Actions workflows instead) ===
+tests/test_critical_fixes.py
+tests/test_critical_fixes_simple.py
+tests/validate_fixes.py
+

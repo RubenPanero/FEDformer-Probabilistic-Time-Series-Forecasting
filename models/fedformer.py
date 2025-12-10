@@ -156,11 +156,14 @@ class Flow_FEDformer(nn.Module):
             enc_out = self.sequence_layers["encoder"](enc_out)
             dec_out, trend_part = self.sequence_layers["decoder"](dec_out, enc_out)
 
+        # FIXED: Pre-validate shapes instead of ad-hoc projection
+        # This ensures trend components have consistent dimensions throughout
         if trend_init.shape[-1] != trend_part.shape[-1]:
-            proj = nn.Linear(trend_init.shape[-1], trend_part.shape[-1]).to(
-                trend_init.device
+            raise RuntimeError(
+                f"Trend shape mismatch in forward: trend_init={trend_init.shape[-1]} "
+                f"vs trend_part={trend_part.shape[-1]}. "
+                "Check decomposition config and projection layer dimensions."
             )
-            trend_init = proj(trend_init)
         final_trend = trend_init + trend_part
 
         dec_ctx = dec_out[:, -self.config.pred_len :, :]
