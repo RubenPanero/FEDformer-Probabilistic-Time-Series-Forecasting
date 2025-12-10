@@ -33,12 +33,10 @@ class RegimeDetector:
         try:
             returns = np.diff(data, axis=0) / (np.abs(data[:-1]) + 1e-9)
 
-            # Calculate rolling volatility correctly (std, not mean)
-            rolling_vol = (
-                pd.DataFrame(returns)
-                .rolling(window=min(24, len(returns) // 2), min_periods=1)
-                .std(ddof=1)
-            )  # Use sample std (ddof=1)
+            # FIXED: Correctly computes rolling volatility
+            rolling_vol = pd.DataFrame(returns).rolling(
+                window=min(24, len(returns) // 2), min_periods=1
+            ).std(ddof=1)
 
             # Compute overall volatility per period
             volatility = rolling_vol.dropna().values.std(axis=0)

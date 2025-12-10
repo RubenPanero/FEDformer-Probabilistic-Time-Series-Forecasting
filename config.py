@@ -3,6 +3,7 @@
 Configuracion del sistema Vanguard FEDformer.
 """
 
+import os
 from dataclasses import dataclass, field
 from typing import ClassVar, List, Optional, Set
 
@@ -192,7 +193,44 @@ class FEDformerConfig:
         "deterministic",
     }
 
-    def __init__(self, target_features: List[str], file_path: str, **kwargs) -> None:
+    def __init__(
+        self,
+        target_features: Optional[List[str]] = None,
+        file_path: Optional[str] = None,
+        **kwargs
+    ) -> None:
+        # Set defaults if not provided
+        if file_path is None:
+            # Use smoke_test.csv if available, otherwise nvidia_stock
+            default_path = os.path.join(
+                os.path.dirname(__file__), "data", "smoke_test.csv"
+            )
+            if not os.path.exists(default_path):
+                default_path = os.path.join(
+                    os.path.dirname(__file__), "data", "nvidia_stock_2024-08-20_to_2025-08-20.csv"
+                )
+            file_path = default_path
+
+        # Auto-detect target features if not provided
+        if target_features is None:
+            try:
+                df_cols = pd.read_csv(file_path, nrows=0).columns.tolist()
+                # Try to find a price column
+                for col in ["Close", "close", "Close_Price", "close_price"]:
+                    if col in df_cols:
+                        target_features = [col]
+                        break
+                # If no price column found, use first non-date column
+                if target_features is None:
+                    non_date_cols = [col for col in df_cols if col.lower() not in ["date", "time"]]
+                    if non_date_cols:
+                        target_features = [non_date_cols[0]]
+                    else:
+                        target_features = [df_cols[0]]
+            except Exception:
+                # Fallback if file cannot be read
+                target_features = ["Close"]
+
         self.target_features = target_features
         self.file_path = file_path
         self.sections = ConfigSections()
