@@ -231,8 +231,8 @@ class FEDformerConfig:
                         target_features = [non_date_cols[0]]
                     else:
                         target_features = [df_cols[0]]
-            except Exception:
-                # Fallback if file cannot be read
+            except (FileNotFoundError, pd.errors.EmptyDataError, ValueError):
+                # Fallback if file cannot be read, is empty, or has parsing issues
                 target_features = ["Close"]
 
         self.target_features = target_features
@@ -263,7 +263,7 @@ class FEDformerConfig:
             self.enc_in = len(feature_cols)
             self.dec_in = len(feature_cols)
             self.c_out = len(self.target_features)
-        except Exception as exc:
+        except (FileNotFoundError, pd.errors.EmptyDataError, ValueError) as exc:
             logger.error("Failed to read CSV file %s: %s", self.file_path, exc)
             raise
 
