@@ -197,7 +197,7 @@ class FEDformerConfig:
         self,
         target_features: Optional[List[str]] = None,
         file_path: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         # Set defaults if not provided
         if file_path is None:
@@ -207,7 +207,9 @@ class FEDformerConfig:
             )
             if not os.path.exists(default_path):
                 default_path = os.path.join(
-                    os.path.dirname(__file__), "data", "nvidia_stock_2024-08-20_to_2025-08-20.csv"
+                    os.path.dirname(__file__),
+                    "data",
+                    "nvidia_stock_2024-08-20_to_2025-08-20.csv",
                 )
             file_path = default_path
 
@@ -222,7 +224,9 @@ class FEDformerConfig:
                         break
                 # If no price column found, use first non-date column
                 if target_features is None:
-                    non_date_cols = [col for col in df_cols if col.lower() not in ["date", "time"]]
+                    non_date_cols = [
+                        col for col in df_cols if col.lower() not in ["date", "time"]
+                    ]
                     if non_date_cols:
                         target_features = [non_date_cols[0]]
                     else:
