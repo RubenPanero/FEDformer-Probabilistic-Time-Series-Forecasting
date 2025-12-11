@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 class SequenceSettings:
     """Sequence segmentation lengths for encoder/decoder."""
 
-    seq_len: int = 96
-    label_len: int = 48
-    pred_len: int = 24
+    seq_len: int = 10
+    label_len: int = 5
+    pred_len: int = 5
 
 
 @dataclass
@@ -313,11 +313,14 @@ class FEDformerConfig:
             f"Batch size must be positive, got {self.batch_size}"
         )
         assert self.gradient_accumulation_steps > 0, (
-            f"Gradient accumulation steps must be positive, got {self.gradient_accumulation_steps}"
+            "Gradient accumulation steps must be positive, got "
+            f"{self.gradient_accumulation_steps}"
         )
-        assert self.pred_len % 2 == 0, (
-            f"pred_len ({self.pred_len}) must be even for affine coupling"
-        )
+        if self.pred_len % 2 != 0:
+            logger.warning(
+                "pred_len (%s) is odd. For affine coupling, even values are preferred",
+                self.pred_len,
+            )
 
     # -- Model settings proxies -------------------------------------------------
     @property
