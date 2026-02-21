@@ -5,7 +5,7 @@ Configuracion del sistema Vanguard FEDformer.
 
 import os
 from dataclasses import dataclass, field
-from typing import ClassVar, List, Optional, Set
+from typing import Any, ClassVar, Dict, List, Optional, Set
 
 import logging
 
@@ -101,6 +101,9 @@ class RuntimeSettings:
     use_amp: bool = True
     use_gradient_checkpointing: bool = False
     compile_mode: str = "max-autotune"
+    finetune_from: Optional[str] = None
+    freeze_backbone: bool = False
+    finetune_lr: Optional[float] = None
 
 
 @dataclass
@@ -120,6 +123,31 @@ class MonitoringSettings:
     wandb_entity: Optional[str] = None
     wandb_run_name: Optional[str] = None
     date_column: Optional[str] = None
+
+
+@dataclass
+class PreprocessingSettings:
+    """Configuration for reusable, leakage-safe preprocessing."""
+
+    feature_roles: Dict[str, str] = field(default_factory=dict)
+    scaling_strategy: str = "robust"
+    missing_policy: str = "impute_median"
+    outlier_policy: str = "winsorize"
+    fit_scope: str = "fold_train_only"
+    persist_artifacts: bool = False
+    drift_checks: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "enabled": True,
+            "allow_extra_columns": True,
+            "null_rate_threshold": 0.2,
+            "mean_shift_threshold": 6.0,
+            "std_ratio_bounds": [0.2, 5.0],
+        }
+    )
+    strict_mode: bool = True
+    categorical_encoding: str = "none"
+    time_features: List[str] = field(default_factory=list)
+    artifact_dir: str = "reports/preprocessing"
 
 
 @dataclass
@@ -145,6 +173,7 @@ class ConfigSections:
 
     model: ModelSettings = field(default_factory=ModelSettings)
     training: TrainingSettings = field(default_factory=TrainingSettings)
+    preprocessing: PreprocessingSettings = field(default_factory=PreprocessingSettings)
     monitoring: MonitoringSettings = field(default_factory=MonitoringSettings)
     reproducibility: ReproSettings = field(default_factory=ReproSettings)
     derived: DerivedSettings = field(default_factory=DerivedSettings)
@@ -185,10 +214,24 @@ class FEDformerConfig:
         "use_gradient_checkpointing",
         "gradient_accumulation_steps",
         "compile_mode",
+        "finetune_from",
+        "freeze_backbone",
+        "finetune_lr",
         "wandb_project",
         "wandb_entity",
         "wandb_run_name",
         "date_column",
+        "feature_roles",
+        "scaling_strategy",
+        "missing_policy",
+        "outlier_policy",
+        "fit_scope",
+        "persist_artifacts",
+        "drift_checks",
+        "strict_mode",
+        "categorical_encoding",
+        "time_features",
+        "artifact_dir",
         "seed",
         "deterministic",
     }
@@ -287,35 +330,67 @@ class FEDformerConfig:
         if df_columns is None:
             df_columns = pd.read_csv(self.file_path, nrows=0).columns
 
-        assert self.d_model % self.n_heads == 0, (
-            f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
-        )
-        assert self.label_len <= self.seq_len, (
-            f"label_len ({self.label_len}) cannot exceed seq_len ({self.seq_len})"
-        )
-        assert 1 <= self.modes <= max(1, self.seq_len // 2), (
-            f"modes ({self.modes}) must be in [1, seq_len//2] ({self.seq_len // 2})"
-        )
-        assert self.activation in ["gelu", "relu"], (
-            f"activation must be 'gelu' or 'relu', got {self.activation}"
-        )
-        assert all(col in df_columns for col in self.target_features), (
-            "All target features must exist in the dataset"
-        )
-        assert 0 <= self.dropout < 1, f"Dropout must be in [0, 1), got {self.dropout}"
-        assert self.learning_rate > 0, (
-            f"Learning rate must be positive, got {self.learning_rate}"
-        )
-        assert self.weight_decay >= 0, (
-            f"Weight decay must be non-negative, got {self.weight_decay}"
-        )
-        assert self.batch_size > 0, (
-            f"Batch size must be positive, got {self.batch_size}"
-        )
-        assert self.gradient_accumulation_steps > 0, (
-            "Gradient accumulation steps must be positive, got "
-            f"{self.gradient_accumulation_steps}"
-        )
+        if self.d_model % self.n_heads != 0:
+            raise ValueError(
+                f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
+            )
+        if self.label_len > self.seq_len:
+            raise ValueError(
+                f"label_len ({self.label_len}) cannot exceed seq_len ({self.seq_len})"
+            )
+        if not 1 <= self.modes <= max(1, self.seq_len // 2):
+            raise ValueError(
+                f"modes ({self.modes}) must be in [1, seq_len//2] ({self.seq_len // 2})"
+            )
+        if self.activation not in ["gelu", "relu"]:
+            raise ValueError(
+                f"activation must be 'gelu' or 'relu', got {self.activation}"
+            )
+        if not all(col in df_columns for col in self.target_features):
+            raise ValueError("All target features must exist in the dataset")
+        if not 0 <= self.dropout < 1:
+            raise ValueError(f"Dropout must be in [0, 1), got {self.dropout}")
+        if self.learning_rate <= 0:
+            raise ValueError(
+                f"Learning rate must be positive, got {self.learning_rate}"
+            )
+        if self.weight_decay < 0:
+            raise ValueError(
+                f"Weight decay must be non-negative, got {self.weight_decay}"
+            )
+        if self.batch_size <= 0:
+            raise ValueError(f"Batch size must be positive, got {self.batch_size}")
+        if self.gradient_accumulation_steps <= 0:
+            raise ValueError(
+                "Gradient accumulation steps must be positive, got "
+                f"{self.gradient_accumulation_steps}"
+            )
+        if self.finetune_lr is not None and self.finetune_lr <= 0:
+            raise ValueError(f"finetune_lr must be positive, got {self.finetune_lr}")
+        if self.e_layers < 1 or self.d_layers < 1:
+            raise ValueError("e_layers and d_layers must be >= 1")
+        if self.scaling_strategy not in ["standard", "robust", "minmax", "none"]:
+            raise ValueError(
+                "scaling_strategy must be one of ['standard', 'robust', 'minmax', 'none']"
+            )
+        if self.missing_policy not in ["drop", "ffill_bfill", "impute_median", "error"]:
+            raise ValueError(
+                "missing_policy must be one of ['drop', 'ffill_bfill', 'impute_median', 'error']"
+            )
+        if self.outlier_policy not in ["clip", "winsorize", "none"]:
+            raise ValueError("outlier_policy must be one of ['clip', 'winsorize', 'none']")
+        if self.fit_scope not in ["global_train", "fold_train_only"]:
+            raise ValueError("fit_scope must be 'global_train' or 'fold_train_only'")
+        if self.categorical_encoding not in ["none", "ordinal", "onehot"]:
+            raise ValueError(
+                "categorical_encoding must be one of ['none', 'ordinal', 'onehot']"
+            )
+        if not isinstance(self.feature_roles, dict):
+            raise ValueError("feature_roles must be a dictionary")
+        if not isinstance(self.drift_checks, dict):
+            raise ValueError("drift_checks must be a dictionary")
+        if not isinstance(self.time_features, list):
+            raise ValueError("time_features must be a list")
         if self.pred_len % 2 != 0:
             logger.warning(
                 "pred_len (%s) is odd. For affine coupling, even values are preferred",
@@ -515,6 +590,119 @@ class FEDformerConfig:
     @compile_mode.setter
     def compile_mode(self, value: str) -> None:
         self.sections.training.runtime.compile_mode = value
+
+    @property
+    def finetune_from(self) -> Optional[str]:
+        return self.sections.training.runtime.finetune_from
+
+    @finetune_from.setter
+    def finetune_from(self, value: Optional[str]) -> None:
+        self.sections.training.runtime.finetune_from = value
+
+    @property
+    def freeze_backbone(self) -> bool:
+        return self.sections.training.runtime.freeze_backbone
+
+    @freeze_backbone.setter
+    def freeze_backbone(self, value: bool) -> None:
+        self.sections.training.runtime.freeze_backbone = value
+
+    @property
+    def finetune_lr(self) -> Optional[float]:
+        return self.sections.training.runtime.finetune_lr
+
+    @finetune_lr.setter
+    def finetune_lr(self, value: Optional[float]) -> None:
+        self.sections.training.runtime.finetune_lr = value
+
+    # -- Preprocessing settings proxies ---------------------------------------
+    @property
+    def feature_roles(self) -> Dict[str, str]:
+        return self.sections.preprocessing.feature_roles
+
+    @feature_roles.setter
+    def feature_roles(self, value: Dict[str, str]) -> None:
+        self.sections.preprocessing.feature_roles = value
+
+    @property
+    def scaling_strategy(self) -> str:
+        return self.sections.preprocessing.scaling_strategy
+
+    @scaling_strategy.setter
+    def scaling_strategy(self, value: str) -> None:
+        self.sections.preprocessing.scaling_strategy = value
+
+    @property
+    def missing_policy(self) -> str:
+        return self.sections.preprocessing.missing_policy
+
+    @missing_policy.setter
+    def missing_policy(self, value: str) -> None:
+        self.sections.preprocessing.missing_policy = value
+
+    @property
+    def outlier_policy(self) -> str:
+        return self.sections.preprocessing.outlier_policy
+
+    @outlier_policy.setter
+    def outlier_policy(self, value: str) -> None:
+        self.sections.preprocessing.outlier_policy = value
+
+    @property
+    def fit_scope(self) -> str:
+        return self.sections.preprocessing.fit_scope
+
+    @fit_scope.setter
+    def fit_scope(self, value: str) -> None:
+        self.sections.preprocessing.fit_scope = value
+
+    @property
+    def persist_artifacts(self) -> bool:
+        return self.sections.preprocessing.persist_artifacts
+
+    @persist_artifacts.setter
+    def persist_artifacts(self, value: bool) -> None:
+        self.sections.preprocessing.persist_artifacts = value
+
+    @property
+    def drift_checks(self) -> Dict[str, Any]:
+        return self.sections.preprocessing.drift_checks
+
+    @drift_checks.setter
+    def drift_checks(self, value: Dict[str, Any]) -> None:
+        self.sections.preprocessing.drift_checks = value
+
+    @property
+    def strict_mode(self) -> bool:
+        return self.sections.preprocessing.strict_mode
+
+    @strict_mode.setter
+    def strict_mode(self, value: bool) -> None:
+        self.sections.preprocessing.strict_mode = value
+
+    @property
+    def categorical_encoding(self) -> str:
+        return self.sections.preprocessing.categorical_encoding
+
+    @categorical_encoding.setter
+    def categorical_encoding(self, value: str) -> None:
+        self.sections.preprocessing.categorical_encoding = value
+
+    @property
+    def time_features(self) -> List[str]:
+        return self.sections.preprocessing.time_features
+
+    @time_features.setter
+    def time_features(self, value: List[str]) -> None:
+        self.sections.preprocessing.time_features = value
+
+    @property
+    def artifact_dir(self) -> str:
+        return self.sections.preprocessing.artifact_dir
+
+    @artifact_dir.setter
+    def artifact_dir(self, value: str) -> None:
+        self.sections.preprocessing.artifact_dir = value
 
     # -- Monitoring settings proxies -----------------------------------------
     @property

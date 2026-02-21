@@ -79,7 +79,7 @@ def test_device_transfer(
     x_dec = x_dec.to(device)
     x_regime = x_regime.to(device)
     dist = model(x_enc, x_dec, x_regime)
-    assert dist.mean.device == device
+    assert dist.mean.device.type == device.type
 
 
 @pytest.mark.slow

@@ -23,16 +23,11 @@ class RiskSimulator:
         """Conditional Value at Risk calculation"""
         losses = -self.samples
         var = self.calculate_var()
-        cvar_result = np.zeros_like(var)
-
-        for t in range(self.samples.shape[1]):
-            for f in range(self.samples.shape[2]):
-                tail_samples = losses[losses[:, t, f] >= var[t, f], t, f]
-                if len(tail_samples) > 0:
-                    cvar_result[t, f] = tail_samples.mean()
-                else:
-                    cvar_result[t, f] = var[t, f]
-        return cvar_result
+        tail_mask = losses >= var[None, :, :]
+        tail_losses = np.where(tail_mask, losses, np.nan)
+        with np.errstate(invalid="ignore"):
+            cvar_result = np.nanmean(tail_losses, axis=0)
+        return np.where(np.isnan(cvar_result), var, cvar_result)
 
     def calculate_expected_shortfall(self) -> np.ndarray:
         """Expected Shortfall (same as CVaR)"""

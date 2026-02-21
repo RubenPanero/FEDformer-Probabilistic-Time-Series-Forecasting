@@ -66,8 +66,12 @@ class Flow_FEDformer(nn.Module):
         )
         self.sequence_layers = nn.ModuleDict(
             {
-                "encoder": EncoderLayer(encoder_config),
-                "decoder": DecoderLayer(decoder_config),
+                "encoders": nn.ModuleList(
+                    [EncoderLayer(encoder_config) for _ in range(config.e_layers)]
+                ),
+                "decoders": nn.ModuleList(
+                    [DecoderLayer(decoder_config) for _ in range(config.d_layers)]
+                ),
             }
         )
 
@@ -143,18 +147,28 @@ class Flow_FEDformer(nn.Module):
 
         if self.config.use_gradient_checkpointing and self.training:
             try:
-                enc_out = torch.utils.checkpoint.checkpoint(
-                    self.sequence_layers["encoder"], enc_out
-                )
-                dec_out, trend_part = torch.utils.checkpoint.checkpoint(
-                    self.sequence_layers["decoder"], dec_out, enc_out
-                )
+                for encoder_layer in self.sequence_layers["encoders"]:
+                    enc_out = torch.utils.checkpoint.checkpoint(encoder_layer, enc_out)
+                trend_part = torch.zeros_like(trend_init)
+                for decoder_layer in self.sequence_layers["decoders"]:
+                    dec_out, trend_delta = torch.utils.checkpoint.checkpoint(
+                        decoder_layer, dec_out, enc_out
+                    )
+                    trend_part = trend_part + trend_delta
             except RuntimeError:
-                enc_out = self.sequence_layers["encoder"](enc_out)
-                dec_out, trend_part = self.sequence_layers["decoder"](dec_out, enc_out)
+                for encoder_layer in self.sequence_layers["encoders"]:
+                    enc_out = encoder_layer(enc_out)
+                trend_part = torch.zeros_like(trend_init)
+                for decoder_layer in self.sequence_layers["decoders"]:
+                    dec_out, trend_delta = decoder_layer(dec_out, enc_out)
+                    trend_part = trend_part + trend_delta
         else:
-            enc_out = self.sequence_layers["encoder"](enc_out)
-            dec_out, trend_part = self.sequence_layers["decoder"](dec_out, enc_out)
+            for encoder_layer in self.sequence_layers["encoders"]:
+                enc_out = encoder_layer(enc_out)
+            trend_part = torch.zeros_like(trend_init)
+            for decoder_layer in self.sequence_layers["decoders"]:
+                dec_out, trend_delta = decoder_layer(dec_out, enc_out)
+                trend_part = trend_part + trend_delta
 
         # FIXED: Pre-validate shapes instead of ad-hoc projection
         # This ensures trend components have consistent dimensions throughout
@@ -220,19 +234,18 @@ class NormalizingFlowDistribution:
     def sample(self, n_samples: int) -> torch.Tensor:
         """Generate samples by inverting the learned flows."""
         batch_size, time_steps, num_features = self.means.shape
-        samples = []
-        for _ in range(n_samples):
-            feature_samples = []
-            for feature_idx in range(num_features):
-                ctx_feature = self.contexts[:, feature_idx, :]
-                z = torch.randn(
-                    batch_size,
-                    time_steps,
-                    device=self.means.device,
-                    dtype=self.means.dtype,
-                )
-                x0 = self.flows[feature_idx].inverse(z, context=ctx_feature)
-                feature_samples.append(x0.unsqueeze(-1))
-            stacked = torch.cat(feature_samples, dim=-1)
-            samples.append(stacked + self.means)
-        return torch.stack(samples, dim=0)
+        feature_samples = []
+        for feature_idx in range(num_features):
+            ctx_feature = self.contexts[:, feature_idx, :]
+            expanded_ctx = ctx_feature.unsqueeze(0).expand(n_samples, -1, -1)
+            z = torch.randn(
+                n_samples,
+                batch_size,
+                time_steps,
+                device=self.means.device,
+                dtype=self.means.dtype,
+            )
+            x0 = self.flows[feature_idx].inverse(z, context=expanded_ctx)
+            feature_samples.append(x0.unsqueeze(-1))
+        stacked = torch.cat(feature_samples, dim=-1)
+        return stacked + self.means.unsqueeze(0)

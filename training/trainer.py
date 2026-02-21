@@ -7,7 +7,7 @@ import logging
 import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Iterable
 
 import numpy as np
 import torch
@@ -17,8 +17,13 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.distributions import Distribution
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Subset
-import wandb
-from wandb.errors import Error as WandbError
+
+try:
+    import wandb
+    from wandb.errors import Error as WandbError
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None  # type: ignore[assignment]
+    WandbError = Exception
 
 from config import FEDformerConfig
 from data import TimeSeriesDataset
@@ -69,6 +74,8 @@ class WalkForwardTrainer:
         """Create and optionally compile model."""
         try:
             model = Flow_FEDformer(self.config).to(device, non_blocking=True)
+            if self.config.finetune_from or self.config.freeze_backbone:
+                return model
             if (
                 self.config.compile_mode
                 and device.type == "cuda"
@@ -90,10 +97,10 @@ class WalkForwardTrainer:
         """Prepare and return train and test DataLoaders."""
         num_workers = min(4, os.cpu_count() // 2) if os.cpu_count() else 0
         generator = torch.Generator()
-        generator.manual_seed(self.config.__dict__.get("seed", 42))
+        generator.manual_seed(self.config.seed)
 
         def _worker_init_fn(worker_id: int) -> None:
-            base_seed = self.config.__dict__.get("seed", 42)
+            base_seed = self.config.seed
             np.random.seed(base_seed + worker_id)
             torch.manual_seed(base_seed + worker_id)
 
@@ -188,9 +195,21 @@ class WalkForwardTrainer:
             train_subset, test_subset
         )
         model = self._get_model()
+        self._maybe_load_finetune_checkpoint(model)
+        if self.config.freeze_backbone:
+            self._apply_freeze_backbone(model)
+
+        lr = (
+            self.config.finetune_lr
+            if self.config.finetune_from and self.config.finetune_lr is not None
+            else self.config.learning_rate
+        )
+        trainable_params = list(self._trainable_params(model))
+        if not trainable_params:
+            raise RuntimeError("No trainable parameters found for optimizer.")
         optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=self.config.learning_rate,
+            trainable_params,
+            lr=lr,
             weight_decay=self.config.weight_decay,
             eps=1e-8,
         )
@@ -207,6 +226,60 @@ class WalkForwardTrainer:
             test_loader=test_loader,
             fold=fold_idx,
         )
+
+    def _maybe_load_finetune_checkpoint(self, model: Flow_FEDformer) -> None:
+        """Warm-start model weights from a checkpoint path if configured."""
+        ckpt_path = self.config.finetune_from
+        if not ckpt_path:
+            return
+        if not os.path.exists(ckpt_path):
+            raise FileNotFoundError(f"Fine-tune checkpoint not found: {ckpt_path}")
+        checkpoint = torch.load(ckpt_path, map_location=device)
+        state_dict = (
+            checkpoint["model_state_dict"]
+            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
+            else checkpoint
+        )
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        logger.info(
+            "Loaded fine-tune checkpoint from %s (missing=%d, unexpected=%d)",
+            ckpt_path,
+            len(missing),
+            len(unexpected),
+        )
+
+    def _apply_freeze_backbone(self, model: Flow_FEDformer) -> None:
+        """Freeze backbone and keep lightweight heads/trainable adapters."""
+        for param in model.parameters():
+            param.requires_grad = False
+
+        # Keep heads and conditioning trainable.
+        for flow in model.flows:
+            for param in flow.parameters():
+                param.requires_grad = True
+
+        trainable_component_keys = {
+            "flow_conditioner_proj",
+            "enc_embedding",
+            "dec_embedding",
+            "regime_embedding",
+        }
+        for key, module in model.components.items():
+            if key in trainable_component_keys:
+                for param in module.parameters():
+                    param.requires_grad = True
+
+        # Keep normalization adaptable for domain shift.
+        for module in model.modules():
+            if isinstance(module, nn.LayerNorm):
+                for param in module.parameters():
+                    param.requires_grad = True
+
+    @staticmethod
+    def _trainable_params(model: nn.Module) -> Iterable[nn.Parameter]:
+        for param in model.parameters():
+            if param.requires_grad:
+                yield param
 
     def save_checkpoint(
         self,
@@ -268,6 +341,10 @@ class WalkForwardTrainer:
     def _initialize_wandb(self) -> None:
         """Initializes Weights & Biases run."""
         try:
+            if wandb is None:
+                logger.info("W&B not installed. Continuing without external logging.")
+                self.wandb_run = None
+                return
             self.wandb_run = wandb.init(
                 project=self.config.wandb_project,
                 entity=self.config.wandb_entity,
@@ -391,13 +468,21 @@ class WalkForwardTrainer:
             test_end_idx,
         )
 
-        # FIXED: Prevent data leakage - only use historical data before test period
-        # Fold 1: train=[0:split], test=[split:2*split]
-        # Fold 2: train=[0:2*split], test=[2*split:3*split], NOT train=[0:3*split]
-        train_indices = list(range(fold_idx * split_size))
+        # Refit transforms using only historical data from this fold.
+        self.full_dataset.refit_for_cutoff(train_end_idx)
+
+        train_indices, test_indices = self._build_fold_indices(train_end_idx, test_end_idx)
+        if not train_indices:
+            logger.warning(
+                "Insufficient history for fold %s after label-safe cutoff.", fold_idx
+            )
+            return None
+        if not test_indices:
+            logger.warning("No valid test windows for fold %s.", fold_idx)
+            return None
+
         train_subset = Subset(self.full_dataset, train_indices)
-        test_indices = range(train_end_idx, min(test_end_idx, len(self.full_dataset)))
-        test_subset = Subset(self.full_dataset, list(test_indices))
+        test_subset = Subset(self.full_dataset, test_indices)
 
         components = self._build_training_components(
             train_subset, test_subset, fold_idx
@@ -431,6 +516,22 @@ class WalkForwardTrainer:
             self.wandb_run.log({"fold": fold_idx, "fold_completed": True})
 
         return fold_preds, fold_gt, fold_samples
+
+    def _build_fold_indices(
+        self, train_end_idx: int, test_end_idx: int
+    ) -> Tuple[list[int], list[int]]:
+        """Compute leakage-safe train/test window start indices for one fold."""
+        train_max_start = train_end_idx - self.config.seq_len - self.config.pred_len
+        if train_max_start < 0:
+            return [], []
+        train_indices = list(range(train_max_start + 1))
+
+        test_max_start = test_end_idx - self.config.seq_len - self.config.pred_len
+        if test_max_start < train_end_idx:
+            return train_indices, []
+        test_limit = min(test_max_start + 1, len(self.full_dataset))
+        test_indices = list(range(train_end_idx, test_limit))
+        return train_indices, test_indices
 
     def run_backtest(
         self, n_splits: int = 5

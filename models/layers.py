@@ -5,20 +5,12 @@ Componentes basicos del modelo FEDformer: capas de atencion y descomposicion.
 
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, List, Tuple, cast
+from typing import Callable, List, Tuple, cast
 
 import torch
 from torch import nn
 from torch.fft import irfft, rfft
-from torch.nn.functional import conv1d, interpolate, pad
-
-
-def _apply_conv1d(
-    input_tensor: torch.Tensor, weight: torch.Tensor, **kwargs: Any
-) -> torch.Tensor:
-    """Wrapper around torch.nn.functional.conv1d for static analysis."""
-    conv = cast(Callable[..., torch.Tensor], conv1d)  # pylint: disable=not-callable
-    return conv(input_tensor, weight, **kwargs)  # pylint: disable=not-callable
+from torch.nn.functional import avg_pool1d, interpolate, pad
 
 
 def _apply_rfft(x: torch.Tensor, *, dim: int) -> torch.Tensor:
@@ -54,7 +46,6 @@ class OptimizedSeriesDecomp(nn.Module):
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Split input into seasonal and trend signals via moving averages."""
         x_t = x.transpose(1, 2)  # [batch, len, channels] -> [batch, channels, len]
-        _, num_channels, _ = x_t.shape
         trends = []
         for kernel_size in self.kernel_sizes:
             if kernel_size <= 1:
@@ -65,10 +56,7 @@ class OptimizedSeriesDecomp(nn.Module):
             x_padded = pad(
                 x_t, (left, right), mode="replicate"
             )  # [batch, channels, len + left + right]
-            weight = torch.ones(
-                num_channels, 1, kernel_size, device=x_t.device, dtype=x_t.dtype
-            ) / float(kernel_size)
-            trend = _apply_conv1d(x_padded, weight, groups=num_channels)
+            trend = avg_pool1d(x_padded, kernel_size=kernel_size, stride=1)
             trends.append(trend)
         trend = (
             torch.stack(trends).mean(0).transpose(1, 2)
@@ -128,6 +116,7 @@ class AttentionLayer(nn.Module):
         )
         self.query_proj = nn.Linear(config.d_model, config.d_model)
         self.key_proj = nn.Linear(config.d_model, config.d_model)
+        self.value_proj = nn.Linear(config.d_model, config.d_model)
         self.out_proj = nn.Linear(config.d_model, config.d_model)
         self.dropout = nn.Dropout(config.dropout)
 
@@ -150,7 +139,7 @@ class AttentionLayer(nn.Module):
             .transpose(1, 2)
         )
         v_heads = (
-            self.key_proj(v)
+            self.value_proj(v)
             .view(batch_k, len_k, self.n_heads, self.d_keys)
             .transpose(1, 2)
         )
@@ -180,7 +169,7 @@ class AttentionLayer(nn.Module):
                 batch_k, self.n_heads, self.d_keys, len_q
             ).transpose(2, 3)
 
-        attn_out = self.fourier_attention(q_heads * k_heads)
+        attn_out = self.fourier_attention(q_heads * k_heads) * v_heads
         batch_out, len_out = q.shape[:2]
         attn_out = attn_out.transpose(1, 2).contiguous().view(batch_out, len_out, -1)
         return self.dropout(self.out_proj(attn_out))

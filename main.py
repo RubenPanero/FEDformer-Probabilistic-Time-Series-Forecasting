@@ -17,12 +17,24 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 import numpy as np
-import wandb
+
+try:
+    import matplotlib.pyplot as plt
+except ImportError:  # pragma: no cover - optional dependency
+    plt = None  # type: ignore[assignment]
+
+try:
+    import wandb
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None  # type: ignore[assignment]
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+else:
+    Figure = Any
 
 from config import FEDformerConfig
 from data import TimeSeriesDataset
@@ -74,6 +86,22 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--grad-accum-steps", type=int, default=1, help="Gradient accumulation steps"
     )
+    parser.add_argument(
+        "--finetune-from",
+        default=None,
+        help="Path to checkpoint for fine-tuning warm-start.",
+    )
+    parser.add_argument(
+        "--freeze-backbone",
+        action="store_true",
+        help="Freeze backbone and fine-tune lightweight heads only.",
+    )
+    parser.add_argument(
+        "--finetune-lr",
+        type=float,
+        default=None,
+        help="Learning rate to use during fine-tuning.",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
         "--deterministic", action="store_true", help="Enable deterministic mode (cuDNN)"
@@ -116,6 +144,9 @@ def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerCon
         batch_size=args.batch_size,
         use_gradient_checkpointing=args.use_checkpointing,
         gradient_accumulation_steps=args.grad_accum_steps,
+        finetune_from=args.finetune_from,
+        freeze_backbone=args.freeze_backbone,
+        finetune_lr=args.finetune_lr,
         wandb_project=args.wandb_project,
         wandb_entity=args.wandb_entity,
         date_column=args.date_col,
@@ -191,28 +222,38 @@ def _prepare_unscaled_series(
     config: FEDformerConfig,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Rescale model predictions and ground truth back to original units."""
+    preprocessor = getattr(data.dataset, "preprocessor", None)
+    if preprocessor is not None and hasattr(preprocessor, "inverse_transform_targets"):
+        unscaled_preds = preprocessor.inverse_transform_targets(
+            data.predictions, config.target_features
+        )
+        unscaled_gt = preprocessor.inverse_transform_targets(
+            data.ground_truth, config.target_features
+        )
+        return unscaled_preds, unscaled_gt
+
     scaler = getattr(data.dataset, "scaler", None)
     target_indices = getattr(data.dataset, "target_indices", None)
     if scaler is None or not target_indices:
         raise ValueError("Dataset scaler or target indices are missing.")
 
-    target_idx = target_indices[0]
-
     dummy_preds = np.zeros(
         (data.predictions.shape[0], data.predictions.shape[1], config.enc_in)
     )
-    dummy_preds[..., target_idx] = data.predictions[..., 0]
+    for feature_idx, target_idx in enumerate(target_indices):
+        dummy_preds[..., target_idx] = data.predictions[..., feature_idx]
     unscaled_preds = scaler.inverse_transform(
         dummy_preds.reshape(-1, config.enc_in)
-    ).reshape(dummy_preds.shape)[..., target_idx : target_idx + 1]
+    ).reshape(dummy_preds.shape)[..., target_indices]
 
     dummy_gt = np.zeros(
         (data.ground_truth.shape[0], data.ground_truth.shape[1], config.enc_in)
     )
-    dummy_gt[..., target_idx] = data.ground_truth[..., 0]
+    for feature_idx, target_idx in enumerate(target_indices):
+        dummy_gt[..., target_idx] = data.ground_truth[..., feature_idx]
     unscaled_gt = scaler.inverse_transform(dummy_gt.reshape(-1, config.enc_in)).reshape(
         dummy_gt.shape
-    )[..., target_idx : target_idx + 1]
+    )[..., target_indices]
 
     return unscaled_preds, unscaled_gt
 
@@ -223,6 +264,8 @@ def _create_portfolio_figure(
     cvar: np.ndarray,
 ) -> Figure:
     """Create matplotlib visualizations for portfolio and risk metrics."""
+    if plt is None:
+        raise RuntimeError("matplotlib is required for visualization output.")
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
 
     ax1.plot(
@@ -265,6 +308,8 @@ def _log_metrics_to_wandb(
     cvar: np.ndarray,
 ) -> None:
     """Log portfolio metrics to Weights & Biases when available."""
+    if wandb is None:
+        return
     if not wandb.run or not hasattr(wandb.run, "log"):
         return
 
@@ -285,6 +330,8 @@ def _log_metrics_to_wandb(
 
 def _handle_visualization_output(fig: Figure, args: argparse.Namespace) -> None:
     """Persist or display the generated figure based on CLI arguments."""
+    if plt is None:
+        return
     if args.save_fig:
         try:
             fig.savefig(args.save_fig, dpi=150, bbox_inches="tight")
