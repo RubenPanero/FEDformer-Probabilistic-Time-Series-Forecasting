@@ -52,7 +52,7 @@ jobs:
           rows = 96
           df = pd.DataFrame(
               {
-                  "date": pd.date_range("2024-01-01", periods=rows, freq="H"),
+                  "date": pd.date_range("2024-01-01", periods=rows, freq="h"),
                   "Close": rng.normal(100, 2, rows),
                   "Volume": rng.normal(1_000, 25, rows),
               }

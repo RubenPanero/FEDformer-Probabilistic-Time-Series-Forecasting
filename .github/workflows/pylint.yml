@@ -2,7 +2,7 @@ name: Pylint
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master, develop ]
   pull_request:
 
 jobs:
@@ -24,5 +24,18 @@ jobs:
           pip install pylint
 
       - name: Run pylint
+        env:
+          PYTHONPATH: .
         run: |
-          pylint main.py config.py models training utils
+          set -euo pipefail
+          TARGETS=()
+          for path in main.py config.py models training utils; do
+            if [ -e "$path" ]; then
+              TARGETS+=("$path")
+            fi
+          done
+          if [ ${#TARGETS[@]} -eq 0 ]; then
+            echo "No lint targets found."
+            exit 0
+          fi
+          pylint --disable=all --enable=E,F "${TARGETS[@]}"

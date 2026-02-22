@@ -114,13 +114,21 @@ class Flow_FEDformer(nn.Module):
         x_regime: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Concatenate regime embeddings with encoder/decoder tensors."""
-        regime_idx = x_regime.squeeze()
-        if regime_idx.dim() > 1:
-            regime_idx = regime_idx.view(regime_idx.size(0), -1)[:, 0]
-        regime_vec = self.components["regime_embedding"](regime_idx.long())
-        regime_vec_enc = regime_vec.unsqueeze(1).expand(-1, self.config.seq_len, -1)
+        batch_size = x_enc.size(0)
+        regime_idx = x_regime.long().reshape(-1)
+        if regime_idx.numel() == 1 and batch_size > 1:
+            regime_idx = regime_idx.expand(batch_size)
+        if regime_idx.numel() != batch_size:
+            raise RuntimeError(
+                f"regime batch mismatch: expected {batch_size}, got {regime_idx.numel()}"
+            )
+
+        regime_vec = self.components["regime_embedding"](regime_idx)
+        regime_vec_enc = regime_vec.unsqueeze(1).expand(
+            batch_size, self.config.seq_len, regime_vec.size(-1)
+        )
         regime_vec_dec = regime_vec.unsqueeze(1).expand(
-            -1, self.config.label_len + self.config.pred_len, -1
+            batch_size, self.config.label_len + self.config.pred_len, regime_vec.size(-1)
         )
         return (
             torch.cat([x_enc, regime_vec_enc], dim=-1),
