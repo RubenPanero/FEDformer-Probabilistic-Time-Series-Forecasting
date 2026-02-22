@@ -79,7 +79,9 @@ class PreprocessingPipeline:
         date_column: Optional[str] = None,
         strict_mode: Optional[bool] = None,
     ) -> "PreprocessingPipeline":
-        return cls(config, target_features, date_column=date_column, strict_mode=strict_mode)
+        return cls(
+            config, target_features, date_column=date_column, strict_mode=strict_mode
+        )
 
     def _fail_or_warn(self, message: str) -> None:
         if self.strict_mode:
@@ -101,10 +103,16 @@ class PreprocessingPipeline:
         self.source_columns = list(df.columns)
 
         if self.date_column and self.date_column not in df.columns:
-            self._fail_or_warn(f"Date column '{self.date_column}' not present in input data.")
+            self._fail_or_warn(
+                f"Date column '{self.date_column}' not present in input data."
+            )
 
-        declared_numeric = [c for c, role in roles.items() if role == "numeric" and c in df.columns]
-        declared_categorical = [c for c, role in roles.items() if role == "categorical" and c in df.columns]
+        declared_numeric = [
+            c for c, role in roles.items() if role == "numeric" and c in df.columns
+        ]
+        declared_categorical = [
+            c for c, role in roles.items() if role == "categorical" and c in df.columns
+        ]
         excluded = {self.date_column} if self.date_column else set()
         excluded.update(declared_categorical)
 
@@ -227,7 +235,9 @@ class PreprocessingPipeline:
             selected += self.categorical_columns
         missing_selected = [c for c in selected if c not in out.columns]
         if missing_selected:
-            raise ValueError(f"Missing selected columns in input frame: {missing_selected}")
+            raise ValueError(
+                f"Missing selected columns in input frame: {missing_selected}"
+            )
 
         feature_df = out[selected].copy()
         if fit:
@@ -243,7 +253,9 @@ class PreprocessingPipeline:
         for col in fit_df.columns:
             series = fit_df[col]
             if pd.api.types.is_numeric_dtype(series):
-                self.fill_values[col] = float(series.median()) if not series.dropna().empty else 0.0
+                self.fill_values[col] = (
+                    float(series.median()) if not series.dropna().empty else 0.0
+                )
             else:
                 mode = series.mode(dropna=True)
                 self.fill_values[col] = mode.iloc[0] if not mode.empty else "__nan__"
@@ -352,7 +364,9 @@ class PreprocessingPipeline:
                     f"Column '{col}' std ratio out of bounds: {std_ratio:.3f} not in [{std_low:.3f}, {std_high:.3f}]"
                 )
 
-    def fit(self, df: pd.DataFrame, fit_end_idx: Optional[int] = None) -> "PreprocessingPipeline":
+    def fit(
+        self, df: pd.DataFrame, fit_end_idx: Optional[int] = None
+    ) -> "PreprocessingPipeline":
         raw_features = self._build_feature_frame(df, fit=True)
         cutoff = fit_end_idx if fit_end_idx is not None else len(raw_features)
         cutoff = int(max(1, min(cutoff, len(raw_features))))
@@ -369,7 +383,9 @@ class PreprocessingPipeline:
         self.scaler.fit(fit_df.values)
 
         self.feature_columns = fit_df.columns.tolist()
-        self.target_indices = [self.feature_columns.index(t) for t in self.target_features]
+        self.target_indices = [
+            self.feature_columns.index(t) for t in self.target_features
+        ]
         self.fitted = True
 
         if self.settings.persist_artifacts:
@@ -387,13 +403,17 @@ class PreprocessingPipeline:
         self.validate_input_schema(df, feature_df=feature_df)
         feature_df = feature_df.reindex(columns=self.feature_columns, fill_value=0.0)
         transformed = self.scaler.transform(feature_df.values)
-        return pd.DataFrame(transformed, columns=self.feature_columns, index=feature_df.index)
+        return pd.DataFrame(
+            transformed, columns=self.feature_columns, index=feature_df.index
+        )
 
     def inverse_transform_targets(
         self, y: np.ndarray, target_names: List[str]
     ) -> np.ndarray:
         if not self.fitted:
-            raise RuntimeError("PreprocessingPipeline must be fitted before inverse transform.")
+            raise RuntimeError(
+                "PreprocessingPipeline must be fitted before inverse transform."
+            )
         arr = np.asarray(y, dtype=float)
         if arr.shape[-1] != len(target_names):
             raise ValueError("Last dimension of y must match target_names length.")
@@ -412,7 +432,9 @@ class PreprocessingPipeline:
 
     def save_artifacts(self, path: str | Path) -> None:
         if not self.fitted:
-            raise RuntimeError("Cannot save artifacts before fitting preprocessing pipeline.")
+            raise RuntimeError(
+                "Cannot save artifacts before fitting preprocessing pipeline."
+            )
         out_dir = Path(path)
         out_dir.mkdir(parents=True, exist_ok=True)
 

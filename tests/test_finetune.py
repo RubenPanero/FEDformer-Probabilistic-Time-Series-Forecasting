@@ -49,11 +49,17 @@ def test_trainer_finetune_checkpoint_and_freeze(tmp_path: Path) -> None:
     trainer = WalkForwardTrainer(cfg, ds)
     train_subset = Subset(ds, list(range(min(32, len(ds)))))
     test_subset = Subset(ds, list(range(min(32, len(ds)))))
-    components = trainer._build_training_components(train_subset, test_subset, fold_idx=1)
+    components = trainer._build_training_components(
+        train_subset, test_subset, fold_idx=1
+    )
 
-    loaded_value = components.model.state_dict()["components.regime_embedding.weight"][0, 0]
+    loaded_value = components.model.state_dict()["components.regime_embedding.weight"][
+        0, 0
+    ]
     assert torch.isclose(loaded_value, torch.tensor(0.1234), atol=1e-6)
 
-    trainable = {name: p.requires_grad for name, p in components.model.named_parameters()}
+    trainable = {
+        name: p.requires_grad for name, p in components.model.named_parameters()
+    }
     assert trainable["flows.0.layers.0.conditioner.0.weight"] is True
     assert trainable["sequence_layers.encoders.0.layers.conv.0.weight"] is False

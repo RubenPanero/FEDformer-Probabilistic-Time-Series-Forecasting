@@ -69,13 +69,17 @@ def test_outlier_winsorize_clips_extremes(mixed_csv: str) -> None:
     cfg_win = FEDformerConfig(**base_cfg, outlier_policy="winsorize")
 
     pipe_none = PreprocessingPipeline.from_config(
-        cfg_none, target_features=cfg_none.target_features, date_column=cfg_none.date_column
+        cfg_none,
+        target_features=cfg_none.target_features,
+        date_column=cfg_none.date_column,
     )
     pipe_none.fit(raw, fit_end_idx=80)
     none_vals = pipe_none.transform(raw)["Close"].to_numpy()
 
     pipe_win = PreprocessingPipeline.from_config(
-        cfg_win, target_features=cfg_win.target_features, date_column=cfg_win.date_column
+        cfg_win,
+        target_features=cfg_win.target_features,
+        date_column=cfg_win.date_column,
     )
     pipe_win.fit(raw, fit_end_idx=80)
     win_vals = pipe_win.transform(raw)["Close"].to_numpy()

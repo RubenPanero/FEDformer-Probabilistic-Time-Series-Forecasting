@@ -471,7 +471,9 @@ class WalkForwardTrainer:
         # Refit transforms using only historical data from this fold.
         self.full_dataset.refit_for_cutoff(train_end_idx)
 
-        train_indices, test_indices = self._build_fold_indices(train_end_idx, test_end_idx)
+        train_indices, test_indices = self._build_fold_indices(
+            train_end_idx, test_end_idx
+        )
         if not train_indices:
             logger.warning(
                 "Insufficient history for fold %s after label-safe cutoff.", fold_idx

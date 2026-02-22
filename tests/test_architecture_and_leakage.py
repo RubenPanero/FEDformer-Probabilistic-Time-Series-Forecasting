@@ -46,7 +46,9 @@ def test_fold_indices_avoid_label_leakage() -> None:
 
     train_end_idx = 100
     test_end_idx = 140
-    train_indices, test_indices = trainer._build_fold_indices(train_end_idx, test_end_idx)
+    train_indices, test_indices = trainer._build_fold_indices(
+        train_end_idx, test_end_idx
+    )
 
     assert train_indices
     assert test_indices

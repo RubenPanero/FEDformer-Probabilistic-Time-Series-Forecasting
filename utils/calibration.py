@@ -10,7 +10,9 @@ from typing import Tuple
 import numpy as np
 
 
-def conformal_quantile(y_true: np.ndarray, y_pred: np.ndarray, alpha: float = 0.1) -> float:
+def conformal_quantile(
+    y_true: np.ndarray, y_pred: np.ndarray, alpha: float = 0.1
+) -> float:
     """Compute split-conformal residual quantile for two-sided intervals."""
     if not 0 < alpha < 1:
         raise ValueError(f"alpha must be in (0, 1), got {alpha}")

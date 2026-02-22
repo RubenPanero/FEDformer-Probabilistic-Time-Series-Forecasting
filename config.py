@@ -378,7 +378,9 @@ class FEDformerConfig:
                 "missing_policy must be one of ['drop', 'ffill_bfill', 'impute_median', 'error']"
             )
         if self.outlier_policy not in ["clip", "winsorize", "none"]:
-            raise ValueError("outlier_policy must be one of ['clip', 'winsorize', 'none']")
+            raise ValueError(
+                "outlier_policy must be one of ['clip', 'winsorize', 'none']"
+            )
         if self.fit_scope not in ["global_train", "fold_train_only"]:
             raise ValueError("fit_scope must be 'global_train' or 'fold_train_only'")
         if self.categorical_encoding not in ["none", "ordinal", "onehot"]:
