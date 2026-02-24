@@ -1,36 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-Componentes basicos del modelo FEDformer: capas de atencion y descomposicion.
+Componentes básicos del modelo FEDformer: capas de atención y descomposición.
+Optimizados y tipados restrictivamente para estándar productivo (Python 3.10+).
 """
 
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, List, Tuple, cast
 
 import torch
 from torch import nn
 from torch.fft import irfft, rfft
-from torch.nn.functional import conv1d, interpolate, pad
-
-
-def _apply_conv1d(
-    input_tensor: torch.Tensor, weight: torch.Tensor, **kwargs: Any
-) -> torch.Tensor:
-    """Wrapper around torch.nn.functional.conv1d for static analysis."""
-    conv = cast(Callable[..., torch.Tensor], conv1d)  # pylint: disable=not-callable
-    return conv(input_tensor, weight, **kwargs)  # pylint: disable=not-callable
+from torch.nn.functional import avg_pool1d, interpolate, pad
 
 
 def _apply_rfft(x: torch.Tensor, *, dim: int) -> torch.Tensor:
     """Wrapper around torch.fft.rfft for static analysis."""
-    rfft_fn = cast(Callable[..., torch.Tensor], rfft)  # pylint: disable=not-callable
-    return rfft_fn(x, dim=dim)  # pylint: disable=not-callable
+    # Tipado explícito obviando conversiones innecesarias 'cast' importadas
+    return rfft(x, dim=dim)  # pylint: disable=not-callable
 
 
 def _apply_irfft(x: torch.Tensor, *, n: int, dim: int) -> torch.Tensor:
     """Wrapper around torch.fft.irfft for static analysis."""
-    irfft_fn = cast(Callable[..., torch.Tensor], irfft)  # pylint: disable=not-callable
-    return irfft_fn(x, n=n, dim=dim)  # pylint: disable=not-callable
+    return irfft(x, n=n, dim=dim)  # pylint: disable=not-callable
 
 
 @dataclass(frozen=True)
@@ -45,89 +36,95 @@ class AttentionConfig:
 
 
 class OptimizedSeriesDecomp(nn.Module):
-    """Optimized decomposition with reduced memory footprint"""
+    """Optimized decomposition with reduced memory footprint and pure Python typing."""
 
-    def __init__(self, kernel_sizes: List[int]) -> None:
+    def __init__(self, kernel_sizes: list[int]) -> None:
         super().__init__()
         self.kernel_sizes = kernel_sizes
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Split input into seasonal and trend signals via moving averages."""
         x_t = x.transpose(1, 2)  # [batch, len, channels] -> [batch, channels, len]
-        _, num_channels, _ = x_t.shape
-        trends = []
+        trends: list[torch.Tensor] = []
+
         for kernel_size in self.kernel_sizes:
             if kernel_size <= 1:
                 trends.append(x_t)
                 continue
+
             left = (kernel_size - 1) // 2
             right = kernel_size - 1 - left
+            # Pad estricto
             x_padded = pad(
                 x_t, (left, right), mode="replicate"
             )  # [batch, channels, len + left + right]
-            weight = torch.ones(
-                num_channels, 1, kernel_size, device=x_t.device, dtype=x_t.dtype
-            ) / float(kernel_size)
-            trend = _apply_conv1d(x_padded, weight, groups=num_channels)
-            trends.append(trend)
+
+            trend_val = avg_pool1d(x_padded, kernel_size=kernel_size, stride=1)  # pylint: disable=not-callable
+            trends.append(trend_val)
+
         trend = (
             torch.stack(trends).mean(0).transpose(1, 2)
         )  # Back to [batch, len, channels]
+
         return x - trend, trend
 
 
 class FourierAttention(nn.Module):
-    """Memory-optimized Fourier attention with better initialization"""
+    """Memory-optimized Fourier attention with better initialization."""
 
     def __init__(self, d_keys: int, seq_len: int, modes: int = 64) -> None:
         super().__init__()
         self.modes = min(modes, max(1, seq_len // 2))
-        # FIXED: Use deterministic seed for Fourier mode selection
+
         # Ensures reproducibility across runs with same seq_len and modes
         generator = torch.Generator()
-        # Create deterministic seed from seq_len and modes (hash)
         seed = (seq_len * 1009 + self.modes * 1013) % (2**31 - 1)
         generator.manual_seed(seed)
+
         indices = torch.randperm(max(1, seq_len // 2), generator=generator)[
             : self.modes
         ].sort()[0]
         self.register_buffer("index", indices)
 
-        # OPTIMIZED: Stable weight initialization (separate real/imag)
-        # Small std to avoid large FFT outputs
+        # Stable weight initialization (separate real/imag)
         std = 0.02 / max(1.0, math.sqrt(d_keys))
         self.weights_real = nn.Parameter(torch.randn(d_keys, d_keys, self.modes) * std)
         self.weights_imag = nn.Parameter(torch.randn(d_keys, d_keys, self.modes) * std)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply Fourier attention over the provided multi-head representations."""
-        _, _, seq_len, _ = x.shape
+        _b, _h, seq_len, _d = x.shape
         x = x.transpose(-1, -2)
 
         x_ft = _apply_rfft(x, dim=-1)
 
         weights_c = torch.complex(self.weights_real, self.weights_imag)
-        selected = x_ft[..., self.index]
+        # Type ignore for static analyzer regarding buffer properties
+        idx_buffer: torch.Tensor = self.index  # type: ignore
+        selected = x_ft[..., idx_buffer]
+
         processed_modes = torch.einsum("bhei,eoi->bhoi", selected, weights_c)
 
         out_ft = torch.zeros_like(x_ft)
-        out_ft[..., self.index] = processed_modes
+        out_ft[..., idx_buffer] = processed_modes
 
         return _apply_irfft(out_ft, n=seq_len, dim=-1).transpose(-1, -2)
 
 
 class AttentionLayer(nn.Module):
-    """Enhanced attention layer with better memory management"""
+    """Enhanced attention layer with better memory management."""
 
     def __init__(self, config: AttentionConfig) -> None:
         super().__init__()
         self.n_heads = config.n_heads
         self.d_keys = config.d_model // config.n_heads
+
         self.fourier_attention = FourierAttention(
             self.d_keys, config.seq_len, config.modes
         )
         self.query_proj = nn.Linear(config.d_model, config.d_model)
         self.key_proj = nn.Linear(config.d_model, config.d_model)
+        self.value_proj = nn.Linear(config.d_model, config.d_model)
         self.out_proj = nn.Linear(config.d_model, config.d_model)
         self.dropout = nn.Dropout(config.dropout)
 
@@ -150,7 +147,7 @@ class AttentionLayer(nn.Module):
             .transpose(1, 2)
         )
         v_heads = (
-            self.key_proj(v)
+            self.value_proj(v)
             .view(batch_k, len_k, self.n_heads, self.d_keys)
             .transpose(1, 2)
         )
@@ -180,7 +177,10 @@ class AttentionLayer(nn.Module):
                 batch_k, self.n_heads, self.d_keys, len_q
             ).transpose(2, 3)
 
-        attn_out = self.fourier_attention(q_heads * k_heads)
+        # Usando la fourier attention
+        attn_out = self.fourier_attention(q_heads * k_heads) * v_heads
+
         batch_out, len_out = q.shape[:2]
         attn_out = attn_out.transpose(1, 2).contiguous().view(batch_out, len_out, -1)
+
         return self.dropout(self.out_proj(attn_out))

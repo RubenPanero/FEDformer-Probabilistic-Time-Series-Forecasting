@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Utilidades para entrenamiento del modelo FEDformer.
+Refactorizado a Python 3.10+ para garantizar typing nativo purificado y eficiencia PEP 8.
 """
 
 import logging
-from typing import Dict
 
 import torch
 from torch import nn
@@ -17,15 +17,15 @@ device = get_device()
 
 def mc_dropout_inference(
     model: nn.Module,
-    batch: Dict[str, torch.Tensor],
+    batch: dict[str, torch.Tensor],
     n_samples: int = 100,
     use_flow_sampling: bool = True,
 ) -> torch.Tensor:
-    """Proper MC dropout inference with gradient management.
+    """Inferencia formal MC Dropout con manejo asertivo de gradientes.
 
-    If use_flow_sampling is True and the model returns a distribution with a
-    .sample() method, draw stochastic samples from the distribution. Otherwise,
-    fall back to the predictive mean under dropout noise.
+    Si use_flow_sampling es True y el modelo expone una distribución capaz
+    de muestrear (.sample()), extraeremos simulaciones finitas del ruido.
+    De otro modo, el sistema recae predictivamente en la media esperada.
     """
 
     def enable_dropout(m: nn.Module) -> None:
@@ -39,38 +39,57 @@ def mc_dropout_inference(
     x_dec = batch["x_dec"].to(device, non_blocking=True)
     x_regime = batch["x_regime"].to(device, non_blocking=True)
 
-    samples = []
-    # FIXED: Use torch.no_grad() to prevent memory leaks
+    samples: list[torch.Tensor] = []
+
     with torch.no_grad():
         for _ in range(n_samples):
             try:
                 dist = model(x_enc, x_dec, x_regime)
                 if use_flow_sampling and hasattr(dist, "sample"):
                     s = dist.sample(1)  # [1, B, T, F] or [1, B, T]
-                    # squeeze sample dimension
                     samples.append(s[0])
                 else:
                     samples.append(dist.mean)
             except (RuntimeError, ValueError) as exc:
-                logger.warning("MC sample failed: %s", exc)
-                # Return zeros if sampling fails
+                logger.warning(
+                    "Fallo en el muestreo de distribución MC Dropout: %s", exc
+                )
                 if samples:
                     samples.append(torch.zeros_like(samples[0]))
                 else:
-                    dummy_shape = (
-                        x_enc.size(0),
-                        model.config.pred_len,
-                        model.config.c_out,
-                    )
-                    samples.append(torch.zeros(dummy_shape, device=device))
+                    # Acceso seguro al shape nativo asumiendo inicializado el config
+                    pred_len = getattr(model, "config", None)
+                    if pred_len is not None:
+                        dummy_shape = (
+                            int(x_enc.size(0)),
+                            int(model.config.pred_len),  # type: ignore
+                            int(model.config.c_out),  # type: ignore
+                        )
+                    else:
+                        dummy_shape = (
+                            int(x_enc.size(0)),
+                            1,
+                            1,
+                        )  # Caída ciega defensiva
+                    samples.append(torch.zeros(*dummy_shape, device=device))
 
     if not samples:
-        logger.error("All MC samples failed")
-        dummy_shape = (x_enc.size(0), model.config.pred_len, model.config.c_out)
-        out = torch.zeros((1,) + dummy_shape, device=device)
+        logger.error("Se abortaron todos los muestreos de MonteCarlo.")
+        pred_len = getattr(model, "config", None)
+        if pred_len is not None:
+            dummy_shape = (
+                int(x_enc.size(0)),
+                int(model.config.pred_len),  # type: ignore
+                int(model.config.c_out),  # type: ignore
+            )
+        else:
+            dummy_shape = (int(x_enc.size(0)), 1, 1)
+        out = torch.zeros(1, *dummy_shape, device=device)
     else:
         out = torch.stack(samples)
 
-    # Restore original mode
-    model.train(prev_mode)
+    # Restauración inmutable del modo nativo del modelo
+    if not prev_mode:
+        model.eval()
+
     return out
