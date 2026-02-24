@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Dataset and regime handling for time-series training.
+Manejo de dataset y detección de regímenes para entrenamiento de series temporales.
+Refactorizado con tipado estricto Python 3.10+ y mejores prácticas.
 """
 
 from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -21,13 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 class RegimeDetector:
-    """Regime detector based on rolling volatility quantiles."""
+    """Detector de regímenes basado en cuantiles de volatilidad móvil (rolling)."""
 
     def __init__(self, n_regimes: int) -> None:
         self.n_regimes = n_regimes
-        self.quantiles: Optional[np.ndarray] = None
+        self.quantiles: np.ndarray | None = None
 
     def fit(self, data: np.ndarray) -> None:
+        """Ajustar cuantiles según series numéricas empíricas."""
         try:
             returns = np.diff(data, axis=0) / (np.abs(data[:-1]) + 1e-9)
             rolling_vol = (
@@ -44,32 +45,36 @@ class RegimeDetector:
                 self.quantiles = np.zeros(self.n_regimes - 1)
         except Exception as exc:  # pragma: no cover - defensive fallback
             logger.warning(
-                "Regime detector fit failed: %s. Using default quantiles.", exc
+                "Fallo en ajuste de detector de regímenes: %s. Usando defaults (0).", exc
             )
             self.quantiles = np.zeros(self.n_regimes - 1)
 
     def get_regime(self, sequence: np.ndarray) -> int:
+        """Categoriza una secuencia temporal dada en función del umbral computado."""
         if self.quantiles is None:
-            raise RuntimeError("Detector has not been fitted.")
+            raise RuntimeError("El detector no ha sido ajustado (fitted).")
+            
         try:
             returns = np.diff(sequence, axis=0) / (np.abs(sequence[:-1]) + 1e-9)
             sequence_vol = np.std(returns, axis=1).mean()
             return min(np.digitize(sequence_vol, self.quantiles), self.n_regimes - 1)
         except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning("Regime detection failed: %s. Using regime 0.", exc)
+            logger.warning("Fallo en detección de régimen: %s. Empleando régimen 0.", exc)
             return 0
 
 
 class TimeSeriesDataset(Dataset):
-    """Time-series dataset that delegates preprocessing to PreprocessingPipeline."""
+    """Dataset de series de tiempo que delega preprocesamiento a PreprocessingPipeline."""
+
+    # pylint: disable=too-many-instance-attributes
 
     def __init__(
         self,
         config: FEDformerConfig,
         flag: str,
-        fit_end_idx: Optional[int] = None,
-        strict: Optional[bool] = None,
-        preprocessor: Optional[PreprocessingPipeline] = None,
+        fit_end_idx: int | None = None,
+        strict: bool | None = None,
+        preprocessor: PreprocessingPipeline | None = None,
     ) -> None:
         self.config = config
         self.flag = flag
@@ -83,16 +88,19 @@ class TimeSeriesDataset(Dataset):
 
         self.raw_df = self._read_raw_data()
         self.regime_detector = RegimeDetector(n_regimes=self.config.n_regimes)
+        
         self._fit_and_transform(
             fit_end_idx=fit_end_idx, force_refit=not self.preprocessor.fitted
         )
         self._set_split_view()
 
     def _read_raw_data(self) -> pd.DataFrame:
+        """Carga perezosa de la fuente cruda en base al config provisto."""
         parse_cols = [self.config.date_column] if self.config.date_column else None
         return pd.read_csv(self.config.file_path, parse_dates=parse_cols)
 
-    def _fit_and_transform(self, fit_end_idx: Optional[int], force_refit: bool) -> None:
+    def _fit_and_transform(self, fit_end_idx: int | None, force_refit: bool) -> None:
+        """Ejecuta los protocolos de preprocesado numérico si corresponde."""
         fit_scope = self.preprocessor.fit_scope
         should_refit = (
             force_refit
@@ -124,9 +132,11 @@ class TimeSeriesDataset(Dataset):
             self.preprocessor.save_artifacts(self.config.artifact_dir)
 
     def _set_split_view(self) -> None:
+        """Fragmentación estática para iteradores fold de entrenamiento."""
         n_rows = len(self.full_data_scaled)
         num_train = int(n_rows * 0.7)
         num_val = int(n_rows * 0.2)
+        
         border1s = {
             "train": 0,
             "val": max(0, num_train - self.config.seq_len),
@@ -141,14 +151,15 @@ class TimeSeriesDataset(Dataset):
         }
         if self.flag not in border1s:
             raise ValueError(
-                f"flag must be one of {list(border1s.keys())}, got {self.flag}"
+                f"La bandera 'flag' debe ser {list(border1s.keys())}. Recibido: {self.flag}"
             )
 
         self.data_x = self.full_data_scaled[border1s[self.flag] : border2s[self.flag]]
         valid_len = len(self.data_x) - self.config.seq_len - self.config.pred_len + 1
         self._valid_indices = list(range(max(0, valid_len)))
 
-    def refit_for_cutoff(self, fit_end_idx: Optional[int] = None) -> None:
+    def refit_for_cutoff(self, fit_end_idx: int | None = None) -> None:
+        """Realiza actualización de las métricas en modo secuencial."""
         if self.preprocessor.fit_scope == "global_train" and self.preprocessor.fitted:
             self._set_split_view()
             return
@@ -156,15 +167,18 @@ class TimeSeriesDataset(Dataset):
         self._set_split_view()
 
     @lru_cache(maxsize=2048)
-    def _get_regime_cached(self, seq_hash: tuple) -> int:
+    def _get_regime_cached(self, seq_hash: tuple[float, ...]) -> int:
+        """Cálculo memoizado (LRU) de regímenes, dependiente de secuencia serializada."""
+        # Se recrea matriz, idealmente seguro al tratarse de tuplas chatas per feature array
         seq_array = np.array(seq_hash).reshape(-1, len(self.target_indices))
         return self.regime_detector.get_regime(seq_array)
 
-    def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
+        """Recupera la secuencia iterada temporal y su objetivo predictivo."""
         try:
             if index < 0 or index >= len(self):
                 raise IndexError(
-                    f"Index {index} out of range for dataset length {len(self)}"
+                    f"Índice {index} fuera de los bordes del dataset (longitud {len(self)})"
                 )
 
             s_end = index + self.config.seq_len
@@ -174,7 +188,8 @@ class TimeSeriesDataset(Dataset):
             seq_dec_input = self.data_x[s_end - self.config.label_len : r_end]
             seq_y_true = seq_dec_input[-self.config.pred_len :, self.target_indices]
 
-            seq_hash = tuple(seq_x[:, self.target_indices].flatten())
+            # Convert to distinct flat tuple for reliable hashing caching
+            seq_hash = tuple(float(x) for x in seq_x[:, self.target_indices].flatten())
             regime = self._get_regime_cached(seq_hash)
 
             return {
@@ -185,8 +200,9 @@ class TimeSeriesDataset(Dataset):
             }
         except Exception as exc:
             if self.strict:
-                raise RuntimeError(f"Error getting item {index}: {exc}") from exc
-            logger.warning("Error getting item %s: %s", index, exc)
+                raise RuntimeError(f"Error despachando item {index}: {exc}") from exc
+                
+            logger.warning("Error despachando item %s: %s", index, exc)
             return {
                 "x_enc": torch.zeros(
                     (self.config.seq_len, self.config.enc_in), dtype=torch.float32

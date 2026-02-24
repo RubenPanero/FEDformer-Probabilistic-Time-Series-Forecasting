@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 Componentes Encoder y Decoder del modelo FEDformer.
+Refactorizado con estandarización en PyTorch >2.0 y compatibilidad completa con Python 3.10.
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple
 
 import torch
 from torch import nn
-from torch.nn.functional import gelu, relu
 
 from .layers import AttentionConfig, AttentionLayer, OptimizedSeriesDecomp
 
@@ -26,11 +25,11 @@ class LayerConfig:
     modes: int
     dropout: float
     activation: str
-    moving_avg: List[int]
+    moving_avg: list[int]
 
 
 class EncoderLayer(nn.Module):
-    """Optimized encoder layer with optional gradient checkpointing"""
+    """Optimized encoder layer with pure Python typing and secure explicit execution."""
 
     def __init__(self, config: LayerConfig) -> None:
         super().__init__()
@@ -63,35 +62,45 @@ class EncoderLayer(nn.Module):
                     ]
                 ),
                 "dropout": nn.Dropout(config.dropout),
+                "activation": nn.GELU() if config.activation == "gelu" else nn.ReLU(),
             }
         )
-        self._use_gelu = config.activation == "gelu"
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply encoder self-attention with seasonal-trend decomposition."""
-        # pylint: disable=too-many-locals
+        # Type ignored visually on dynamic Dict fetching since PyTorch knows module flow.
         attention = self.layers["attention"]
-        decomp_layers = self.layers["decomp"]
-        conv_layers = self.layers["conv"]
-        norm_layers = self.layers["norm"]
+        decomp_1 = self.layers["decomp"][0]  # type: ignore
+        decomp_2 = self.layers["decomp"][1]  # type: ignore
+        conv_1 = self.layers["conv"][0]      # type: ignore
+        conv_2 = self.layers["conv"][1]      # type: ignore
+        norm_1 = self.layers["norm"][0]      # type: ignore
+        norm_2 = self.layers["norm"][1]      # type: ignore
+        
         dropout = self.layers["dropout"]
+        activation = self.layers["activation"]
 
-        x_norm = norm_layers[0](x)
+        x_norm = norm_1(x)
         attn_out = attention(x_norm, x_norm, x_norm)
-        x, _ = decomp_layers[0](x + attn_out)
+        
+        # Decomp returns (residual, trend), solo usamos residual
+        x, _ = decomp_1(x + attn_out)
 
-        x_norm2 = norm_layers[1](x)
-        y = conv_layers[0](x_norm2.transpose(1, 2))
-        y = gelu(y) if self._use_gelu else relu(y)  # pylint: disable=not-callable
+        x_norm2 = norm_2(x)
+        
+        y = conv_1(x_norm2.transpose(1, 2))
+        y = activation(y)
         y = dropout(y)
-        y = conv_layers[1](y)
+        
+        y = conv_2(y)
         y = dropout(y).transpose(1, 2)
-        res, _ = decomp_layers[1](x + y)
+        
+        res, _ = decomp_2(x + y)
         return res
 
 
 class DecoderLayer(nn.Module):
-    """Optimized decoder layer"""
+    """Optimized decoder layer, pure typing validation."""
 
     def __init__(self, config: LayerConfig) -> None:
         super().__init__()
@@ -127,35 +136,46 @@ class DecoderLayer(nn.Module):
                     ]
                 ),
                 "dropout": nn.Dropout(config.dropout),
+                "activation": nn.GELU() if config.activation == "gelu" else nn.ReLU(),
             }
         )
-        self._use_gelu = config.activation == "gelu"
 
     def forward(
         self, x: torch.Tensor, cross: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply decoder self/cross-attention and return residual/trend."""
-        # pylint: disable=too-many-locals
         self_attn = self.layers["self_attention"]
         cross_attn = self.layers["cross_attention"]
-        decomp_layers = self.layers["decomp"]
-        conv_layers = self.layers["conv"]
-        norm_layers = self.layers["norm"]
+        
+        decomp_1 = self.layers["decomp"][0]  # type: ignore
+        decomp_2 = self.layers["decomp"][1]  # type: ignore
+        decomp_3 = self.layers["decomp"][2]  # type: ignore
+        
+        conv_1 = self.layers["conv"][0]      # type: ignore
+        conv_2 = self.layers["conv"][1]      # type: ignore
+        
+        norm_1 = self.layers["norm"][0]      # type: ignore
+        norm_2 = self.layers["norm"][1]      # type: ignore
+        norm_3 = self.layers["norm"][2]      # type: ignore
+        
         dropout = self.layers["dropout"]
+        activation = self.layers["activation"]
 
-        x_norm = norm_layers[0](x)
-        x_res, trend1 = decomp_layers[0](x + self_attn(x_norm, x_norm, x_norm))
+        x_norm = norm_1(x)
+        x_res, trend1 = decomp_1(x + self_attn(x_norm, x_norm, x_norm))
 
-        x_norm2 = norm_layers[1](x_res)
-        cross_norm = norm_layers[2](cross)
-        x_res, trend2 = decomp_layers[1](
+        x_norm2 = norm_2(x_res)
+        cross_norm = norm_3(cross)
+        x_res, trend2 = decomp_2(
             x_res + cross_attn(x_norm2, cross_norm, cross_norm)
         )
 
-        y = conv_layers[0](x_res.transpose(1, 2))
-        y = gelu(y) if self._use_gelu else relu(y)  # pylint: disable=not-callable
+        y = conv_1(x_res.transpose(1, 2))
+        y = activation(y)
         y = dropout(y)
-        y = conv_layers[1](y)
+        y = conv_2(y)
         y = dropout(y).transpose(1, 2)
-        x_res, trend3 = decomp_layers[2](x_res + y)
+        
+        x_res, trend3 = decomp_3(x_res + y)
+        
         return x_res, trend1 + trend2 + trend3

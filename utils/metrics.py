@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Sistema de seguimiento de métricas.
+Sistema de seguimiento analítico para el ciclo de vida del entrenamiento.
+Refactorizado a Python 3.10+ PEP 8.
 """
 
 import logging
 from collections import defaultdict
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 
@@ -13,26 +14,26 @@ logger = logging.getLogger(__name__)
 
 
 class MetricsTracker:
-    """Track and log training metrics"""
+    """Monitor temporal in-memory local de logs algorítmicos."""
 
     def __init__(self) -> None:
-        self.metrics = defaultdict(list)
+        self.metrics: dict[str, list[tuple[int, float]]] = defaultdict(list)
 
-    def log_metrics(self, metrics: Dict[str, Any], step: int) -> None:
-        """Append metrics for a given training step and emit a log message."""
+    def log_metrics(self, metrics: dict[str, Any], step: int) -> None:
+        """Adiciona métricas para su correlación en base al bloque (step) en ejecución."""
         for key, value in metrics.items():
             self.metrics[key].append((step, value))
-            logger.info("Step %s - %s: %.4f", step, key, value)
+            logger.info("Iteración Computada %s - [%s]: %.4f", step, key, value)
 
-    def get_summary(self) -> Dict[str, Dict[str, float]]:
-        """Return aggregate statistics for each recorded metric."""
-        summary = {}
+    def get_summary(self) -> dict[str, dict[str, float]]:
+        """Devuelve un objeto paramétrico purgado con la consolidación global histórica."""
+        summary: dict[str, dict[str, float]] = {}
         for key, values in self.metrics.items():
-            vals = [v[1] for v in values]
+            vals = [float(v[1]) for v in values]
             summary[key] = {
-                "mean": np.mean(vals),
-                "std": np.std(vals),
-                "min": np.min(vals),
-                "max": np.max(vals),
+                "mean": float(np.mean(vals)),
+                "std": float(np.std(vals)),
+                "min": float(np.min(vals)),
+                "max": float(np.max(vals)),
             }
         return summary

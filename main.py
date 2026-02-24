@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Vanguard FEDformer: A Production-Ready Time Series Forecasting System (Modularizado).
+Vanguard FEDformer: Sistema Predictivo Estocástico Listo para Producción (Refactorizado).
 
-Este script implementa la versión modularizada del FEDformer optimizado con critical bug fixes,
-mejoras de rendimiento, y mejor mantenibilidad.
+Orquestador principal del proyecto que enlaza todos los sub-módulos y ejecuta
+el ciclo completo de entrenamiento, evaluación y visualización empírica.
 
 Uso:
-1. Asegurar que todas las dependencias estén instaladas
-2. Tener listo el dataset CSV
-3. Ejecutar: python main.py --csv path/to/data.csv --targets col1,col2 [opciones]
+1. Asegurar entorno activado (.venv)
+2. Ejecutar: python main.py --csv <filepath> --targets <targets_separados> [opcionales]
 """
 
 import argparse
@@ -17,19 +16,19 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 import numpy as np
 
 try:
     import matplotlib.pyplot as plt
-except ImportError:  # pragma: no cover - optional dependency
-    plt = None  # type: ignore[assignment]
+except ImportError:  # pragma: no cover
+    plt = None  # type: ignore
 
 try:
     import wandb
-except ImportError:  # pragma: no cover - optional dependency
-    wandb = None  # type: ignore[assignment]
+except ImportError:  # pragma: no cover
+    wandb = None  # type: ignore
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -38,12 +37,12 @@ else:
 
 from config import FEDformerConfig
 from data import TimeSeriesDataset
+from simulations import PortfolioSimulator, RiskSimulator
 from training import WalkForwardTrainer
-from simulations import RiskSimulator, PortfolioSimulator
-from utils import setup_cuda_optimizations, get_device
+from utils import get_device, setup_cuda_optimizations
 from utils.helpers import set_seed
 
-# Setup global configurations
+# Consolidación inicial de determinismo e inicializaciones del clúster físico
 set_seed(42, deterministic=False)
 setup_cuda_optimizations()
 device = get_device()
@@ -52,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class SimulationData:
-    """Container for artifacts shared with visualization steps."""
+    """Contenedor puente de artefactos expuestos con la visualización matricial final."""
 
     predictions: np.ndarray
     ground_truth: np.ndarray
@@ -61,79 +60,80 @@ class SimulationData:
 
 
 def _parse_arguments() -> argparse.Namespace:
-    """Parses command-line arguments."""
+    """Consolida la inyección de comandos desde CLI de manera fuertemente tipada."""
     parser = argparse.ArgumentParser(
-        description="Run optimized FEDformer with Normalizing Flows"
+        description="Monitor Vanguard: Motor Algorítmico Flow FEDformer"
     )
-    parser.add_argument("--csv", required=True, help="Path to CSV file")
+    parser.add_argument("--csv", required=True, help="Ruta de acceso directa al CSV")
     parser.add_argument(
-        "--targets", required=True, help="Comma-separated target column names"
+        "--targets", required=True, help="Lista csv concatenada por una coma representando features analíticas"
     )
-    parser.add_argument("--date-col", default=None, help="Date/time column to exclude")
+    parser.add_argument("--date-col", default=None, help="Índice de serie temporal a mitigar como feature")
     parser.add_argument(
-        "--wandb-project", default="vanguard-fedformer-flow", help="W&B project name"
+        "--wandb-project", default="vanguard-fedformer-flow", help="Cámara de telemetría W&B"
     )
-    parser.add_argument("--wandb-entity", default=None, help="W&B entity")
-    parser.add_argument("--pred-len", type=int, default=24, help="Prediction horizon")
-    parser.add_argument("--seq-len", type=int, default=96, help="Sequence length")
-    parser.add_argument("--label-len", type=int, default=48, help="Label length")
-    parser.add_argument("--epochs", type=int, default=5, help="Epochs per fold")
-    parser.add_argument("--splits", type=int, default=5, help="Number of splits")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
+    parser.add_argument("--wandb-entity", default=None, help="Organización receptora de métricas (W&B)")
+    parser.add_argument("--pred-len", type=int, default=24, help="Ventana predictiva máxima inyectada")
+    parser.add_argument("--seq-len", type=int, default=96, help="Tamaño de memoria de tensores empírica")
+    parser.add_argument("--label-len", type=int, default=48, help="Token histórico decoder overlap")
+    parser.add_argument("--epochs", type=int, default=5, help="Sub-ciclos epocales forzados en walk-forwards")
+    parser.add_argument("--splits", type=int, default=5, help="Fraccionamiento perimetral cross-fold (K)")
+    parser.add_argument("--batch-size", type=int, default=32, help="Densidad iterativa escalar paralela (Batch Size)")
     parser.add_argument(
-        "--use-checkpointing", action="store_true", help="Enable gradient checkpointing"
+        "--use-checkpointing", action="store_true", help="Dispara Gradient Checkpointing sacrificando CPU por VRAM"
     )
     parser.add_argument(
-        "--grad-accum-steps", type=int, default=1, help="Gradient accumulation steps"
+        "--grad-accum-steps", type=int, default=1, help="Escalones virtuales permitidos para reventar gradientes"
     )
     parser.add_argument(
         "--finetune-from",
         default=None,
-        help="Path to checkpoint for fine-tuning warm-start.",
+        help="Directorio relativo de memoria .pt para transbordo warm-start.",
     )
     parser.add_argument(
         "--freeze-backbone",
         action="store_true",
-        help="Freeze backbone and fine-tune lightweight heads only.",
+        help="Inhibe el reajuste convolucional y se limita a redes normalizadoras exclusivas.",
     )
     parser.add_argument(
         "--finetune-lr",
         type=float,
         default=None,
-        help="Learning rate to use during fine-tuning.",
+        help="Ratio paramétrico inespecífico de convergencia descendiente del warm-start.",
     )
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--seed", type=int, default=42, help="Hash natural anclado para evitar pseudo-azar")
     parser.add_argument(
-        "--deterministic", action="store_true", help="Enable deterministic mode (cuDNN)"
+        "--deterministic", action="store_true", help="Exige CUDNN bloqueante matemático purista (Muerte al Benchmark)"
     )
     parser.add_argument(
         "--save-fig",
         default=None,
-        help="Path to save generated figures instead of showing",
+        help="Directorio destino del render gráfico de retornos del portafolio",
     )
     parser.add_argument(
         "--no-show",
         action="store_true",
-        help="Do not display figures (useful for headless)",
+        help="Anula explícitamente despliegues de render X11 (Bloqueos en head-less server).",
     )
     return parser.parse_args()
 
 
 def _validate_inputs(args: argparse.Namespace) -> List[str]:
-    """Validates input arguments and returns target column names."""
+    """Asegura la coherencia básica del mapeo interactivo de usuario evitando fallas ruidosas posteriores."""
     if not os.path.exists(args.csv):
-        logger.error("Dataset not found at %s", args.csv)
-        raise FileNotFoundError(f"Dataset not found at {args.csv}")
+        logger.error("Dataset inaccesible o inexistente bajo: %s", args.csv)
+        raise FileNotFoundError(f"Lectura imposible sobre {args.csv}")
 
     targets = [t.strip() for t in args.targets.split(",") if t.strip()]
     if not targets:
-        logger.error("No valid targets provided")
-        raise ValueError("No valid targets provided")
+        logger.error("Ninguna meta subyacente de análisis provista")
+        raise ValueError("Indique al menos una variable predictiva en --targets")
+        
     return targets
 
 
 def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerConfig:
-    """Creates and logs the FEDformer configuration."""
+    """Preinstala instancias de comportamiento dictadas externamente al manifest nativo."""
     config = FEDformerConfig(
         file_path=args.csv,
         target_features=targets,
@@ -155,14 +155,14 @@ def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerCon
         deterministic=args.deterministic,
     )
 
-    logger.info("Configuration validated successfully")
+    logger.info("Transmisión paramétrica asimilada de manera segura")
     logger.info(
-        "Model parameters: d_model=%s, n_heads=%s",
+        "Métricas inyectadas en topología: Dimensión Modelada=%s, Cabezas(Atención)=%s",
         config.d_model,
         config.n_heads,
     )
     logger.info(
-        "Training: epochs_per_fold=%s, batch_size=%s",
+        "Carga iterativa dispuesta: Ciclos(Fold)=%s, Tamaño de Bloque=%s",
         config.n_epochs_per_fold,
         config.batch_size,
     )
@@ -170,58 +170,58 @@ def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerCon
 
 
 def _load_dataset(config: FEDformerConfig) -> TimeSeriesDataset:
-    """Loads and processes the time series dataset."""
-    logger.info("Loading and processing dataset...")
+    """Pre-computa el cargador matricial general y escaladores numéricos."""
+    logger.info("Apertura de lecturas y transformaciones escalares de features...")
     full_dataset = TimeSeriesDataset(config=config, flag="all")
-    logger.info("Dataset loaded: %s samples", len(full_dataset))
+    logger.info("Tubería de datos inyectada: %s ventanas transicionales analizadas", len(full_dataset))
     return full_dataset
 
 
 def _run_backtest(
     config: FEDformerConfig, full_dataset: TimeSeriesDataset, splits: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Executes the walk-forward backtest."""
-    logger.info("Starting walk-forward backtest...")
+    """Acciona el motor rotatorio de fraccionamiento evaluativo (Walk-forward)."""
+    logger.info("Iniciando rampa de backtesting secuencial dinámico...")
     wf_trainer = WalkForwardTrainer(config, full_dataset)
     predictions_oos, ground_truth_oos, samples_oos = wf_trainer.run_backtest(
         n_splits=splits
     )
 
     if predictions_oos.size == 0:
-        logger.error("No predictions generated. Exiting.")
-        raise RuntimeError("No predictions generated from backtest.")
+        logger.error("Imposible procesar sin simulaciones emitidas por la heurística evaluativa. Se fuerza salida.")
+        raise RuntimeError("Defecto numérico, colapso predictivo sin outputs del Walk-Forward.")
 
-    logger.info("Backtest completed successfully")
-    logger.info("Generated %s out-of-sample predictions", len(predictions_oos))
+    logger.info("Rutina del emulador inter-folds (Walk-Forward) completada brillantemente")
+    logger.info("Receptado tensor de previsiones fuera-de-muestra (%s items predictivos)", len(predictions_oos))
     return predictions_oos, ground_truth_oos, samples_oos
 
 
 def _log_risk_summary(var: np.ndarray, cvar: np.ndarray) -> None:
-    """Log aggregate risk statistics."""
-    logger.info("Average VaR (95%%): %.4f", float(np.mean(var)))
-    logger.info("Average CVaR (95%%): %.4f", float(np.mean(cvar)))
+    """Reporte superficial en bitácora de los tensores estadísticos caídos."""
+    logger.info("Mitigador VaR (Valor en Riesgo) 95%% Medio: %.4f", float(np.mean(var)))
+    logger.info("Margen Severo CVaR (Riesgo Condicional Promedio) 95%%: %.4f", float(np.mean(cvar)))
 
 
 def _log_portfolio_metrics(metrics: Dict[str, Any]) -> None:
-    """Log derived portfolio performance metrics."""
-    logger.info("Portfolio Performance Metrics:")
+    """Transmite al estándar I/O de consola resumen técnico de capitales y ratio financiero."""
+    logger.info("Bitácora de Desglose de Rendimientos Estructurales:")
     logger.info(
-        "  Annualized Sharpe Ratio: %.3f", float(metrics.get("sharpe_ratio", 0.0))
+        "  Exceso de Beneficio por Volatilidad (Ratio Sharpe Anual): %.3f", float(metrics.get("sharpe_ratio", 0.0))
     )
     logger.info(
-        "  Maximum Drawdown: %.2f%%", float(metrics.get("max_drawdown", 0.0)) * 100
+        "  Hundimiento en el peor tramo predictivo (Max Drawdown): %.2f%%", float(metrics.get("max_drawdown", 0.0)) * 100
     )
     logger.info(
-        "  Annualized Volatility: %.2f%%", float(metrics.get("volatility", 0.0)) * 100
+        "  Flujo desviacional del portafolio (Volatilidad Anual): %.2f%%", float(metrics.get("volatility", 0.0)) * 100
     )
-    logger.info("  Sortino Ratio: %.3f", float(metrics.get("sortino_ratio", 0.0)))
+    logger.info("  Seguimiento asimétrico sin trampa bajista (Sortino Ratio): %.3f", float(metrics.get("sortino_ratio", 0.0)))
 
 
 def _prepare_unscaled_series(
     data: SimulationData,
     config: FEDformerConfig,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Rescale model predictions and ground truth back to original units."""
+    """Retorna los datos pre-escalados a su ambiente bursátil genuino usando la magia del transformado inverso."""
     preprocessor = getattr(data.dataset, "preprocessor", None)
     if preprocessor is not None and hasattr(preprocessor, "inverse_transform_targets"):
         unscaled_preds = preprocessor.inverse_transform_targets(
@@ -235,23 +235,37 @@ def _prepare_unscaled_series(
     scaler = getattr(data.dataset, "scaler", None)
     target_indices = getattr(data.dataset, "target_indices", None)
     if scaler is None or not target_indices:
-        raise ValueError("Dataset scaler or target indices are missing.")
+        raise ValueError("No pudimos localizar constructos asimilables en las directrices maestras (Scaler / Targets missing).")
+
+    # Validar que los índices estén dentro de rango
+    if max(target_indices) >= config.enc_in:
+        raise ValueError(
+            f"target_indices contiene índices inválidos: máximo es {max(target_indices)}, "
+            f"pero config.enc_in es {config.enc_in}"
+        )
+
+    # Garantizar que enc_in es un entero válido
+    enc_in: int = int(config.enc_in) if config.enc_in is not None else 0
+    if enc_in <= 0:
+        raise ValueError("config.enc_in debe ser un valor positivo")
 
     dummy_preds = np.zeros(
-        (data.predictions.shape[0], data.predictions.shape[1], config.enc_in)
+        (data.predictions.shape[0], data.predictions.shape[1], enc_in)
     )
     for feature_idx, target_idx in enumerate(target_indices):
         dummy_preds[..., target_idx] = data.predictions[..., feature_idx]
+        
     unscaled_preds = scaler.inverse_transform(
-        dummy_preds.reshape(-1, config.enc_in)
+        dummy_preds.reshape(-1, enc_in)
     ).reshape(dummy_preds.shape)[..., target_indices]
 
     dummy_gt = np.zeros(
-        (data.ground_truth.shape[0], data.ground_truth.shape[1], config.enc_in)
+        (data.ground_truth.shape[0], data.ground_truth.shape[1], enc_in)
     )
     for feature_idx, target_idx in enumerate(target_indices):
         dummy_gt[..., target_idx] = data.ground_truth[..., feature_idx]
-    unscaled_gt = scaler.inverse_transform(dummy_gt.reshape(-1, config.enc_in)).reshape(
+        
+    unscaled_gt = scaler.inverse_transform(dummy_gt.reshape(-1, enc_in)).reshape(
         dummy_gt.shape
     )[..., target_indices]
 
@@ -263,37 +277,38 @@ def _create_portfolio_figure(
     var: np.ndarray,
     cvar: np.ndarray,
 ) -> Figure:
-    """Create matplotlib visualizations for portfolio and risk metrics."""
+    """Engendra una topografía vectorizada renderizando mitigadores estocástico-comerciales."""
     if plt is None:
-        raise RuntimeError("matplotlib is required for visualization output.")
+        raise RuntimeError("Requerimiento denegado, entorno de dibujado (matplotlib) fue destruido o no se encontró.")
+        
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
 
     ax1.plot(
         metrics.get("cumulative_returns", np.array([0.0])),
-        label="Strategy Returns",
+        label="Acumulación Patrimonial",
         color="#1f77b4",
         linewidth=2,
     )
-    ax1.set_title("Portfolio Strategy Performance", fontsize=14, fontweight="bold")
-    ax1.set_xlabel("Time Steps")
-    ax1.set_ylabel("Cumulative Returns")
+    ax1.set_title("Evolución y Desempeño Operativo de Portafolio OoS", fontsize=14, fontweight="bold")
+    ax1.set_xlabel("Desfase Temporal Evaluado (Periodos)")
+    ax1.set_ylabel("Margen Financiero Retornado Acumulado")
     ax1.grid(True, linestyle="--", alpha=0.6)
     ax1.legend()
 
     time_steps = range(var.shape[0])
     ax2.plot(
-        time_steps, np.mean(var, axis=1), label="VaR (95%)", color="red", alpha=0.8
+        time_steps, np.mean(var, axis=1), label="Zona VaR Riesgo Crítico Promediado (95%)", color="red", alpha=0.8
     )
     ax2.plot(
         time_steps,
         np.mean(cvar, axis=1),
-        label="CVaR (95%)",
+        label="Derrumbe CVaR Excepcional Condicional (95%)",
         color="darkred",
         alpha=0.8,
     )
-    ax2.set_title("Risk Metrics Over Time", fontsize=14, fontweight="bold")
-    ax2.set_xlabel("Time Steps")
-    ax2.set_ylabel("Risk Value")
+    ax2.set_title("Examen Longitudinal Cíclico Sobre Severidad Estocástica", fontsize=14, fontweight="bold")
+    ax2.set_xlabel("Desfase Temporal Evaluado (Periodos)")
+    ax2.set_ylabel("Magnitud Pérdida Muestral Proyectada")
     ax2.grid(True, linestyle="--", alpha=0.6)
     ax2.legend()
 
@@ -307,10 +322,13 @@ def _log_metrics_to_wandb(
     var: np.ndarray,
     cvar: np.ndarray,
 ) -> None:
-    """Log portfolio metrics to Weights & Biases when available."""
+    """Envía el clúster consolidado de variables hacia el entorno colaborativo Web de ser accesible."""
     if wandb is None:
+        logger.debug("Módulo wandb no está disponible, abortando sincronización de métricas.")
         return
+    assert wandb is not None  # Para satisfacer type checkers
     if not wandb.run or not hasattr(wandb.run, "log"):
+        logger.debug("Sesión activa de wandb no disponible, omitiendo log de métricas.")
         return
 
     with contextlib.suppress(RuntimeError, ValueError, AttributeError):
@@ -325,19 +343,20 @@ def _log_metrics_to_wandb(
                 "performance_chart": wandb.Image(fig),
             }
         )
-        logger.info("Metrics logged to W&B successfully")
+        logger.info("Transmisión satisfactoria finalizada (W&B Metrics Synced)")
 
 
 def _handle_visualization_output(fig: Figure, args: argparse.Namespace) -> None:
-    """Persist or display the generated figure based on CLI arguments."""
+    """Discierne entre despliegue en host u opcionales exportados de render estático al disco duro."""
     if plt is None:
         return
+        
     if args.save_fig:
         try:
             fig.savefig(args.save_fig, dpi=150, bbox_inches="tight")
-            logger.info("Figure saved to %s", args.save_fig)
+            logger.info("Artefacto Visual exportado a matriz estática sobre: %s", args.save_fig)
         except OSError as exc:
-            logger.warning("Saving figure failed: %s", exc)
+            logger.warning("Caída súbita intentando forzar grabado sobre el binario visualizado: %s", exc)
 
     if not args.no_show:
         with contextlib.suppress(RuntimeError):
@@ -351,14 +370,16 @@ def _run_portfolio_simulation(
     config: FEDformerConfig,
     risk_stats: Tuple[np.ndarray, np.ndarray],
 ) -> Tuple[Dict[str, Any], Figure]:
-    """Execute portfolio simulation and return metrics with visualization."""
+    """Acciona el emulador lógico de trade-in uniendo lo predicho versus lo comprobado."""
     var, cvar = risk_stats
     unscaled_preds, unscaled_gt = _prepare_unscaled_series(data, config)
 
     portfolio_sim = PortfolioSimulator(unscaled_preds, unscaled_gt)
     strategy_returns = portfolio_sim.run_simple_strategy()
+    
     metrics = portfolio_sim.calculate_metrics(strategy_returns)
     fig = _create_portfolio_figure(metrics, var, cvar)
+    
     return metrics, fig
 
 
@@ -367,8 +388,8 @@ def _run_simulations_and_visualize(
     args: argparse.Namespace,
     config: FEDformerConfig,
 ) -> None:
-    """Run risk analysis, portfolio simulation, and visualization."""
-    logger.info("Running risk and portfolio simulation...")
+    """Ejecuta los peritajes estadísticos marginales derivados de toda la secuencia matemática general."""
+    logger.info("Lanzando subsistemas analíticos (Validador Riesgo & Estrategia Portafolio)...")
 
     risk_sim = RiskSimulator(data.samples)
     var = risk_sim.calculate_var()
@@ -376,13 +397,13 @@ def _run_simulations_and_visualize(
     _log_risk_summary(var, cvar)
 
     if data.ground_truth.shape[1] <= 1:
-        logger.info("Skipping portfolio simulation (single timestep prediction)")
+        logger.info("Omitiendo cálculos de simulación por límite infranqueable predictivo (Paso Ciego de TimeStep <= 1)")
         return
 
     try:
         metrics, fig = _run_portfolio_simulation(data, config, (var, cvar))
     except ValueError as exc:
-        logger.warning("Portfolio simulation skipped: %s", exc)
+        logger.warning("Evaluador financiero corrompido, bloque ignorado preventivamente: %s", exc)
         return
 
     _log_portfolio_metrics(metrics)
@@ -391,13 +412,14 @@ def _run_simulations_and_visualize(
 
 
 def main() -> None:
-    """Main function to run the FEDformer forecasting and simulation pipeline."""
+    """Nodo central asimilador operando los subsistemas acoplados iterativos."""
     try:
         args = _parse_arguments()
         set_seed(args.seed, deterministic=args.deterministic)
 
         targets = _validate_inputs(args)
         config = _create_config(args, targets)
+        
         full_dataset = _load_dataset(config)
 
         predictions_oos, ground_truth_oos, samples_oos = _run_backtest(
@@ -413,10 +435,10 @@ def main() -> None:
 
         _run_simulations_and_visualize(sim_data, args, config)
 
-        logger.info("Analysis completed successfully!")
+        logger.info("Validación, Entrenamiento e Inferencias resueltas triunfalmente. Flujo terminado.")
 
     except (FileNotFoundError, ValueError, RuntimeError):
-        logger.exception("Main execution failed")
+        logger.exception("Secuencia destructiva abordó el Thread Main general, paralizando arquitectura.")
         raise
 
 

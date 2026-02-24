@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Modelo principal FEDformer con Normalizing Flows.
+Refactorizado para cumplir con PEP 8, tipeo estricto y Python 3.10+.
 """
-
-from typing import Optional, Tuple
 
 import torch
 import torch.distributions
@@ -16,7 +15,7 @@ from .layers import OptimizedSeriesDecomp
 
 
 class Flow_FEDformer(nn.Module):
-    """Enhanced FEDformer with gradient checkpointing and better error handling"""
+    """Enhanced FEDformer with gradient checkpointing and strict typing."""
 
     # pylint: disable=invalid-name
 
@@ -64,6 +63,7 @@ class Flow_FEDformer(nn.Module):
             activation=config.activation,
             moving_avg=config.moving_avg,
         )
+        
         self.sequence_layers = nn.ModuleDict(
             {
                 "encoders": nn.ModuleList(
@@ -89,7 +89,7 @@ class Flow_FEDformer(nn.Module):
 
     def _prepare_decoder_input(
         self, x_dec: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Prepare decoder seasonal and trend initial components."""
         trend_proj = self.components["trend_proj"]
         decomp = self.components["decomp"]
@@ -98,6 +98,8 @@ class Flow_FEDformer(nn.Module):
         seasonal_init = torch.zeros_like(x_dec[:, -self.config.pred_len :, :])
 
         trend_init_in = mean.expand(-1, self.config.pred_len, -1)
+        # Using type: ignore for dynamic nn.ModuleDict resolution if preferred, 
+        # but PyTorch normally accepts this smoothly.
         trend_init = trend_proj(trend_init_in)
 
         seasonal_dec_hist, trend_dec_hist = decomp(x_dec[:, : self.config.label_len, :])
@@ -112,18 +114,22 @@ class Flow_FEDformer(nn.Module):
         x_enc: torch.Tensor,
         seasonal_init: torch.Tensor,
         x_regime: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Concatenate regime embeddings with encoder/decoder tensors."""
         batch_size = x_enc.size(0)
         regime_idx = x_regime.long().reshape(-1)
+        
         if regime_idx.numel() == 1 and batch_size > 1:
             regime_idx = regime_idx.expand(batch_size)
+            
         if regime_idx.numel() != batch_size:
             raise RuntimeError(
-                f"regime batch mismatch: expected {batch_size}, got {regime_idx.numel()}"
+                f"Secuencia de tamaño incorrecto. Esperado {batch_size}, recibido {regime_idx.numel()}"
             )
 
-        regime_vec = self.components["regime_embedding"](regime_idx)
+        regime_embedding_layer = self.components["regime_embedding"]
+        regime_vec = regime_embedding_layer(regime_idx)
+        
         regime_vec_enc = regime_vec.unsqueeze(1).expand(
             batch_size, self.config.seq_len, regime_vec.size(-1)
         )
@@ -137,13 +143,43 @@ class Flow_FEDformer(nn.Module):
 
     def _embed_with_dropout(self, tensor: torch.Tensor, key: str) -> torch.Tensor:
         """Apply the requested embedding followed by shared dropout."""
-        return self.components["dropout"](self.components[key](tensor))
+        module = self.components[key]
+        dropout = self.components["dropout"]
+        return dropout(module(tensor))
+
+    def _run_sequence_layers(
+        self,
+        enc_out: torch.Tensor,
+        dec_out: torch.Tensor,
+        trend_init: torch.Tensor,
+        use_checkpointing: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Executes the encoding and decoding sequences with optional checkpointing."""
+        trend_part = torch.zeros_like(trend_init)
+
+        if use_checkpointing and self.training:
+            for encoder_layer in self.sequence_layers["encoders"]:
+                enc_out = torch.utils.checkpoint.checkpoint(
+                    encoder_layer, enc_out, use_reentrant=False
+                )
+            for decoder_layer in self.sequence_layers["decoders"]:
+                dec_out, trend_delta = torch.utils.checkpoint.checkpoint(
+                    decoder_layer, dec_out, enc_out, use_reentrant=False
+                )
+                trend_part = trend_part + trend_delta
+        else:
+            for encoder_layer in self.sequence_layers["encoders"]:
+                enc_out = encoder_layer(enc_out)
+            for decoder_layer in self.sequence_layers["decoders"]:
+                dec_out, trend_delta = decoder_layer(dec_out, enc_out)
+                trend_part = trend_part + trend_delta
+
+        return dec_out, trend_part
 
     def forward(
         self, x_enc: torch.Tensor, x_dec: torch.Tensor, x_regime: torch.Tensor
-    ) -> torch.distributions.Distribution:
+    ) -> "NormalizingFlowDistribution":
         """Propagate encoder/decoder inputs and produce a flow distribution."""
-        # pylint: disable=too-many-locals
         seasonal_init, trend_init = self._prepare_decoder_input(x_dec)
 
         x_enc_with_regime, seasonal_init_with_regime = self._attach_regime_vectors(
@@ -153,49 +189,33 @@ class Flow_FEDformer(nn.Module):
         enc_out = self._embed_with_dropout(x_enc_with_regime, "enc_embedding")
         dec_out = self._embed_with_dropout(seasonal_init_with_regime, "dec_embedding")
 
-        if self.config.use_gradient_checkpointing and self.training:
-            try:
-                for encoder_layer in self.sequence_layers["encoders"]:
-                    enc_out = torch.utils.checkpoint.checkpoint(encoder_layer, enc_out)
-                trend_part = torch.zeros_like(trend_init)
-                for decoder_layer in self.sequence_layers["decoders"]:
-                    dec_out, trend_delta = torch.utils.checkpoint.checkpoint(
-                        decoder_layer, dec_out, enc_out
-                    )
-                    trend_part = trend_part + trend_delta
-            except RuntimeError:
-                for encoder_layer in self.sequence_layers["encoders"]:
-                    enc_out = encoder_layer(enc_out)
-                trend_part = torch.zeros_like(trend_init)
-                for decoder_layer in self.sequence_layers["decoders"]:
-                    dec_out, trend_delta = decoder_layer(dec_out, enc_out)
-                    trend_part = trend_part + trend_delta
-        else:
-            for encoder_layer in self.sequence_layers["encoders"]:
-                enc_out = encoder_layer(enc_out)
-            trend_part = torch.zeros_like(trend_init)
-            for decoder_layer in self.sequence_layers["decoders"]:
-                dec_out, trend_delta = decoder_layer(dec_out, enc_out)
-                trend_part = trend_part + trend_delta
+        try:
+            dec_out, trend_part = self._run_sequence_layers(
+                enc_out, dec_out, trend_init, self.config.use_gradient_checkpointing
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error durante la propagación (forward pass): {e}") from e
 
-        # FIXED: Pre-validate shapes instead of ad-hoc projection
-        # This ensures trend components have consistent dimensions throughout
         if trend_init.shape[-1] != trend_part.shape[-1]:
             raise RuntimeError(
-                f"Trend shape mismatch in forward: trend_init={trend_init.shape[-1]} "
-                f"vs trend_part={trend_part.shape[-1]}. "
-                "Check decomposition config and projection layer dimensions."
+                f"Discrepancia vectorial: trend_init={trend_init.shape[-1]} "
+                f"vs trend_part={trend_part.shape[-1]}."
             )
+            
         final_trend = trend_init + trend_part
 
         dec_ctx = dec_out[:, -self.config.pred_len :, :]
-        flow_conditioned = self.components["flow_conditioner_proj"](dec_ctx)
+        conditioner = self.components["flow_conditioner_proj"]
+        flow_conditioned = conditioner(dec_ctx)
+        
+        batch_size, time_steps = flow_conditioned.shape[:2]
         flow_conditioned = flow_conditioned.view(
-            flow_conditioned.size(0),
-            flow_conditioned.size(1),
+            batch_size,
+            time_steps,
             self.config.c_out,
             self.config.flow_hidden_dim,
         )
+        
         feature_context = flow_conditioned.mean(dim=1)
         mean_pred = final_trend[:, -self.config.pred_len :, : self.config.c_out]
 
@@ -219,30 +239,36 @@ class NormalizingFlowDistribution:
         return self.means
 
     def log_prob(
-        self, y_true: torch.Tensor, mask: Optional[torch.Tensor] = None
+        self, y_true: torch.Tensor, mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         """Compute log probability per batch, supports optional mask over time dimension."""
         batch_size, time_steps, num_features = y_true.shape
         total_lp = torch.zeros(batch_size, device=y_true.device, dtype=y_true.dtype)
+        
         for feature_idx in range(num_features):
             y_feature = y_true[..., feature_idx]
             mu_feature = self.means[..., feature_idx]
             ctx_feature = self.contexts[:, feature_idx, :]
-            lp_feature = self.flows[feature_idx].log_prob(
+            
+            flow = self.flows[feature_idx]
+            lp_feature = flow.log_prob(
                 y_feature, base_mean=mu_feature, context=ctx_feature
             )
             total_lp = total_lp + lp_feature
+            
         if mask is not None:
             if mask.dim() == 3:
                 mask = mask.squeeze(-1)
             valid_counts = mask.sum(dim=1).clamp(min=1).to(total_lp.dtype)
             return total_lp / valid_counts
+            
         return total_lp / float(time_steps)
 
     def sample(self, n_samples: int) -> torch.Tensor:
         """Generate samples by inverting the learned flows."""
         batch_size, time_steps, num_features = self.means.shape
-        feature_samples = []
+        feature_samples: list[torch.Tensor] = []
+        
         for feature_idx in range(num_features):
             ctx_feature = self.contexts[:, feature_idx, :]
             expanded_ctx = ctx_feature.unsqueeze(0).expand(n_samples, -1, -1)
@@ -253,7 +279,9 @@ class NormalizingFlowDistribution:
                 device=self.means.device,
                 dtype=self.means.dtype,
             )
-            x0 = self.flows[feature_idx].inverse(z, context=expanded_ctx)
+            flow = self.flows[feature_idx]
+            x0 = flow.inverse(z, context=expanded_ctx)
             feature_samples.append(x0.unsqueeze(-1))
+            
         stacked = torch.cat(feature_samples, dim=-1)
         return stacked + self.means.unsqueeze(0)
