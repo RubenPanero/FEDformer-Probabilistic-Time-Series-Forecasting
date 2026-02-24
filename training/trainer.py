@@ -83,7 +83,10 @@ class WalkForwardTrainer:
                 and device.type == "cuda"
                 and hasattr(torch, "compile")
             ):
-                logger.info("Compilando el modelo con modo dinámico: %s", self.config.compile_mode)
+                logger.info(
+                    "Compilando el modelo con modo dinámico: %s",
+                    self.config.compile_mode,
+                )
                 return torch.compile(model, mode=self.config.compile_mode)
             return model
         except (RuntimeError, TypeError) as exc:
@@ -155,7 +158,9 @@ class WalkForwardTrainer:
             loss = self._nll_loss(dist, tensors.target) / accumulation_steps
 
         if torch.isnan(loss) or torch.isinf(loss):
-            logger.warning("Caída de pérdida (loss) detectada a infinito o vacío (NaN). Omitiendo inferencia en bloque.")
+            logger.warning(
+                "Caída de pérdida (loss) detectada a infinito o vacío (NaN). Omitiendo inferencia en bloque."
+            )
             return None
 
         if scaler:
@@ -182,15 +187,15 @@ class WalkForwardTrainer:
         """Asienta saltos en optimizer, validando clípeos dinámicos en pesos (Scale steps)."""
         if scaler:
             scaler.unscale_(optimizer)
-            
+
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        
+
         if scaler:
             scaler.step(optimizer)
             scaler.update()
         else:
             optimizer.step()
-            
+
         optimizer.zero_grad(set_to_none=True)
 
     def _build_training_components(
@@ -202,7 +207,7 @@ class WalkForwardTrainer:
         )
         model = self._get_model()
         self._maybe_load_finetune_checkpoint(model)
-        
+
         if self.config.freeze_backbone:
             self._apply_freeze_backbone(model)
 
@@ -211,24 +216,28 @@ class WalkForwardTrainer:
             if self.config.finetune_from and self.config.finetune_lr is not None
             else self.config.learning_rate
         )
-        
+
         trainable_params = list(self._trainable_params(model))
         if not trainable_params:
-            raise RuntimeError("Excepción bloqueante: No hay parámetros en el modelo que reescribir con optimizador.")
-            
+            raise RuntimeError(
+                "Excepción bloqueante: No hay parámetros en el modelo que reescribir con optimizador."
+            )
+
         optimizer = torch.optim.AdamW(
             trainable_params,
             lr=lr,
             weight_decay=self.config.weight_decay,
             eps=1e-8,
         )
-        
+
         scaler = (
-            torch.amp.GradScaler("cuda", enabled=self.config.use_amp and device.type == "cuda")
+            torch.amp.GradScaler(
+                "cuda", enabled=self.config.use_amp and device.type == "cuda"
+            )
             if self.config.use_amp
             else None
         )
-        
+
         return TrainingComponents(
             model=model,
             optimizer=optimizer,
@@ -243,17 +252,19 @@ class WalkForwardTrainer:
         ckpt_path = self.config.finetune_from
         if not ckpt_path:
             return
-            
+
         if not os.path.exists(ckpt_path):
-            raise FileNotFoundError(f"Archivo de warm-start no encontrado en el sistema: {ckpt_path}")
-            
+            raise FileNotFoundError(
+                f"Archivo de warm-start no encontrado en el sistema: {ckpt_path}"
+            )
+
         checkpoint = torch.load(ckpt_path, map_location=device)
         state_dict = (
             checkpoint["model_state_dict"]
             if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
             else checkpoint
         )
-        
+
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
         logger.info(
             "Pesos ajustados precargados mediante finetuning de %s (Perdidos=%d, Inesperados=%d)",
@@ -334,13 +345,13 @@ class WalkForwardTrainer:
     ) -> tuple[int, int, float]:
         """Transbordo temporal desde dict persistido devuelta a RAM GPU."""
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        
+
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        
+
         if scaler and checkpoint["scaler_state_dict"]:
             scaler.load_state_dict(checkpoint["scaler_state_dict"])
-            
+
         logger.info("Modelo recuperado desde respaldo histórico en %s", checkpoint_path)
         return checkpoint["epoch"], checkpoint["fold"], checkpoint["loss"]
 
@@ -351,17 +362,22 @@ class WalkForwardTrainer:
             log_prob = torch.clamp(log_prob, min=-1e6, max=1e6)
             return -log_prob.mean()
         except (RuntimeError, ValueError) as exc:
-            logger.warning("Tubería probabilística decaída: %s. Aplicando función costo residual asintótica MSE.", exc)
+            logger.warning(
+                "Tubería probabilística decaída: %s. Aplicando función costo residual asintótica MSE.",
+                exc,
+            )
             return F.mse_loss(dist.mean, y_true)
 
     def _initialize_wandb(self) -> None:
         """Resuelve interconexiones de monitoreo experimental W&B."""
         try:
             if wandb is None:
-                logger.info("No detectado entorno nativo de Weights & Biases. Procediendo sin bitácora externa.")
+                logger.info(
+                    "No detectado entorno nativo de Weights & Biases. Procediendo sin bitácora externa."
+                )
                 self.wandb_run = None
                 return
-                
+
             self.wandb_run = wandb.init(
                 project=self.config.wandb_project,
                 entity=self.config.wandb_entity,
@@ -401,7 +417,7 @@ class WalkForwardTrainer:
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                     raise
-                    
+
                 logger.warning(
                     "Operación en bloque [%s] inestable sobre fold [%s]: %s. Avanzando a recuperación cíclica.",
                     batch_idx,
@@ -451,7 +467,9 @@ class WalkForwardTrainer:
                     fold_preds.append(torch.median(samples, dim=0)[0].cpu().numpy())
                     fold_gt.append(batch["y_true"].cpu().numpy())
                 except (RuntimeError, ValueError) as exc:
-                    logger.warning("Bloque estocástico de evaluador corrompido: %s", exc)
+                    logger.warning(
+                        "Bloque estocástico de evaluador corrompido: %s", exc
+                    )
                     continue
 
         if fold_preds and fold_gt and fold_samples:
@@ -461,7 +479,9 @@ class WalkForwardTrainer:
                 np.concatenate(fold_samples, axis=1),
             )
 
-        logger.warning("No se validaron proyecciones aptas en el subsistema post-evaluador.")
+        logger.warning(
+            "No se validaron proyecciones aptas en el subsistema post-evaluador."
+        )
         return np.array([]), np.array([]), np.array([])
 
     def _run_single_fold(
@@ -476,7 +496,10 @@ class WalkForwardTrainer:
         test_end_idx = min((fold_idx + 1) * split_size, total_size)
 
         if test_end_idx - train_end_idx < self.config.seq_len + self.config.pred_len:
-            logger.warning("Insuficiente densidad de datos subyacentes operando sobre fold %s. Suspendido.", fold_idx)
+            logger.warning(
+                "Insuficiente densidad de datos subyacentes operando sobre fold %s. Suspendido.",
+                fold_idx,
+            )
             return None
 
         logger.info(
@@ -495,11 +518,15 @@ class WalkForwardTrainer:
         )
         if not train_indices:
             logger.warning(
-                "Secuencia histórica insuficiente procesando fold transitorio %s post-límites.", fold_idx
+                "Secuencia histórica insuficiente procesando fold transitorio %s post-límites.",
+                fold_idx,
             )
             return None
         if not test_indices:
-            logger.warning("Secuencia de ensayo colapsada o nula operando fold activo %s.", fold_idx)
+            logger.warning(
+                "Secuencia de ensayo colapsada o nula operando fold activo %s.",
+                fold_idx,
+            )
             return None
 
         train_subset = Subset(self.full_dataset, train_indices)
@@ -530,12 +557,14 @@ class WalkForwardTrainer:
         )
 
         if fold_preds.size == 0:
-            logger.warning("Fold %s vacío con salida divergente de predicción", fold_idx)
+            logger.warning(
+                "Fold %s vacío con salida divergente de predicción", fold_idx
+            )
             return None
 
         if self.wandb_run:
             self.wandb_run.log({"fold": fold_idx, "fold_completed": True})
-            
+
         # GC Force clean per iteration
         del components, train_subset, test_subset, train_indices, test_indices
         if torch.cuda.is_available():
@@ -556,7 +585,7 @@ class WalkForwardTrainer:
         test_max_start = test_end_idx - self.config.seq_len - self.config.pred_len
         if test_max_start < train_end_idx:
             return train_indices, []
-            
+
         test_limit = min(test_max_start + 1, len(self.full_dataset))
         test_indices = list(range(train_end_idx, test_limit))
         return train_indices, test_indices
@@ -589,16 +618,20 @@ class WalkForwardTrainer:
                 all_preds.append(preds)
                 all_gt.append(gt)
                 all_samples.append(samples)
-                
+
         except (RuntimeError, ValueError):
-            logger.exception("Corrupción general forzando colapso del Backtest iterativo walk-forward")
+            logger.exception(
+                "Corrupción general forzando colapso del Backtest iterativo walk-forward"
+            )
             raise
         finally:
             if self.wandb_run:
                 self.wandb_run.finish()
 
         if not all_preds:
-            logger.error("No existió ni un sólo bloque precalculado de inferencias. Colapso.")
+            logger.error(
+                "No existió ni un sólo bloque precalculado de inferencias. Colapso."
+            )
             return np.array([]), np.array([]), np.array([])
 
         return (

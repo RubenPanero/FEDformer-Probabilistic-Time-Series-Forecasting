@@ -72,29 +72,29 @@ class EncoderLayer(nn.Module):
         attention = self.layers["attention"]
         decomp_1 = self.layers["decomp"][0]  # type: ignore
         decomp_2 = self.layers["decomp"][1]  # type: ignore
-        conv_1 = self.layers["conv"][0]      # type: ignore
-        conv_2 = self.layers["conv"][1]      # type: ignore
-        norm_1 = self.layers["norm"][0]      # type: ignore
-        norm_2 = self.layers["norm"][1]      # type: ignore
-        
+        conv_1 = self.layers["conv"][0]  # type: ignore
+        conv_2 = self.layers["conv"][1]  # type: ignore
+        norm_1 = self.layers["norm"][0]  # type: ignore
+        norm_2 = self.layers["norm"][1]  # type: ignore
+
         dropout = self.layers["dropout"]
         activation = self.layers["activation"]
 
         x_norm = norm_1(x)
         attn_out = attention(x_norm, x_norm, x_norm)
-        
+
         # Decomp returns (residual, trend), solo usamos residual
         x, _ = decomp_1(x + attn_out)
 
         x_norm2 = norm_2(x)
-        
+
         y = conv_1(x_norm2.transpose(1, 2))
         y = activation(y)
         y = dropout(y)
-        
+
         y = conv_2(y)
         y = dropout(y).transpose(1, 2)
-        
+
         res, _ = decomp_2(x + y)
         return res
 
@@ -146,18 +146,18 @@ class DecoderLayer(nn.Module):
         """Apply decoder self/cross-attention and return residual/trend."""
         self_attn = self.layers["self_attention"]
         cross_attn = self.layers["cross_attention"]
-        
+
         decomp_1 = self.layers["decomp"][0]  # type: ignore
         decomp_2 = self.layers["decomp"][1]  # type: ignore
         decomp_3 = self.layers["decomp"][2]  # type: ignore
-        
-        conv_1 = self.layers["conv"][0]      # type: ignore
-        conv_2 = self.layers["conv"][1]      # type: ignore
-        
-        norm_1 = self.layers["norm"][0]      # type: ignore
-        norm_2 = self.layers["norm"][1]      # type: ignore
-        norm_3 = self.layers["norm"][2]      # type: ignore
-        
+
+        conv_1 = self.layers["conv"][0]  # type: ignore
+        conv_2 = self.layers["conv"][1]  # type: ignore
+
+        norm_1 = self.layers["norm"][0]  # type: ignore
+        norm_2 = self.layers["norm"][1]  # type: ignore
+        norm_3 = self.layers["norm"][2]  # type: ignore
+
         dropout = self.layers["dropout"]
         activation = self.layers["activation"]
 
@@ -166,16 +166,14 @@ class DecoderLayer(nn.Module):
 
         x_norm2 = norm_2(x_res)
         cross_norm = norm_3(cross)
-        x_res, trend2 = decomp_2(
-            x_res + cross_attn(x_norm2, cross_norm, cross_norm)
-        )
+        x_res, trend2 = decomp_2(x_res + cross_attn(x_norm2, cross_norm, cross_norm))
 
         y = conv_1(x_res.transpose(1, 2))
         y = activation(y)
         y = dropout(y)
         y = conv_2(y)
         y = dropout(y).transpose(1, 2)
-        
+
         x_res, trend3 = decomp_3(x_res + y)
-        
+
         return x_res, trend1 + trend2 + trend3

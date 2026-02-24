@@ -26,10 +26,10 @@ class RiskSimulator:
         var = self.calculate_var()
         tail_mask = losses >= var[None, :, :]
         tail_losses = np.where(tail_mask, losses, np.nan)
-        
+
         with np.errstate(invalid="ignore"):
             cvar_result = np.nanmean(tail_losses, axis=0)
-            
+
         return np.where(np.isnan(cvar_result), var, cvar_result)
 
     def calculate_expected_shortfall(self) -> np.ndarray:

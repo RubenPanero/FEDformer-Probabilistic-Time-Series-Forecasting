@@ -15,7 +15,9 @@ def _select_amp_dtype() -> torch.dtype:
     try:
         if torch.cuda.is_available():
             major, _minor = torch.cuda.get_device_capability()
-            if major >= 8: # Ampere en adelante toleran numéricos BFloat16 sin saturación
+            if (
+                major >= 8
+            ):  # Ampere en adelante toleran numéricos BFloat16 sin saturación
                 return torch.bfloat16
         return torch.float16
     except (RuntimeError, AttributeError):
@@ -51,13 +53,13 @@ def set_seed(seed: int = 42, deterministic: bool = False) -> None:
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-        
+
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
-            
+
         if deterministic:
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
     except (RuntimeError, ValueError):
-        # Defensivo extremo ante fallas abstractas C++ backend 
+        # Defensivo extremo ante fallas abstractas C++ backend
         pass

@@ -45,7 +45,8 @@ class RegimeDetector:
                 self.quantiles = np.zeros(self.n_regimes - 1)
         except Exception as exc:  # pragma: no cover - defensive fallback
             logger.warning(
-                "Fallo en ajuste de detector de regímenes: %s. Usando defaults (0).", exc
+                "Fallo en ajuste de detector de regímenes: %s. Usando defaults (0).",
+                exc,
             )
             self.quantiles = np.zeros(self.n_regimes - 1)
 
@@ -53,13 +54,15 @@ class RegimeDetector:
         """Categoriza una secuencia temporal dada en función del umbral computado."""
         if self.quantiles is None:
             raise RuntimeError("El detector no ha sido ajustado (fitted).")
-            
+
         try:
             returns = np.diff(sequence, axis=0) / (np.abs(sequence[:-1]) + 1e-9)
             sequence_vol = np.std(returns, axis=1).mean()
             return min(np.digitize(sequence_vol, self.quantiles), self.n_regimes - 1)
         except Exception as exc:  # pragma: no cover - defensive fallback
-            logger.warning("Fallo en detección de régimen: %s. Empleando régimen 0.", exc)
+            logger.warning(
+                "Fallo en detección de régimen: %s. Empleando régimen 0.", exc
+            )
             return 0
 
 
@@ -88,7 +91,7 @@ class TimeSeriesDataset(Dataset):
 
         self.raw_df = self._read_raw_data()
         self.regime_detector = RegimeDetector(n_regimes=self.config.n_regimes)
-        
+
         self._fit_and_transform(
             fit_end_idx=fit_end_idx, force_refit=not self.preprocessor.fitted
         )
@@ -136,7 +139,7 @@ class TimeSeriesDataset(Dataset):
         n_rows = len(self.full_data_scaled)
         num_train = int(n_rows * 0.7)
         num_val = int(n_rows * 0.2)
-        
+
         border1s = {
             "train": 0,
             "val": max(0, num_train - self.config.seq_len),
@@ -201,7 +204,7 @@ class TimeSeriesDataset(Dataset):
         except Exception as exc:
             if self.strict:
                 raise RuntimeError(f"Error despachando item {index}: {exc}") from exc
-                
+
             logger.warning("Error despachando item %s: %s", index, exc)
             return {
                 "x_enc": torch.zeros(

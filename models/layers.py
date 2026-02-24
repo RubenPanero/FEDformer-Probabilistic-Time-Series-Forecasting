@@ -46,26 +46,26 @@ class OptimizedSeriesDecomp(nn.Module):
         """Split input into seasonal and trend signals via moving averages."""
         x_t = x.transpose(1, 2)  # [batch, len, channels] -> [batch, channels, len]
         trends: list[torch.Tensor] = []
-        
+
         for kernel_size in self.kernel_sizes:
             if kernel_size <= 1:
                 trends.append(x_t)
                 continue
-                
+
             left = (kernel_size - 1) // 2
             right = kernel_size - 1 - left
             # Pad estricto
             x_padded = pad(
                 x_t, (left, right), mode="replicate"
             )  # [batch, channels, len + left + right]
-            
+
             trend_val = avg_pool1d(x_padded, kernel_size=kernel_size, stride=1)
             trends.append(trend_val)
-            
+
         trend = (
             torch.stack(trends).mean(0).transpose(1, 2)
         )  # Back to [batch, len, channels]
-        
+
         return x - trend, trend
 
 
@@ -80,7 +80,7 @@ class FourierAttention(nn.Module):
         generator = torch.Generator()
         seed = (seq_len * 1009 + self.modes * 1013) % (2**31 - 1)
         generator.manual_seed(seed)
-        
+
         indices = torch.randperm(max(1, seq_len // 2), generator=generator)[
             : self.modes
         ].sort()[0]
@@ -102,7 +102,7 @@ class FourierAttention(nn.Module):
         # Type ignore for static analyzer regarding buffer properties
         idx_buffer: torch.Tensor = self.index  # type: ignore
         selected = x_ft[..., idx_buffer]
-        
+
         processed_modes = torch.einsum("bhei,eoi->bhoi", selected, weights_c)
 
         out_ft = torch.zeros_like(x_ft)
@@ -118,7 +118,7 @@ class AttentionLayer(nn.Module):
         super().__init__()
         self.n_heads = config.n_heads
         self.d_keys = config.d_model // config.n_heads
-        
+
         self.fourier_attention = FourierAttention(
             self.d_keys, config.seq_len, config.modes
         )
@@ -179,8 +179,8 @@ class AttentionLayer(nn.Module):
 
         # Usando la fourier attention
         attn_out = self.fourier_attention(q_heads * k_heads) * v_heads
-        
+
         batch_out, len_out = q.shape[:2]
         attn_out = attn_out.transpose(1, 2).contiguous().view(batch_out, len_out, -1)
-        
+
         return self.dropout(self.out_proj(attn_out))

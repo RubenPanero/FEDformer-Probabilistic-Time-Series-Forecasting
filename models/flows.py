@@ -4,7 +4,6 @@ Implementación de Normalizing Flows para el modelo FEDformer.
 Refactorizado con tipado estricto Python 3.10+ y diseño moderno.
 """
 
-
 import torch
 from torch import nn
 from torch.distributions import Distribution, Normal
@@ -25,7 +24,7 @@ class AffineCouplingLayer(nn.Module):
         else:
             self.d1 = d_model // 2 + 1
             self.d2 = d_model - self.d1
-            
+
         cond_in = self.d1 + (context_dim if context_dim > 0 else 0)
         self.conditioner = nn.Sequential(
             nn.Linear(cond_in, hidden_dim),
@@ -39,12 +38,12 @@ class AffineCouplingLayer(nn.Module):
         """Transform the second split with context-aware affine parameters."""
         x1 = x[..., : self.d1]
         x2 = x[..., self.d1 :]
-        
+
         if self.context_dim > 0 and context is not None:
             cond_in = torch.cat([x1, context], dim=-1)
         else:
             cond_in = x1
-            
+
         params = self.conditioner(cond_in).chunk(2, dim=-1)
         # Using type inference correctly on chunk result
         s, t = params[0], params[1]
@@ -60,12 +59,12 @@ class AffineCouplingLayer(nn.Module):
         """Invert the affine coupling transformation."""
         y1 = y[..., : self.d1]
         y2 = y[..., self.d1 :]
-        
+
         if self.context_dim > 0 and context is not None:
             cond_in = torch.cat([y1, context], dim=-1)
         else:
             cond_in = y1
-            
+
         params = self.conditioner(cond_in).chunk(2, dim=-1)
         s, t = params[0], params[1]
         s = torch.tanh(s)

@@ -40,7 +40,7 @@ def mc_dropout_inference(
     x_regime = batch["x_regime"].to(device, non_blocking=True)
 
     samples: list[torch.Tensor] = []
-    
+
     with torch.no_grad():
         for _ in range(n_samples):
             try:
@@ -51,7 +51,9 @@ def mc_dropout_inference(
                 else:
                     samples.append(dist.mean)
             except (RuntimeError, ValueError) as exc:
-                logger.warning("Fallo en el muestreo de distribución MC Dropout: %s", exc)
+                logger.warning(
+                    "Fallo en el muestreo de distribución MC Dropout: %s", exc
+                )
                 if samples:
                     samples.append(torch.zeros_like(samples[0]))
                 else:
@@ -64,7 +66,11 @@ def mc_dropout_inference(
                             int(model.config.c_out),  # type: ignore
                         )
                     else:
-                        dummy_shape = (int(x_enc.size(0)), 1, 1)  # Caída ciega defensiva
+                        dummy_shape = (
+                            int(x_enc.size(0)),
+                            1,
+                            1,
+                        )  # Caída ciega defensiva
                     samples.append(torch.zeros(*dummy_shape, device=device))
 
     if not samples:
@@ -85,5 +91,5 @@ def mc_dropout_inference(
     # Restauración inmutable del modo nativo del modelo
     if not prev_mode:
         model.eval()
-        
+
     return out

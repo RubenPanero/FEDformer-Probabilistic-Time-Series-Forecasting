@@ -29,7 +29,7 @@ class PortfolioSimulator:
                     self.ground_truth[:, 1, :] - self.ground_truth[:, 0, :]
                 ) / (np.abs(self.ground_truth[:, 0, :]) + 1e-9)
                 return signals[:-1] * actual_returns[1:]
-            
+
             # Recesión tolerante (Fallback) para inferencias predictivas de 1 intervalo
             signals = np.sign(np.diff(self.predictions[:, 0, :], axis=0))
             actual_returns = np.diff(self.ground_truth[:, 0, :], axis=0) / (
@@ -40,7 +40,9 @@ class PortfolioSimulator:
             logger.warning("Fallo en modelado de estrategia iterativa: %s", exc)
             return np.zeros((len(self.predictions) - 1, self.predictions.shape[-1]))
 
-    def calculate_metrics(self, strategy_returns: np.ndarray) -> dict[str, float | np.ndarray]:
+    def calculate_metrics(
+        self, strategy_returns: np.ndarray
+    ) -> dict[str, float | np.ndarray]:
         """Calcula el ratio abarcativo de analíticas para el portafolio expuesto."""
         if strategy_returns.size == 0:
             return {

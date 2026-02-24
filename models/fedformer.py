@@ -63,7 +63,7 @@ class Flow_FEDformer(nn.Module):
             activation=config.activation,
             moving_avg=config.moving_avg,
         )
-        
+
         self.sequence_layers = nn.ModuleDict(
             {
                 "encoders": nn.ModuleList(
@@ -98,7 +98,7 @@ class Flow_FEDformer(nn.Module):
         seasonal_init = torch.zeros_like(x_dec[:, -self.config.pred_len :, :])
 
         trend_init_in = mean.expand(-1, self.config.pred_len, -1)
-        # Using type: ignore for dynamic nn.ModuleDict resolution if preferred, 
+        # Using type: ignore for dynamic nn.ModuleDict resolution if preferred,
         # but PyTorch normally accepts this smoothly.
         trend_init = trend_proj(trend_init_in)
 
@@ -118,10 +118,10 @@ class Flow_FEDformer(nn.Module):
         """Concatenate regime embeddings with encoder/decoder tensors."""
         batch_size = x_enc.size(0)
         regime_idx = x_regime.long().reshape(-1)
-        
+
         if regime_idx.numel() == 1 and batch_size > 1:
             regime_idx = regime_idx.expand(batch_size)
-            
+
         if regime_idx.numel() != batch_size:
             raise RuntimeError(
                 f"Secuencia de tamaño incorrecto. Esperado {batch_size}, recibido {regime_idx.numel()}"
@@ -129,12 +129,14 @@ class Flow_FEDformer(nn.Module):
 
         regime_embedding_layer = self.components["regime_embedding"]
         regime_vec = regime_embedding_layer(regime_idx)
-        
+
         regime_vec_enc = regime_vec.unsqueeze(1).expand(
             batch_size, self.config.seq_len, regime_vec.size(-1)
         )
         regime_vec_dec = regime_vec.unsqueeze(1).expand(
-            batch_size, self.config.label_len + self.config.pred_len, regime_vec.size(-1)
+            batch_size,
+            self.config.label_len + self.config.pred_len,
+            regime_vec.size(-1),
         )
         return (
             torch.cat([x_enc, regime_vec_enc], dim=-1),
@@ -194,20 +196,22 @@ class Flow_FEDformer(nn.Module):
                 enc_out, dec_out, trend_init, self.config.use_gradient_checkpointing
             )
         except Exception as e:
-            raise RuntimeError(f"Error durante la propagación (forward pass): {e}") from e
+            raise RuntimeError(
+                f"Error durante la propagación (forward pass): {e}"
+            ) from e
 
         if trend_init.shape[-1] != trend_part.shape[-1]:
             raise RuntimeError(
                 f"Discrepancia vectorial: trend_init={trend_init.shape[-1]} "
                 f"vs trend_part={trend_part.shape[-1]}."
             )
-            
+
         final_trend = trend_init + trend_part
 
         dec_ctx = dec_out[:, -self.config.pred_len :, :]
         conditioner = self.components["flow_conditioner_proj"]
         flow_conditioned = conditioner(dec_ctx)
-        
+
         batch_size, time_steps = flow_conditioned.shape[:2]
         flow_conditioned = flow_conditioned.view(
             batch_size,
@@ -215,7 +219,7 @@ class Flow_FEDformer(nn.Module):
             self.config.c_out,
             self.config.flow_hidden_dim,
         )
-        
+
         feature_context = flow_conditioned.mean(dim=1)
         mean_pred = final_trend[:, -self.config.pred_len :, : self.config.c_out]
 
@@ -244,31 +248,31 @@ class NormalizingFlowDistribution:
         """Compute log probability per batch, supports optional mask over time dimension."""
         batch_size, time_steps, num_features = y_true.shape
         total_lp = torch.zeros(batch_size, device=y_true.device, dtype=y_true.dtype)
-        
+
         for feature_idx in range(num_features):
             y_feature = y_true[..., feature_idx]
             mu_feature = self.means[..., feature_idx]
             ctx_feature = self.contexts[:, feature_idx, :]
-            
+
             flow = self.flows[feature_idx]
             lp_feature = flow.log_prob(
                 y_feature, base_mean=mu_feature, context=ctx_feature
             )
             total_lp = total_lp + lp_feature
-            
+
         if mask is not None:
             if mask.dim() == 3:
                 mask = mask.squeeze(-1)
             valid_counts = mask.sum(dim=1).clamp(min=1).to(total_lp.dtype)
             return total_lp / valid_counts
-            
+
         return total_lp / float(time_steps)
 
     def sample(self, n_samples: int) -> torch.Tensor:
         """Generate samples by inverting the learned flows."""
         batch_size, time_steps, num_features = self.means.shape
         feature_samples: list[torch.Tensor] = []
-        
+
         for feature_idx in range(num_features):
             ctx_feature = self.contexts[:, feature_idx, :]
             expanded_ctx = ctx_feature.unsqueeze(0).expand(n_samples, -1, -1)
@@ -282,6 +286,6 @@ class NormalizingFlowDistribution:
             flow = self.flows[feature_idx]
             x0 = flow.inverse(z, context=expanded_ctx)
             feature_samples.append(x0.unsqueeze(-1))
-            
+
         stacked = torch.cat(feature_samples, dim=-1)
         return stacked + self.means.unsqueeze(0)
