@@ -16,12 +16,12 @@ from torch.nn.functional import avg_pool1d, interpolate, pad
 def _apply_rfft(x: torch.Tensor, *, dim: int) -> torch.Tensor:
     """Wrapper around torch.fft.rfft for static analysis."""
     # Tipado explícito obviando conversiones innecesarias 'cast' importadas
-    return rfft(x, dim=dim)  # type: ignore
+    return rfft(x, dim=dim)  # pylint: disable=not-callable
 
 
 def _apply_irfft(x: torch.Tensor, *, n: int, dim: int) -> torch.Tensor:
     """Wrapper around torch.fft.irfft for static analysis."""
-    return irfft(x, n=n, dim=dim)  # type: ignore
+    return irfft(x, n=n, dim=dim)  # pylint: disable=not-callable
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ class OptimizedSeriesDecomp(nn.Module):
                 x_t, (left, right), mode="replicate"
             )  # [batch, channels, len + left + right]
 
-            trend_val = avg_pool1d(x_padded, kernel_size=kernel_size, stride=1)
+            trend_val = avg_pool1d(x_padded, kernel_size=kernel_size, stride=1)  # pylint: disable=not-callable
             trends.append(trend_val)
 
         trend = (

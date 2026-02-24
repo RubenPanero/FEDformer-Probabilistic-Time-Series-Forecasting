@@ -1,0 +1,54 @@
+﻿2026-02-24T16:03:08.6996585Z ##[group]Run set -euo pipefail
+2026-02-24T16:03:08.6996944Z [36;1mset -euo pipefail[0m
+2026-02-24T16:03:08.6997173Z [36;1mTARGET_PATHS=()[0m
+2026-02-24T16:03:08.6997741Z [36;1mfor path in main.py config.py models training utils; do[0m
+2026-02-24T16:03:08.6998123Z [36;1m  if [ -e "$path" ]; then[0m
+2026-02-24T16:03:08.6998385Z [36;1m    TARGET_PATHS+=("$path")[0m
+2026-02-24T16:03:08.6998623Z [36;1m  fi[0m
+2026-02-24T16:03:08.6998801Z [36;1mdone[0m
+2026-02-24T16:03:08.6999016Z [36;1mif [ ${#TARGET_PATHS[@]} -eq 0 ]; then[0m
+2026-02-24T16:03:08.6999298Z [36;1m  echo "No lint targets found."[0m
+2026-02-24T16:03:08.6999544Z [36;1m  exit 0[0m
+2026-02-24T16:03:08.6999725Z [36;1mfi[0m
+2026-02-24T16:03:08.6999894Z [36;1mFILES=()[0m
+2026-02-24T16:03:08.7000104Z [36;1mfor target in "${TARGET_PATHS[@]}"; do[0m
+2026-02-24T16:03:08.7000368Z [36;1m  if [ -d "$target" ]; then[0m
+2026-02-24T16:03:08.7000620Z [36;1m    while IFS= read -r file; do[0m
+2026-02-24T16:03:08.7000866Z [36;1m      FILES+=("$file")[0m
+2026-02-24T16:03:08.7001271Z [36;1m    done < <(find "$target" -type f -name "*.py" -not -path "*/__pycache__/*")[0m
+2026-02-24T16:03:08.7001676Z [36;1m  elif [ -f "$target" ]; then[0m
+2026-02-24T16:03:08.7001923Z [36;1m    FILES+=("$target")[0m
+2026-02-24T16:03:08.7002139Z [36;1m  fi[0m
+2026-02-24T16:03:08.7002316Z [36;1mdone[0m
+2026-02-24T16:03:08.7002500Z [36;1mif [ ${#FILES[@]} -eq 0 ]; then[0m
+2026-02-24T16:03:08.7002803Z [36;1m  echo "No Python files found under lint targets."[0m
+2026-02-24T16:03:08.7003088Z [36;1m  exit 0[0m
+2026-02-24T16:03:08.7003268Z [36;1mfi[0m
+2026-02-24T16:03:08.7003438Z [36;1mset +e[0m
+2026-02-24T16:03:08.7003677Z [36;1mpylint --disable=all --enable=E,F "${FILES[@]}"[0m
+2026-02-24T16:03:08.7003960Z [36;1mexit_code=$?[0m
+2026-02-24T16:03:08.7004164Z [36;1mset -e[0m
+2026-02-24T16:03:08.7004362Z [36;1mif [ "$exit_code" -eq 32 ]; then[0m
+2026-02-24T16:03:08.7004682Z [36;1m  echo "Pylint usage error (exit 32). Skipping this run."[0m
+2026-02-24T16:03:08.7004993Z [36;1m  exit 0[0m
+2026-02-24T16:03:08.7005171Z [36;1mfi[0m
+2026-02-24T16:03:08.7005350Z [36;1mexit "$exit_code"[0m
+2026-02-24T16:03:08.7084038Z shell: /usr/bin/bash -e {0}
+2026-02-24T16:03:08.7084285Z env:
+2026-02-24T16:03:08.7084542Z   pythonLocation: /opt/hostedtoolcache/Python/3.10.19/x64
+2026-02-24T16:03:08.7084953Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.10.19/x64/lib/pkgconfig
+2026-02-24T16:03:08.7085348Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.10.19/x64
+2026-02-24T16:03:08.7085698Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.10.19/x64
+2026-02-24T16:03:08.7086042Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.10.19/x64
+2026-02-24T16:03:08.7086389Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.10.19/x64/lib
+2026-02-24T16:03:08.7086680Z   PYTHONPATH: .
+2026-02-24T16:03:08.7086875Z ##[endgroup]
+2026-02-24T16:03:25.4485246Z ************* Module models.layers
+2026-02-24T16:03:25.4485850Z models/layers.py:19:11: E1102: rfft is not callable (not-callable)
+2026-02-24T16:03:25.4486844Z models/layers.py:24:11: E1102: irfft is not callable (not-callable)
+2026-02-24T16:03:25.4487671Z models/layers.py:62:24: E1102: avg_pool1d is not callable (not-callable)
+2026-02-24T16:03:25.4488039Z 
+2026-02-24T16:03:25.4488153Z -----------------------------------
+2026-02-24T16:03:25.4488529Z Your code has been rated at 9.89/10
+2026-02-24T16:03:25.4488748Z 
+2026-02-24T16:03:31.8934622Z ##[error]Process completed with exit code 2.
