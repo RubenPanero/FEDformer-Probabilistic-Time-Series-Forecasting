@@ -27,4 +27,4 @@ pytest-cov>=4.0.0
 # Paquetes Financieros
 alpha_vantage>=2.3.1
 yfinance>=0.2.18
-pandas-ta>=0.3.14
+pandas-ta-classic>=0.3.14b
