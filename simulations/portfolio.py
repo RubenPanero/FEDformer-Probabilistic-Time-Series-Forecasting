@@ -4,9 +4,13 @@ Simulador de portafolio y backtesting con estrategias de trading temporales.
 Refactorizado con tipado nativo Python 3.10+ y español estricto para registros estadísticos.
 """
 
+from __future__ import annotations
+
 import logging
 
 import numpy as np
+
+from training.forecast_output import ForecastOutput
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +18,18 @@ logger = logging.getLogger(__name__)
 class PortfolioSimulator:
     """Monitor avanzado de simulación de portafolio con métricas analíticas."""
 
-    def __init__(self, predictions: np.ndarray, ground_truth: np.ndarray) -> None:
-        self.predictions = predictions
-        self.ground_truth = ground_truth
+    def __init__(
+        self,
+        forecast: ForecastOutput | np.ndarray,
+        ground_truth: np.ndarray | None = None,
+    ) -> None:
+        # Acepta ForecastOutput o np.ndarray para compatibilidad hacia atrás
+        if isinstance(forecast, ForecastOutput):
+            self.predictions = forecast.preds_for_metrics
+            self.ground_truth = forecast.gt_for_metrics
+        else:
+            self.predictions = forecast
+            self.ground_truth = ground_truth  # type: ignore[assignment]
 
     def run_simple_strategy(self) -> np.ndarray:
         """Opera una estrategia base de impulso temporal (momentum)."""

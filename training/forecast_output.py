@@ -1,0 +1,47 @@
+# -*- coding: utf-8 -*-
+"""
+ForecastOutput: contenedor dual-space para predicciones escaladas y reales.
+Permite transportar predicciones en espacio escalado (raw del modelo) y en
+espacio real (precios o retornos no escalados) a través del pipeline.
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass
+import numpy as np
+
+
+@dataclass
+class ForecastOutput:
+    """Contenedor de predicciones en espacio escalado y real."""
+
+    # Espacio escalado (raw del modelo)
+    preds_scaled: np.ndarray  # (n_windows, pred_len, n_targets)
+    gt_scaled: np.ndarray  # (n_windows, pred_len, n_targets)
+    samples_scaled: np.ndarray  # (n_samples, n_windows, pred_len, n_targets) o similar
+
+    # Espacio real (precios o retornos no escalados)
+    preds_real: np.ndarray
+    gt_real: np.ndarray
+    samples_real: np.ndarray
+
+    # Metadatos
+    metric_space: str  # "returns" | "prices"
+    return_transform: str  # "none" | "log_return" | "simple_return"
+    target_names: list[str]
+
+    @property
+    def preds_for_metrics(self) -> np.ndarray:
+        """Predicciones en el espacio configurado para métricas financieras."""
+        return self.preds_real if self.metric_space == "prices" else self.preds_scaled
+
+    @property
+    def gt_for_metrics(self) -> np.ndarray:
+        """Ground truth en el espacio configurado para métricas financieras."""
+        return self.gt_real if self.metric_space == "prices" else self.gt_scaled
+
+    @property
+    def samples_for_metrics(self) -> np.ndarray:
+        """Muestras en el espacio configurado para métricas financieras."""
+        return (
+            self.samples_real if self.metric_space == "prices" else self.samples_scaled
+        )

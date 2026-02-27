@@ -154,6 +154,7 @@ class PreprocessingSettings:
     time_features: List[str] = field(default_factory=list)
     artifact_dir: str = "reports/preprocessing"
     return_transform: str = "none"  # opciones: "none", "log_return", "simple_return"
+    metric_space: str = "returns"  # opciones: "returns" | "prices"
 
 
 @dataclass
@@ -241,6 +242,7 @@ class FEDformerConfig:
         "seed",
         "deterministic",
         "return_transform",
+        "metric_space",
         "warmup_epochs",
         "min_lr",
         "scheduler_type",
@@ -413,6 +415,10 @@ class FEDformerConfig:
         if self.return_transform not in ("none", "log_return", "simple_return"):
             raise ValueError(
                 f"return_transform debe ser 'none', 'log_return' o 'simple_return', got '{self.return_transform}'"
+            )
+        if self.metric_space not in ("returns", "prices"):
+            raise ValueError(
+                f"metric_space debe ser 'returns' o 'prices', got '{self.metric_space}'"
             )
         if self.pred_len % 2 != 0:
             logger.warning(
@@ -774,6 +780,14 @@ class FEDformerConfig:
     @return_transform.setter
     def return_transform(self, value: str) -> None:
         self.sections.preprocessing.return_transform = value
+
+    @property
+    def metric_space(self) -> str:
+        return self.sections.preprocessing.metric_space
+
+    @metric_space.setter
+    def metric_space(self, value: str) -> None:
+        self.sections.preprocessing.metric_space = value
 
     # -- Monitoring settings proxies -----------------------------------------
     @property
