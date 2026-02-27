@@ -55,6 +55,11 @@ class PreprocessingPipeline:
         )
         self.fit_scope = self.settings.fit_scope
 
+        self.return_transform: str = self.settings.return_transform
+        self.last_prices: dict[str, float] = {}
+        # Alias de target_cols para compatibilidad con métodos de retorno
+        self.target_cols: list[str] = list(target_features)
+
         self.fitted = False
         self.fit_end_idx: int | None = None
 
@@ -100,6 +105,40 @@ class PreprocessingPipeline:
         if strategy == "minmax":
             return MinMaxScaler()
         return _IdentityScaler()
+
+    def _apply_return_transform(self, df: pd.DataFrame, *, fit: bool) -> pd.DataFrame:
+        """Computa retornos logarítmicos o simples sobre columnas objetivo."""
+        if self.return_transform == "none":
+            return df
+        out = df.copy()
+        for col in self.target_cols:
+            series = out[col].astype(float)
+            if self.return_transform == "log_return":
+                out[col] = np.log(series / series.shift(1))
+            elif self.return_transform == "simple_return":
+                out[col] = series.pct_change()
+        # Eliminar primera fila que contiene NaN por el shift
+        return out.iloc[1:].reset_index(drop=True)
+
+    def inverse_transform_returns(
+        self, predicted_returns: np.ndarray, last_price: float
+    ) -> np.ndarray:
+        """Reconstruye precios desde retornos predichos usando producto acumulado."""
+        if self.return_transform == "none":
+            return predicted_returns
+        if self.return_transform == "log_return":
+            # retorno_log = log(P_t / P_{t-1}) => P_t = P_{t-1} * exp(retorno)
+            prices = np.zeros_like(predicted_returns)
+            prices[0] = last_price * np.exp(predicted_returns[0])
+            for i in range(1, len(predicted_returns)):
+                prices[i] = prices[i - 1] * np.exp(predicted_returns[i])
+            return prices
+        # simple_return
+        prices = np.zeros_like(predicted_returns)
+        prices[0] = last_price * (1 + predicted_returns[0])
+        for i in range(1, len(predicted_returns)):
+            prices[i] = prices[i - 1] * (1 + predicted_returns[i])
+        return prices
 
     def _infer_column_roles(self, df: pd.DataFrame) -> None:
         roles = self.settings.feature_roles or {}
@@ -393,7 +432,17 @@ class PreprocessingPipeline:
         self, df: pd.DataFrame, fit_end_idx: int | None = None
     ) -> "PreprocessingPipeline":
         """Precomputa y entabla el sistema de transformado matemático."""
+        # Guardar últimos precios para inversión de transformada de retornos
+        if self.return_transform != "none":
+            self.last_prices = {
+                col: float(df[col].iloc[-1]) for col in self.target_cols
+            }
+
         raw_features = self._build_feature_frame(df, fit=True)
+
+        # Aplicar transformada de retornos antes de escalar
+        raw_features = self._apply_return_transform(raw_features, fit=True)
+
         cutoff = fit_end_idx if fit_end_idx is not None else len(raw_features)
         cutoff = int(max(1, min(cutoff, len(raw_features))))
         self.fit_end_idx = cutoff
@@ -430,6 +479,8 @@ class PreprocessingPipeline:
         self._validate_required_columns(df)
 
         feature_df = self._build_feature_frame(df, fit=False)
+        # Aplicar transformada de retornos antes de escalar
+        feature_df = self._apply_return_transform(feature_df, fit=False)
         feature_df = self._apply_missing_policy(feature_df)
         feature_df = self._apply_outlier_policy(feature_df)
         self.validate_input_schema(df, feature_df=feature_df)
@@ -499,6 +550,8 @@ class PreprocessingPipeline:
             "fill_values": self.fill_values,
             "outlier_bounds": {k: list(v) for k, v in self.outlier_bounds.items()},
             "fit_stats": self.fit_stats,
+            "return_transform": self.return_transform,
+            "last_prices": self.last_prices,
             "settings": {
                 "feature_roles": self.settings.feature_roles,
                 "scaling_strategy": self.settings.scaling_strategy,
@@ -511,6 +564,7 @@ class PreprocessingPipeline:
                 "categorical_encoding": self.settings.categorical_encoding,
                 "time_features": self.settings.time_features,
                 "artifact_dir": self.settings.artifact_dir,
+                "return_transform": self.settings.return_transform,
             },
         }
 
@@ -549,6 +603,9 @@ class PreprocessingPipeline:
             for k, v in metadata.get("outlier_bounds", {}).items()
         }
         self.fit_stats = metadata.get("fit_stats", {})
+        # Restaurar transformada de retornos y últimos precios almacenados
+        self.return_transform = metadata.get("return_transform", "none")
+        self.last_prices = metadata.get("last_prices", {})
         self.fitted = True
 
         return self

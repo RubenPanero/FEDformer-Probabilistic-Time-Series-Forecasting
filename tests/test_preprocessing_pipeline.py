@@ -156,3 +156,120 @@ def test_inverse_transform_multitarget(mixed_csv: str) -> None:
     volume = raw["Volume"].fillna(volume_fill).to_numpy()
     assert np.allclose(y_inv[:, 0], close, atol=1e-5)
     assert np.allclose(y_inv[:, 1], volume, atol=1e-5)
+
+
+def test_log_return_transform(mixed_csv: str) -> None:
+    """Verifica que los retornos logarítmicos se computan correctamente y el resultado tiene una fila menos que el input."""
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=mixed_csv,
+        date_column="date",
+        scaling_strategy="none",
+        outlier_policy="none",
+        missing_policy="impute_median",
+        drift_checks={"enabled": False},
+        return_transform="log_return",
+    )
+    raw = pd.read_csv(mixed_csv, parse_dates=["date"])
+    pipe = PreprocessingPipeline.from_config(
+        config, target_features=config.target_features, date_column=config.date_column
+    )
+    pipe.fit(raw)
+    result = pipe.transform(raw)
+
+    # El resultado debe tener una fila menos que el input (primera fila NaN eliminada)
+    assert len(result) == len(raw) - 1
+
+    # Verificar que los retornos logarítmicos son finitos en la mayoría de los casos
+    close_vals = result["Close"].to_numpy()
+    assert np.isfinite(close_vals).sum() > len(close_vals) * 0.8
+
+
+def test_return_inverse_transform(mixed_csv: str) -> None:
+    """Verifica que los precios pueden recuperarse desde los retornos predichos."""
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=mixed_csv,
+        date_column="date",
+        scaling_strategy="none",
+        outlier_policy="none",
+        missing_policy="impute_median",
+        drift_checks={"enabled": False},
+        return_transform="log_return",
+    )
+    raw = pd.read_csv(mixed_csv, parse_dates=["date"])
+    pipe = PreprocessingPipeline.from_config(
+        config, target_features=config.target_features, date_column=config.date_column
+    )
+    pipe.fit(raw)
+
+    # Crear retornos logarítmicos sintéticos conocidos
+    last_price = 100.0
+    log_returns = np.array([0.01, -0.005, 0.02, 0.0])
+    prices = pipe.inverse_transform_returns(log_returns, last_price)
+
+    # Verificar que los precios se recuperan correctamente desde retornos log
+    expected_0 = last_price * np.exp(log_returns[0])
+    expected_1 = expected_0 * np.exp(log_returns[1])
+    assert np.isclose(prices[0], expected_0, rtol=1e-6)
+    assert np.isclose(prices[1], expected_1, rtol=1e-6)
+    assert len(prices) == len(log_returns)
+
+    # Verificar también simple_return
+    config_sr = FEDformerConfig(
+        target_features=["Close"],
+        file_path=mixed_csv,
+        date_column="date",
+        scaling_strategy="none",
+        outlier_policy="none",
+        missing_policy="impute_median",
+        drift_checks={"enabled": False},
+        return_transform="simple_return",
+    )
+    pipe_sr = PreprocessingPipeline.from_config(
+        config_sr,
+        target_features=config_sr.target_features,
+        date_column=config_sr.date_column,
+    )
+    pipe_sr.fit(raw)
+    simple_returns = np.array([0.01, -0.005, 0.02])
+    prices_sr = pipe_sr.inverse_transform_returns(simple_returns, last_price)
+    expected_sr_0 = last_price * (1 + simple_returns[0])
+    expected_sr_1 = expected_sr_0 * (1 + simple_returns[1])
+    assert np.isclose(prices_sr[0], expected_sr_0, rtol=1e-6)
+    assert np.isclose(prices_sr[1], expected_sr_1, rtol=1e-6)
+
+
+def test_return_transform_leakage_safe(mixed_csv: str) -> None:
+    """Verifica que el scaler se ajusta solo con retornos de entrenamiento, no con datos de test."""
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=mixed_csv,
+        date_column="date",
+        scaling_strategy="standard",
+        outlier_policy="none",
+        missing_policy="impute_median",
+        drift_checks={"enabled": False},
+        return_transform="log_return",
+    )
+    raw = pd.read_csv(mixed_csv, parse_dates=["date"])
+    train_cutoff = 70
+
+    pipe = PreprocessingPipeline.from_config(
+        config, target_features=config.target_features, date_column=config.date_column
+    )
+    # Ajustar solo con datos de entrenamiento
+    pipe.fit(raw, fit_end_idx=train_cutoff)
+
+    # Los estadísticos deben corresponder únicamente al split de entrenamiento
+    train_df = raw.iloc[:train_cutoff].copy()
+    # Calcular retornos de entrenamiento manualmente
+    close_series = train_df["Close"].astype(float)
+    train_log_returns = np.log(close_series / close_series.shift(1)).iloc[1:]
+    train_mean = float(train_log_returns.mean())
+    train_std = float(train_log_returns.std(ddof=0))
+
+    # El scaler debe haberse ajustado con estadísticos del entrenamiento
+    fit_stat = pipe.fit_stats.get("Close", {})
+    assert abs(fit_stat.get("mean", float("nan")) - train_mean) < 0.05
+    assert abs(fit_stat.get("std", float("nan")) - train_std) < 0.05
