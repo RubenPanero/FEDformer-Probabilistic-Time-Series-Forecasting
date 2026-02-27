@@ -83,6 +83,9 @@ class OptimizationSettings:
 
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
+    warmup_epochs: int = 0
+    min_lr: float = 1e-6
+    scheduler_type: str = "none"  # opciones: "none", "cosine", "cosine_warmup"
 
 
 @dataclass
@@ -92,6 +95,8 @@ class LoopSettings:
     n_epochs_per_fold: int = 5
     batch_size: int = 32
     gradient_accumulation_steps: int = 1
+    patience: int = 0  # 0 = deshabilitado
+    min_delta: float = 1e-4
 
 
 @dataclass
@@ -148,6 +153,7 @@ class PreprocessingSettings:
     categorical_encoding: str = "none"
     time_features: List[str] = field(default_factory=list)
     artifact_dir: str = "reports/preprocessing"
+    return_transform: str = "none"  # opciones: "none", "log_return", "simple_return"
 
 
 @dataclass
@@ -234,6 +240,12 @@ class FEDformerConfig:
         "artifact_dir",
         "seed",
         "deterministic",
+        "return_transform",
+        "warmup_epochs",
+        "min_lr",
+        "scheduler_type",
+        "patience",
+        "min_delta",
     }
 
     def __init__(
@@ -369,6 +381,11 @@ class FEDformerConfig:
             raise ValueError(f"finetune_lr must be positive, got {self.finetune_lr}")
         if self.e_layers < 1 or self.d_layers < 1:
             raise ValueError("e_layers and d_layers must be >= 1")
+        if self.scheduler_type not in ("none", "cosine", "cosine_warmup"):
+            raise ValueError(
+                f"scheduler_type debe ser 'none', 'cosine' o 'cosine_warmup', "
+                f"got '{self.scheduler_type}'"
+            )
         if self.scaling_strategy not in ["standard", "robust", "minmax", "none"]:
             raise ValueError(
                 "scaling_strategy must be one of ['standard', 'robust', 'minmax', 'none']"
@@ -393,6 +410,10 @@ class FEDformerConfig:
             raise ValueError("drift_checks must be a dictionary")
         if not isinstance(self.time_features, list):
             raise ValueError("time_features must be a list")
+        if self.return_transform not in ("none", "log_return", "simple_return"):
+            raise ValueError(
+                f"return_transform debe ser 'none', 'log_return' o 'simple_return', got '{self.return_transform}'"
+            )
         if self.pred_len % 2 != 0:
             logger.warning(
                 "pred_len (%s) is odd. For affine coupling, even values are preferred",
@@ -617,6 +638,46 @@ class FEDformerConfig:
     def finetune_lr(self, value: Optional[float]) -> None:
         self.sections.training.runtime.finetune_lr = value
 
+    @property
+    def warmup_epochs(self) -> int:
+        return self.sections.training.optimization.warmup_epochs
+
+    @warmup_epochs.setter
+    def warmup_epochs(self, value: int) -> None:
+        self.sections.training.optimization.warmup_epochs = value
+
+    @property
+    def min_lr(self) -> float:
+        return self.sections.training.optimization.min_lr
+
+    @min_lr.setter
+    def min_lr(self, value: float) -> None:
+        self.sections.training.optimization.min_lr = value
+
+    @property
+    def scheduler_type(self) -> str:
+        return self.sections.training.optimization.scheduler_type
+
+    @scheduler_type.setter
+    def scheduler_type(self, value: str) -> None:
+        self.sections.training.optimization.scheduler_type = value
+
+    @property
+    def patience(self) -> int:
+        return self.sections.training.loop.patience
+
+    @patience.setter
+    def patience(self, value: int) -> None:
+        self.sections.training.loop.patience = value
+
+    @property
+    def min_delta(self) -> float:
+        return self.sections.training.loop.min_delta
+
+    @min_delta.setter
+    def min_delta(self, value: float) -> None:
+        self.sections.training.loop.min_delta = value
+
     # -- Preprocessing settings proxies ---------------------------------------
     @property
     def feature_roles(self) -> Dict[str, str]:
@@ -705,6 +766,14 @@ class FEDformerConfig:
     @artifact_dir.setter
     def artifact_dir(self, value: str) -> None:
         self.sections.preprocessing.artifact_dir = value
+
+    @property
+    def return_transform(self) -> str:
+        return self.sections.preprocessing.return_transform
+
+    @return_transform.setter
+    def return_transform(self, value: str) -> None:
+        self.sections.preprocessing.return_transform = value
 
     # -- Monitoring settings proxies -----------------------------------------
     @property

@@ -115,3 +115,34 @@ def test_dataset_multi_target_numeric_alignment(sample_csv: str) -> None:
     dataset = TimeSeriesDataset(config=config, flag="train")
     item = dataset[0]
     assert item["y_true"].shape == (4, 2)
+
+
+def test_dataset_with_return_transform(sample_csv: str) -> None:
+    """Test de integración: verifica que TimeSeriesDataset funciona con return_transform='log_return'."""
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=sample_csv,
+        date_column="date",
+        seq_len=10,
+        pred_len=4,
+        label_len=5,
+        return_transform="log_return",
+        scaling_strategy="robust",
+        missing_policy="impute_median",
+        outlier_policy="none",
+        drift_checks={"enabled": False},
+    )
+    dataset = TimeSeriesDataset(config=config, flag="train")
+
+    # El dataset debe tener muestras válidas
+    assert len(dataset) > 0
+
+    # Las secuencias deben ser finitas
+    item = dataset[0]
+    assert np.isfinite(item["x_enc"].numpy()).all(), "x_enc contiene valores no finitos"
+    assert np.isfinite(item["y_true"].numpy()).all(), "y_true contiene valores no finitos"
+
+    # Las formas deben ser correctas
+    assert item["x_enc"].shape[0] == config.seq_len
+    assert item["y_true"].shape[0] == config.pred_len
+    assert item["y_true"].shape[1] == 1  # una sola columna objetivo
