@@ -258,7 +258,7 @@ class WalkForwardTrainer:
                 f"Archivo de warm-start no encontrado en el sistema: {ckpt_path}"
             )
 
-        checkpoint = torch.load(ckpt_path, map_location=device)
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
         state_dict = (
             checkpoint["model_state_dict"]
             if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
@@ -344,7 +344,7 @@ class WalkForwardTrainer:
         checkpoint_path: str,
     ) -> tuple[int, int, float]:
         """Transbordo temporal desde dict persistido devuelta a RAM GPU."""
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -587,7 +587,11 @@ class WalkForwardTrainer:
             return train_indices, []
 
         test_limit = min(test_max_start + 1, len(self.full_dataset))
-        test_indices = list(range(train_end_idx, test_limit))
+        test_start = max(0, train_end_idx - self.config.seq_len)
+        if test_start >= test_limit:
+            return train_indices, []
+
+        test_indices = list(range(test_start, test_limit))
         return train_indices, test_indices
 
     def run_backtest(

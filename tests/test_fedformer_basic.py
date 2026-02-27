@@ -97,7 +97,7 @@ def test_state_dict_roundtrip(
     p = tmp_path / "m.pt"
     torch.save(model.state_dict(), str(p))
     m2 = model_factory(train=False)
-    m2.load_state_dict(torch.load(str(p), map_location="cpu"))
+    m2.load_state_dict(torch.load(str(p), map_location="cpu", weights_only=True))
     out2 = m2(x_enc, x_dec, x_regime).mean.detach()
     assert torch.allclose(out1, out2, atol=1e-6)
 

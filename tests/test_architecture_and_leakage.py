@@ -53,7 +53,8 @@ def test_fold_indices_avoid_label_leakage() -> None:
     assert train_indices
     assert test_indices
     assert max(train_indices) + cfg.seq_len + cfg.pred_len - 1 < train_end_idx
-    assert min(test_indices) >= train_end_idx
+    assert min(test_indices) == max(0, train_end_idx - cfg.seq_len)
+    assert min(test_indices) + cfg.seq_len >= train_end_idx
     assert max(test_indices) + cfg.seq_len + cfg.pred_len - 1 < test_end_idx
 
 
