@@ -35,6 +35,7 @@ def finetune_sequence(
             logger.info(f"Generando dataset financiero para {symbol}...")
             # Importación tardía para evitar dependencia de pandas_ta en módulos que no la necesitan
             from data.financial_dataset_builder import build_financial_dataset  # noqa: PLC0415
+
             build_financial_dataset(symbol, "data", use_mock=True)
 
         # 2. Configurar Entrenamiento

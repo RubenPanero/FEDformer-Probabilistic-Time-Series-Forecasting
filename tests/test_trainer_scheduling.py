@@ -4,14 +4,7 @@ Tests unitarios para el scheduler de LR y el early stopping del WalkForwardTrain
 Pruebas mínimas y rápidas que no requieren ejecuciones de entrenamiento reales.
 """
 
-import sys
-from pathlib import Path
-
 import torch
-
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from training.trainer import _EarlyStopping
 
@@ -95,7 +88,9 @@ def test_early_stopping_disabled_when_patience_zero() -> None:
     # Incluso con muchos pasos sin mejora, nunca debe activarse
     for _ in range(100):
         resultado = stopper.step(1.0)
-        assert not resultado, "Con patience=0, la parada anticipada debe estar deshabilitada"
+        assert not resultado, (
+            "Con patience=0, la parada anticipada debe estar deshabilitada"
+        )
 
     assert not stopper.should_stop
 

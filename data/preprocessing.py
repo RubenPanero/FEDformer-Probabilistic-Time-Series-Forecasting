@@ -434,7 +434,9 @@ class PreprocessingPipeline:
         """Precomputa y entabla el sistema de transformado matemático."""
         # Guardar últimos precios para inversión de transformada de retornos
         if self.return_transform != "none":
-            self.last_prices = {col: float(df[col].iloc[-1]) for col in self.target_cols}
+            self.last_prices = {
+                col: float(df[col].iloc[-1]) for col in self.target_cols
+            }
 
         raw_features = self._build_feature_frame(df, fit=True)
 

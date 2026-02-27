@@ -140,7 +140,9 @@ def test_dataset_with_return_transform(sample_csv: str) -> None:
     # Las secuencias deben ser finitas
     item = dataset[0]
     assert np.isfinite(item["x_enc"].numpy()).all(), "x_enc contiene valores no finitos"
-    assert np.isfinite(item["y_true"].numpy()).all(), "y_true contiene valores no finitos"
+    assert np.isfinite(item["y_true"].numpy()).all(), (
+        "y_true contiene valores no finitos"
+    )
 
     # Las formas deben ser correctas
     assert item["x_enc"].shape[0] == config.seq_len

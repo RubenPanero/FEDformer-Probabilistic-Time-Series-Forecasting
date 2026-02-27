@@ -46,11 +46,15 @@ def test_portfolio_uses_all_timesteps() -> None:
     n_assets = 1
 
     # Predicciones con tendencia fuertemente positiva en toda la ventana
-    predictions = np.linspace(1.0, 2.0, pred_len)[None, :, None].repeat(n_samples, axis=0)
+    predictions = np.linspace(1.0, 2.0, pred_len)[None, :, None].repeat(
+        n_samples, axis=0
+    )
     predictions += rng.normal(0, 0.01, predictions.shape)
 
     # Ground truth también creciente
-    ground_truth = np.linspace(1.0, 2.0, pred_len)[None, :, None].repeat(n_samples, axis=0)
+    ground_truth = np.linspace(1.0, 2.0, pred_len)[None, :, None].repeat(
+        n_samples, axis=0
+    )
     ground_truth += rng.normal(0, 0.01, ground_truth.shape)
 
     sim = PortfolioSimulator(predictions, ground_truth)
@@ -58,7 +62,9 @@ def test_portfolio_uses_all_timesteps() -> None:
 
     # Con tendencia positiva clara, la mayoría de señales deben ser positivas
     assert returns.shape == (n_samples - 1, n_assets)
-    assert returns.mean() > 0, "Señal de momentum debe ser positiva con tendencia alcista"
+    assert returns.mean() > 0, (
+        "Señal de momentum debe ser positiva con tendencia alcista"
+    )
 
 
 def test_portfolio_single_timestep_fallback() -> None:

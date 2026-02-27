@@ -85,7 +85,9 @@ def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
 
         mock_cfg = MagicMock()
         with (
-            patch("training.sequential_finetuner.FEDformerConfig", return_value=mock_cfg),
+            patch(
+                "training.sequential_finetuner.FEDformerConfig", return_value=mock_cfg
+            ),
             patch("training.sequential_finetuner.TimeSeriesDataset"),
             patch("training.sequential_finetuner.WalkForwardTrainer") as MockTrainer,
             patch("os.path.exists", return_value=True),
