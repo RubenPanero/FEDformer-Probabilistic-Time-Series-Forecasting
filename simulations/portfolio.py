@@ -22,13 +22,18 @@ class PortfolioSimulator:
         """Opera una estrategia base de impulso temporal (momentum)."""
         try:
             if self.predictions.shape[1] > 1 and self.ground_truth.shape[1] > 1:
-                signals = np.sign(
-                    self.predictions[:, 0, :] - self.ground_truth[:, 0, :]
+                # Señal: pendiente promedio predicha a través de todos los pasos temporales
+                predicted_trend = (
+                    self.predictions[:, -1, :] - self.predictions[:, 0, :]
+                ) / (np.abs(self.predictions[:, 0, :]) + 1e-9)
+                signals = np.sign(predicted_trend)
+
+                # Retornos reales: promedio de retornos a través de todos los pasos
+                step_returns = np.diff(self.ground_truth, axis=1) / (
+                    np.abs(self.ground_truth[:, :-1, :]) + 1e-9
                 )
-                actual_returns = (
-                    self.ground_truth[:, 1, :] - self.ground_truth[:, 0, :]
-                ) / (np.abs(self.ground_truth[:, 0, :]) + 1e-9)
-                return signals[:-1] * actual_returns[1:]
+                avg_actual_returns = step_returns.mean(axis=1)
+                return signals[:-1] * avg_actual_returns[1:]
 
             # Recesión tolerante (Fallback) para inferencias predictivas de 1 intervalo
             signals = np.sign(np.diff(self.predictions[:, 0, :], axis=0))

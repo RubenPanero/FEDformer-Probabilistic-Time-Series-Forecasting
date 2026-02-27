@@ -36,3 +36,36 @@ def test_portfolio_simulator(
     assert "max_drawdown" in metrics
     assert "volatility" in metrics
     assert "sortino_ratio" in metrics
+
+
+def test_portfolio_uses_all_timesteps() -> None:
+    """La señal debe usar el primer y último timestep predicho (no solo los 2 primeros)."""
+    rng = np.random.default_rng(42)
+    pred_len = 24
+    n_samples = 10
+    n_assets = 1
+
+    # Predicciones con tendencia fuertemente positiva en toda la ventana
+    predictions = np.linspace(1.0, 2.0, pred_len)[None, :, None].repeat(n_samples, axis=0)
+    predictions += rng.normal(0, 0.01, predictions.shape)
+
+    # Ground truth también creciente
+    ground_truth = np.linspace(1.0, 2.0, pred_len)[None, :, None].repeat(n_samples, axis=0)
+    ground_truth += rng.normal(0, 0.01, ground_truth.shape)
+
+    sim = PortfolioSimulator(predictions, ground_truth)
+    returns = sim.run_simple_strategy()
+
+    # Con tendencia positiva clara, la mayoría de señales deben ser positivas
+    assert returns.shape == (n_samples - 1, n_assets)
+    assert returns.mean() > 0, "Señal de momentum debe ser positiva con tendencia alcista"
+
+
+def test_portfolio_single_timestep_fallback() -> None:
+    """Fallback para pred_len=1 no debe fallar."""
+    rng = np.random.default_rng(0)
+    predictions = rng.normal(0, 1, (20, 1, 1))
+    ground_truth = rng.normal(0, 1, (20, 1, 1))
+    sim = PortfolioSimulator(predictions, ground_truth)
+    returns = sim.run_simple_strategy()
+    assert returns.shape[0] == 19

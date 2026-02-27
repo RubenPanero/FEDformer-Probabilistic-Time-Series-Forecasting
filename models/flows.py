@@ -128,7 +128,7 @@ class NormalizingFlow(nn.Module):
         base_log_prob = self.base_dist.log_prob(z).sum(dim=-1)
         return base_log_prob + log_det_jacobian
 
-    def sample(self, n_samples: int) -> torch.Tensor:
+    def sample(self, n_samples: int, context: torch.Tensor | None = None) -> torch.Tensor:
         """Draw samples by inverting latent Gaussian draws."""
         z = self.base_dist.sample((n_samples,))
-        return self.inverse(z)
+        return self.inverse(z, context=context)

@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import torch
 from torch.utils.data import Subset
@@ -63,3 +64,49 @@ def test_trainer_finetune_checkpoint_and_freeze(tmp_path: Path) -> None:
     }
     assert trainable["flows.0.layers.0.conditioner.0.weight"] is True
     assert trainable["sequence_layers.encoders.0.layers.conv.0.weight"] is False
+
+
+def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
+    """El checkpoint del último fold debe ser dinámico según n_splits."""
+    import numpy as np
+    from training.sequential_finetuner import finetune_sequence
+
+    for n_splits in [2, 3, 5]:
+        expected_fold_idx = n_splits - 1
+        expected_filename = f"best_model_fold_{expected_fold_idx}.pt"
+
+        # Creamos el archivo de checkpoint esperado y uno base ficticio
+        base_ckpt = tmp_path / "base.pt"
+        base_ckpt.touch()
+        ckpt_dir = tmp_path / f"out_{n_splits}" / "MOCK"
+        ckpt_dir.mkdir(parents=True)
+        expected_ckpt = ckpt_dir / expected_filename
+        expected_ckpt.touch()
+
+        mock_cfg = MagicMock()
+        with (
+            patch("training.sequential_finetuner.FEDformerConfig", return_value=mock_cfg),
+            patch("training.sequential_finetuner.TimeSeriesDataset"),
+            patch("training.sequential_finetuner.WalkForwardTrainer") as MockTrainer,
+            patch("os.path.exists", return_value=True),
+        ):
+            mock_trainer = MagicMock()
+            mock_trainer.checkpoint_dir = ckpt_dir
+            mock_trainer.run_backtest.return_value = (
+                np.zeros((1, 1, 1)),
+                np.zeros((1, 1, 1)),
+                np.zeros((1, 1, 1)),
+            )
+            MockTrainer.return_value = mock_trainer
+
+            result_ckpt = finetune_sequence(
+                symbols=["MOCK"],
+                base_checkpoint=str(base_ckpt),
+                output_dir=str(tmp_path / f"out_{n_splits}"),
+                n_splits=n_splits,
+            )
+
+        assert result_ckpt is not None
+        assert expected_filename in result_ckpt, (
+            f"n_splits={n_splits}: esperado '{expected_filename}', obtenido '{result_ckpt}'"
+        )

@@ -359,7 +359,7 @@ class WalkForwardTrainer:
         """Log-Probabilidad marginal negativa computada para la simulación iterativa."""
         try:
             log_prob = dist.log_prob(y_true)
-            log_prob = torch.clamp(log_prob, min=-1e6, max=1e6)
+            log_prob = torch.clamp(log_prob, min=-1e6, max=1e2)
             return -log_prob.mean()
         except (RuntimeError, ValueError) as exc:
             logger.warning(
