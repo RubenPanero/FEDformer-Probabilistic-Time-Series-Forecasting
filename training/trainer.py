@@ -10,6 +10,7 @@ import os
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -37,6 +38,30 @@ logger = logging.getLogger(__name__)
 device = get_device()
 
 
+class _EarlyStopping:
+    """Monitor de parada anticipada basado en paciencia y delta mínimo."""
+
+    def __init__(self, patience: int, min_delta: float) -> None:
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_loss = float("inf")
+        self.counter = 0
+        self.should_stop = False
+
+    def step(self, loss: float) -> bool:
+        if self.patience <= 0:
+            return False
+        if loss < self.best_loss - self.min_delta:
+            self.best_loss = loss
+            self.counter = 0
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.should_stop = True
+                return True
+        return False
+
+
 @dataclass(frozen=True)
 class TrainingComponents:
     """Consolida el modelo, optimizador, escalador y cargadores (loaders) para iterar en entrenamiento."""
@@ -47,6 +72,7 @@ class TrainingComponents:
     train_loader: DataLoader
     test_loader: DataLoader
     fold: int
+    scheduler: Any = None
 
 
 @dataclass(frozen=True)
@@ -198,6 +224,34 @@ class WalkForwardTrainer:
 
         optimizer.zero_grad(set_to_none=True)
 
+    def _create_scheduler(
+        self, optimizer: torch.optim.Optimizer, total_epochs: int
+    ) -> Any:
+        """Crea el scheduler de LR según la configuración."""
+        import numpy as np  # pylint: disable=import-outside-toplevel
+
+        stype = self.config.scheduler_type
+        if stype == "none":
+            return None
+        if stype == "cosine":
+            return torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=max(total_epochs, 1),
+                eta_min=self.config.min_lr,
+            )
+        if stype == "cosine_warmup":
+            warmup = self.config.warmup_epochs
+            lr_min_ratio = self.config.min_lr / max(self.config.learning_rate, 1e-10)
+
+            def lr_lambda(epoch: int) -> float:
+                if epoch < warmup:
+                    return (epoch + 1) / max(warmup, 1)
+                progress = (epoch - warmup) / max(total_epochs - warmup, 1)
+                return max(lr_min_ratio, 0.5 * (1 + np.cos(np.pi * progress)))
+
+            return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+        return None
+
     def _build_training_components(
         self, train_subset: Subset, test_subset: Subset, fold_idx: int
     ) -> TrainingComponents:
@@ -238,6 +292,8 @@ class WalkForwardTrainer:
             else None
         )
 
+        scheduler = self._create_scheduler(optimizer, self.config.n_epochs_per_fold)
+
         return TrainingComponents(
             model=model,
             optimizer=optimizer,
@@ -245,6 +301,7 @@ class WalkForwardTrainer:
             train_loader=train_loader,
             test_loader=test_loader,
             fold=fold_idx,
+            scheduler=scheduler,
         )
 
     def _maybe_load_finetune_checkpoint(self, model: Flow_FEDformer) -> None:
@@ -537,6 +594,10 @@ class WalkForwardTrainer:
         )
 
         best_loss = float("inf")
+        early_stopper = _EarlyStopping(
+            patience=self.config.patience,
+            min_delta=self.config.min_delta,
+        )
         for epoch in range(self.config.n_epochs_per_fold):
             avg_loss = self._train_epoch(components, epoch)
 
@@ -547,10 +608,34 @@ class WalkForwardTrainer:
             if (epoch + 1) % 5 == 0:
                 self.save_checkpoint(components, epoch, avg_loss, best=False)
 
+            # Avanzar el scheduler de tasa de aprendizaje si existe
+            if components.scheduler is not None:
+                components.scheduler.step()
+
             if self.wandb_run:
                 self.wandb_run.log(
                     {"train_loss": avg_loss, "epoch": epoch, "fold": fold_idx}
                 )
+
+            # Verificar parada anticipada
+            if early_stopper.step(avg_loss):
+                logger.warning(
+                    "Parada anticipada activada en época %s/%s para fold %s (patience=%s).",
+                    epoch + 1,
+                    self.config.n_epochs_per_fold,
+                    fold_idx,
+                    self.config.patience,
+                )
+                # Recargar el mejor checkpoint guardado para este fold
+                best_ckpt_path = self.checkpoint_dir / f"best_model_fold_{fold_idx}.pt"
+                if best_ckpt_path.exists():
+                    self.load_checkpoint(
+                        components.model,
+                        components.optimizer,
+                        components.scaler,
+                        str(best_ckpt_path),
+                    )
+                break
 
         fold_preds, fold_gt, fold_samples = self._evaluate_model(
             components.model, components.test_loader
