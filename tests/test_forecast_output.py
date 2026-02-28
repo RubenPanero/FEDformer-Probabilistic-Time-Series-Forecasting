@@ -2,7 +2,6 @@
 """Tests para ForecastOutput: dual-space predictions y backward compat."""
 
 import numpy as np
-import pytest
 from training.forecast_output import ForecastOutput
 from simulations import RiskSimulator, PortfolioSimulator
 
