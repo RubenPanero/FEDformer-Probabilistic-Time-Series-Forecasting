@@ -44,7 +44,7 @@ def run_base_training():
     try:
         forecast = trainer.run_backtest(n_splits=5)
         logger.info(
-            f"Entrenamiento base finalizado. Predicciones forma: {forecast.preds.shape}"
+            f"Entrenamiento base finalizado. Predicciones forma: {forecast.preds_scaled.shape}"
         )
     except Exception as e:
         logger.error(f"Fallo durante el entrenamiento base: {e}")

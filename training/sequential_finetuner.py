@@ -69,7 +69,7 @@ def finetune_sequence(
         try:
             forecast = trainer.run_backtest(n_splits=n_splits)
             logger.info(
-                f"Entrenamiento para {symbol} finalizado. Predicciones: {forecast.preds.shape}"
+                f"Entrenamiento para {symbol} finalizado. Predicciones: {forecast.preds_scaled.shape}"
             )
         except Exception as e:
             logger.error(f"Fallo durante el finetuning de {symbol}: {e}")
