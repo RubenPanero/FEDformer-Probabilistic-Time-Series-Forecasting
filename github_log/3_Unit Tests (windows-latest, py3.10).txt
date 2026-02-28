@@ -1,0 +1,606 @@
+﻿2026-02-28T15:56:43.7436809Z Current runner version: '2.331.0'
+2026-02-28T15:56:43.7472748Z ##[group]Runner Image Provisioner
+2026-02-28T15:56:43.7473874Z Hosted Compute Agent
+2026-02-28T15:56:43.7474579Z Version: 20260213.493
+2026-02-28T15:56:43.7475431Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+2026-02-28T15:56:43.7476502Z Build Date: 2026-02-13T00:28:41Z
+2026-02-28T15:56:43.7477576Z Worker ID: {7512a67a-6ff2-41f4-abd4-9d0001722fc8}
+2026-02-28T15:56:43.7478564Z Azure Region: eastus2
+2026-02-28T15:56:43.7479323Z ##[endgroup]
+2026-02-28T15:56:43.7481700Z ##[group]Operating System
+2026-02-28T15:56:43.7482759Z Microsoft Windows Server 2025
+2026-02-28T15:56:43.7483780Z 10.0.26100
+2026-02-28T15:56:43.7484459Z Datacenter
+2026-02-28T15:56:43.7485091Z ##[endgroup]
+2026-02-28T15:56:43.7485791Z ##[group]Runner Image
+2026-02-28T15:56:43.7486597Z Image: windows-2025
+2026-02-28T15:56:43.7487342Z Version: 20260225.38.2
+2026-02-28T15:56:43.7489954Z Included Software: https://github.com/actions/runner-images/blob/win25/20260225.38/images/windows/Windows2025-Readme.md
+2026-02-28T15:56:43.7492503Z Image Release: https://github.com/actions/runner-images/releases/tag/win25%2F20260225.38
+2026-02-28T15:56:43.7493984Z ##[endgroup]
+2026-02-28T15:56:43.7495738Z ##[group]GITHUB_TOKEN Permissions
+2026-02-28T15:56:43.7498087Z Contents: read
+2026-02-28T15:56:43.7498848Z Metadata: read
+2026-02-28T15:56:43.7499757Z Packages: read
+2026-02-28T15:56:43.7500537Z ##[endgroup]
+2026-02-28T15:56:43.7503482Z Secret source: Actions
+2026-02-28T15:56:43.7504512Z Prepare workflow directory
+2026-02-28T15:56:43.7887991Z Prepare all required actions
+2026-02-28T15:56:43.7925599Z Getting action download info
+2026-02-28T15:56:44.0234324Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-02-28T15:56:44.1479589Z Download action repository 'actions/setup-python@v5' (SHA:a26af69be951a213d495a4c3e4e4022e16d87065)
+2026-02-28T15:56:44.4116508Z Complete job name: Unit Tests (windows-latest, py3.10)
+2026-02-28T15:56:44.5257093Z ##[group]Run actions/checkout@v4
+2026-02-28T15:56:44.5258007Z with:
+2026-02-28T15:56:44.5258573Z   repository: RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting
+2026-02-28T15:56:44.5259418Z   token: ***
+2026-02-28T15:56:44.5259747Z   ssh-strict: true
+2026-02-28T15:56:44.5260094Z   ssh-user: git
+2026-02-28T15:56:44.5260445Z   persist-credentials: true
+2026-02-28T15:56:44.5260847Z   clean: true
+2026-02-28T15:56:44.5261197Z   sparse-checkout-cone-mode: true
+2026-02-28T15:56:44.5261642Z   fetch-depth: 1
+2026-02-28T15:56:44.5261982Z   fetch-tags: false
+2026-02-28T15:56:44.5262327Z   show-progress: true
+2026-02-28T15:56:44.5262686Z   lfs: false
+2026-02-28T15:56:44.5263007Z   submodules: false
+2026-02-28T15:56:44.5263790Z   set-safe-directory: true
+2026-02-28T15:56:44.5264450Z ##[endgroup]
+2026-02-28T15:56:44.6964290Z Syncing repository: RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting
+2026-02-28T15:56:44.6967414Z ##[group]Getting Git version info
+2026-02-28T15:56:44.6969563Z Working directory is 'D:\a\FEDformer-Probabilistic-Time-Series-Forecasting\FEDformer-Probabilistic-Time-Series-Forecasting'
+2026-02-28T15:56:44.8206695Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-02-28T15:56:44.9959634Z git version 2.53.0.windows.1
+2026-02-28T15:56:45.0019638Z ##[endgroup]
+2026-02-28T15:56:45.0042061Z Temporarily overriding HOME='D:\a\_temp\cb691f56-2133-4a6b-8d66-cc1cf08e32e1' before making global git config changes
+2026-02-28T15:56:45.0044285Z Adding repository directory to the temporary git global config as a safe directory
+2026-02-28T15:56:45.0056680Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\FEDformer-Probabilistic-Time-Series-Forecasting\FEDformer-Probabilistic-Time-Series-Forecasting
+2026-02-28T15:56:45.0367556Z Deleting the contents of 'D:\a\FEDformer-Probabilistic-Time-Series-Forecasting\FEDformer-Probabilistic-Time-Series-Forecasting'
+2026-02-28T15:56:45.0374042Z ##[group]Initializing the repository
+2026-02-28T15:56:45.0386185Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\FEDformer-Probabilistic-Time-Series-Forecasting\FEDformer-Probabilistic-Time-Series-Forecasting
+2026-02-28T15:56:45.0804963Z Initialized empty Git repository in D:/a/FEDformer-Probabilistic-Time-Series-Forecasting/FEDformer-Probabilistic-Time-Series-Forecasting/.git/
+2026-02-28T15:56:45.0852018Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting
+2026-02-28T15:56:45.1165451Z ##[endgroup]
+2026-02-28T15:56:45.1166507Z ##[group]Disabling automatic garbage collection
+2026-02-28T15:56:45.1180805Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-02-28T15:56:45.1469468Z ##[endgroup]
+2026-02-28T15:56:45.1470439Z ##[group]Setting up auth
+2026-02-28T15:56:45.1483163Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-02-28T15:56:45.1778087Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-02-28T15:56:45.9980469Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-02-28T15:56:46.0338383Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-02-28T15:56:46.5961582Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-02-28T15:56:46.6298020Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-02-28T15:56:47.1912515Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-02-28T15:56:47.2228822Z ##[endgroup]
+2026-02-28T15:56:47.2229688Z ##[group]Fetching the repository
+2026-02-28T15:56:47.2243341Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +3432365890b58d7654c6e5e8305c9d37065d21a1:refs/remotes/pull/9/merge
+2026-02-28T15:56:47.8196450Z From https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting
+2026-02-28T15:56:47.8197769Z  * [new ref]         3432365890b58d7654c6e5e8305c9d37065d21a1 -> pull/9/merge
+2026-02-28T15:56:47.8475770Z ##[endgroup]
+2026-02-28T15:56:47.8476419Z ##[group]Determining the checkout info
+2026-02-28T15:56:47.8478013Z ##[endgroup]
+2026-02-28T15:56:47.8489949Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-02-28T15:56:47.8887560Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-02-28T15:56:47.9202082Z ##[group]Checking out the ref
+2026-02-28T15:56:47.9215666Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force refs/remotes/pull/9/merge
+2026-02-28T15:56:47.9874858Z Note: switching to 'refs/remotes/pull/9/merge'.
+2026-02-28T15:56:47.9875596Z 
+2026-02-28T15:56:47.9875941Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-02-28T15:56:47.9876793Z changes and commit them, and you can discard any commits you make in this
+2026-02-28T15:56:47.9878055Z state without impacting any branches by switching back to a branch.
+2026-02-28T15:56:47.9879165Z 
+2026-02-28T15:56:47.9879491Z If you want to create a new branch to retain commits you create, you may
+2026-02-28T15:56:47.9880286Z do so (now or later) by using -c with the switch command. Example:
+2026-02-28T15:56:47.9880763Z 
+2026-02-28T15:56:47.9881305Z   git switch -c <new-branch-name>
+2026-02-28T15:56:47.9881630Z 
+2026-02-28T15:56:47.9881804Z Or undo this operation with:
+2026-02-28T15:56:47.9883316Z 
+2026-02-28T15:56:47.9883482Z   git switch -
+2026-02-28T15:56:47.9883697Z 
+2026-02-28T15:56:47.9884101Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-02-28T15:56:47.9884651Z 
+2026-02-28T15:56:47.9885216Z HEAD is now at 3432365 Merge 03906e52bb8644634bff44666acd472b226549f1 into aad696571d0158635157f52200583611bdfa778d
+2026-02-28T15:56:47.9940246Z ##[endgroup]
+2026-02-28T15:56:48.0289113Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-02-28T15:56:48.0603686Z 3432365890b58d7654c6e5e8305c9d37065d21a1
+2026-02-28T15:56:48.1071240Z ##[group]Run actions/setup-python@v5
+2026-02-28T15:56:48.1071619Z with:
+2026-02-28T15:56:48.1071814Z   python-version: 3.10
+2026-02-28T15:56:48.1072028Z   cache: pip
+2026-02-28T15:56:48.1072252Z   cache-dependency-path: **/requirements.txt
+2026-02-28T15:56:48.1072543Z   check-latest: false
+2026-02-28T15:56:48.1072899Z   token: ***
+2026-02-28T15:56:48.1073104Z   update-environment: true
+2026-02-28T15:56:48.1073363Z   allow-prereleases: false
+2026-02-28T15:56:48.1073585Z   freethreaded: false
+2026-02-28T15:56:48.1073787Z ##[endgroup]
+2026-02-28T15:56:48.3580049Z ##[group]Installed versions
+2026-02-28T15:56:48.3703837Z Successfully set up CPython (3.10.11)
+2026-02-28T15:56:48.3704981Z ##[endgroup]
+2026-02-28T15:56:50.1345742Z Cache hit for: setup-python-Windows-x64-python-3.10.11-pip-8b3bcd5e1b6160c664539b2c399cb3ca55471951dfd14a240c1f2af486956a45
+2026-02-28T15:56:51.1962454Z Received 184549376 of 257123034 (71.8%), 175.6 MBs/sec
+2026-02-28T15:56:51.5819293Z Received 257123034 of 257123034 (100.0%), 176.7 MBs/sec
+2026-02-28T15:56:51.5823641Z Cache Size: ~245 MB (257123034 B)
+2026-02-28T15:56:51.5867625Z [command]"C:\Program Files\Git\usr\bin\tar.exe" -xf D:/a/_temp/9e7a51d2-2f8b-4f29-b06e-321613702bd7/cache.tzst -P -C D:/a/FEDformer-Probabilistic-Time-Series-Forecasting/FEDformer-Probabilistic-Time-Series-Forecasting --force-local --use-compress-program "zstd -d"
+2026-02-28T15:56:52.8540192Z Cache restored successfully
+2026-02-28T15:56:52.8719517Z Cache restored from key: setup-python-Windows-x64-python-3.10.11-pip-8b3bcd5e1b6160c664539b2c399cb3ca55471951dfd14a240c1f2af486956a45
+2026-02-28T15:56:52.9111281Z ##[group]Run python -m pip install --upgrade pip
+2026-02-28T15:56:52.9111750Z [36;1mpython -m pip install --upgrade pip[0m
+2026-02-28T15:56:52.9112062Z [36;1mpip install -r requirements.txt[0m
+2026-02-28T15:56:52.9256969Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-02-28T15:56:52.9257312Z env:
+2026-02-28T15:56:52.9257552Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:56:52.9258000Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.10.11\x64/lib/pkgconfig
+2026-02-28T15:56:52.9258438Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:56:52.9258821Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:56:52.9259207Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:56:52.9259524Z ##[endgroup]
+2026-02-28T15:57:00.4217744Z Requirement already satisfied: pip in c:\hostedtoolcache\windows\python\3.10.11\x64\lib\site-packages (26.0.1)
+2026-02-28T15:57:01.9793120Z Collecting torch>=2.0.0 (from -r requirements.txt (line 4))
+2026-02-28T15:57:01.9906632Z   Using cached torch-2.10.0-cp310-cp310-win_amd64.whl.metadata (31 kB)
+2026-02-28T15:57:02.2272502Z Collecting numpy>=1.21.0 (from -r requirements.txt (line 7))
+2026-02-28T15:57:02.2299640Z   Using cached numpy-2.2.6-cp310-cp310-win_amd64.whl.metadata (60 kB)
+2026-02-28T15:57:02.3754891Z Collecting pandas>=1.4.0 (from -r requirements.txt (line 8))
+2026-02-28T15:57:02.3788822Z   Using cached pandas-2.3.3-cp310-cp310-win_amd64.whl.metadata (19 kB)
+2026-02-28T15:57:02.5211792Z Collecting scikit-learn>=1.2.0 (from -r requirements.txt (line 9))
+2026-02-28T15:57:02.5239624Z   Using cached scikit_learn-1.7.2-cp310-cp310-win_amd64.whl.metadata (11 kB)
+2026-02-28T15:57:02.7293307Z Collecting scipy>=1.9.0 (from -r requirements.txt (line 10))
+2026-02-28T15:57:02.7320301Z   Using cached scipy-1.15.3-cp310-cp310-win_amd64.whl.metadata (60 kB)
+2026-02-28T15:57:02.8958999Z Collecting matplotlib>=3.5.0 (from -r requirements.txt (line 13))
+2026-02-28T15:57:03.4134726Z   Using cached matplotlib-3.10.8-cp310-cp310-win_amd64.whl.metadata (52 kB)
+2026-02-28T15:57:03.6327273Z Collecting seaborn>=0.11.0 (from -r requirements.txt (line 14))
+2026-02-28T15:57:03.6359568Z   Using cached seaborn-0.13.2-py3-none-any.whl.metadata (5.4 kB)
+2026-02-28T15:57:03.7265292Z Collecting wandb>=0.15.0 (from -r requirements.txt (line 17))
+2026-02-28T15:57:03.7290286Z   Using cached wandb-0.25.0-py3-none-win_amd64.whl.metadata (12 kB)
+2026-02-28T15:57:03.7760297Z Collecting tqdm>=4.64.0 (from -r requirements.txt (line 20))
+2026-02-28T15:57:03.7782840Z   Using cached tqdm-4.67.3-py3-none-any.whl.metadata (57 kB)
+2026-02-28T15:57:03.8307950Z Collecting PyYAML>=6.0 (from -r requirements.txt (line 21))
+2026-02-28T15:57:03.8331343Z   Using cached pyyaml-6.0.3-cp310-cp310-win_amd64.whl.metadata (2.4 kB)
+2026-02-28T15:57:03.8954338Z Collecting pytest>=7.0.0 (from -r requirements.txt (line 24))
+2026-02-28T15:57:03.8979361Z   Using cached pytest-9.0.2-py3-none-any.whl.metadata (7.6 kB)
+2026-02-28T15:57:03.9232465Z Collecting pytest-cov>=4.0.0 (from -r requirements.txt (line 25))
+2026-02-28T15:57:03.9256027Z   Using cached pytest_cov-7.0.0-py3-none-any.whl.metadata (31 kB)
+2026-02-28T15:57:03.9477584Z Collecting alpha_vantage>=2.3.1 (from -r requirements.txt (line 28))
+2026-02-28T15:57:03.9507045Z   Using cached alpha_vantage-3.0.0-py3-none-any.whl.metadata (12 kB)
+2026-02-28T15:57:03.9878881Z Collecting yfinance>=0.2.18 (from -r requirements.txt (line 29))
+2026-02-28T15:57:03.9903319Z   Using cached yfinance-1.2.0-py2.py3-none-any.whl.metadata (6.1 kB)
+2026-02-28T15:57:04.0193645Z Collecting pandas-ta-classic>=0.3.14b (from -r requirements.txt (line 30))
+2026-02-28T15:57:04.0644834Z   Downloading pandas_ta_classic-0.3.78-py3-none-any.whl.metadata (12 kB)
+2026-02-28T15:57:04.1174745Z Collecting filelock (from torch>=2.0.0->-r requirements.txt (line 4))
+2026-02-28T15:57:04.1213735Z   Using cached filelock-3.24.3-py3-none-any.whl.metadata (2.0 kB)
+2026-02-28T15:57:04.1487171Z Collecting typing-extensions>=4.10.0 (from torch>=2.0.0->-r requirements.txt (line 4))
+2026-02-28T15:57:04.1510770Z   Using cached typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+2026-02-28T15:57:04.1748639Z Collecting sympy>=1.13.3 (from torch>=2.0.0->-r requirements.txt (line 4))
+2026-02-28T15:57:04.1771735Z   Using cached sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
+2026-02-28T15:57:04.2378535Z Collecting networkx>=2.5.1 (from torch>=2.0.0->-r requirements.txt (line 4))
+2026-02-28T15:57:04.2402965Z   Using cached networkx-3.4.2-py3-none-any.whl.metadata (6.3 kB)
+2026-02-28T15:57:04.2704651Z Collecting jinja2 (from torch>=2.0.0->-r requirements.txt (line 4))
+2026-02-28T15:57:04.2727916Z   Using cached jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+2026-02-28T15:57:04.3035251Z Collecting fsspec>=0.8.5 (from torch>=2.0.0->-r requirements.txt (line 4))
+2026-02-28T15:57:04.3058256Z   Using cached fsspec-2026.2.0-py3-none-any.whl.metadata (10 kB)
+2026-02-28T15:57:04.3590225Z Collecting python-dateutil>=2.8.2 (from pandas>=1.4.0->-r requirements.txt (line 8))
+2026-02-28T15:57:04.3613068Z   Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+2026-02-28T15:57:04.4084481Z Collecting pytz>=2020.1 (from pandas>=1.4.0->-r requirements.txt (line 8))
+2026-02-28T15:57:04.4107645Z   Using cached pytz-2025.2-py2.py3-none-any.whl.metadata (22 kB)
+2026-02-28T15:57:04.4334785Z Collecting tzdata>=2022.7 (from pandas>=1.4.0->-r requirements.txt (line 8))
+2026-02-28T15:57:04.4359084Z   Using cached tzdata-2025.3-py2.py3-none-any.whl.metadata (1.4 kB)
+2026-02-28T15:57:04.4759722Z Collecting joblib>=1.2.0 (from scikit-learn>=1.2.0->-r requirements.txt (line 9))
+2026-02-28T15:57:04.4782809Z   Using cached joblib-1.5.3-py3-none-any.whl.metadata (5.5 kB)
+2026-02-28T15:57:04.4981821Z Collecting threadpoolctl>=3.1.0 (from scikit-learn>=1.2.0->-r requirements.txt (line 9))
+2026-02-28T15:57:04.5004633Z   Using cached threadpoolctl-3.6.0-py3-none-any.whl.metadata (13 kB)
+2026-02-28T15:57:04.5876156Z Collecting contourpy>=1.0.1 (from matplotlib>=3.5.0->-r requirements.txt (line 13))
+2026-02-28T15:57:04.5902051Z   Using cached contourpy-1.3.2-cp310-cp310-win_amd64.whl.metadata (5.5 kB)
+2026-02-28T15:57:04.6247645Z Collecting cycler>=0.10 (from matplotlib>=3.5.0->-r requirements.txt (line 13))
+2026-02-28T15:57:04.6270452Z   Using cached cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
+2026-02-28T15:57:04.8060931Z Collecting fonttools>=4.22.0 (from matplotlib>=3.5.0->-r requirements.txt (line 13))
+2026-02-28T15:57:04.8086202Z   Using cached fonttools-4.61.1-cp310-cp310-win_amd64.whl.metadata (116 kB)
+2026-02-28T15:57:04.9250991Z Collecting kiwisolver>=1.3.1 (from matplotlib>=3.5.0->-r requirements.txt (line 13))
+2026-02-28T15:57:04.9277261Z   Using cached kiwisolver-1.4.9-cp310-cp310-win_amd64.whl.metadata (6.4 kB)
+2026-02-28T15:57:04.9617217Z Collecting packaging>=20.0 (from matplotlib>=3.5.0->-r requirements.txt (line 13))
+2026-02-28T15:57:04.9640289Z   Using cached packaging-26.0-py3-none-any.whl.metadata (3.3 kB)
+2026-02-28T15:57:05.1769074Z Collecting pillow>=8 (from matplotlib>=3.5.0->-r requirements.txt (line 13))
+2026-02-28T15:57:05.1795468Z   Using cached pillow-12.1.1-cp310-cp310-win_amd64.whl.metadata (9.0 kB)
+2026-02-28T15:57:05.2163877Z Collecting pyparsing>=3 (from matplotlib>=3.5.0->-r requirements.txt (line 13))
+2026-02-28T15:57:05.2187227Z   Using cached pyparsing-3.3.2-py3-none-any.whl.metadata (5.8 kB)
+2026-02-28T15:57:05.2646882Z Collecting click>=8.0.1 (from wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:05.2679116Z   Using cached click-8.3.1-py3-none-any.whl.metadata (2.6 kB)
+2026-02-28T15:57:05.3019553Z Collecting gitpython!=3.1.29,>=1.0.0 (from wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:05.3056334Z   Using cached gitpython-3.1.46-py3-none-any.whl.metadata (13 kB)
+2026-02-28T15:57:05.3353504Z Collecting platformdirs (from wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:05.3375492Z   Using cached platformdirs-4.9.2-py3-none-any.whl.metadata (4.7 kB)
+2026-02-28T15:57:05.5751897Z Collecting protobuf!=4.21.0,!=5.28.0,<7,>=3.19.0 (from wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:05.5778115Z   Using cached protobuf-6.33.5-cp310-abi3-win_amd64.whl.metadata (593 bytes)
+2026-02-28T15:57:05.7976023Z Collecting pydantic<3 (from wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:05.8000564Z   Using cached pydantic-2.12.5-py3-none-any.whl.metadata (90 kB)
+2026-02-28T15:57:05.8400385Z Collecting requests<3,>=2.0.0 (from wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:05.8422406Z   Using cached requests-2.32.5-py3-none-any.whl.metadata (4.9 kB)
+2026-02-28T15:57:05.9016317Z Collecting sentry-sdk>=2.0.0 (from wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:05.9038993Z   Using cached sentry_sdk-2.53.0-py2.py3-none-any.whl.metadata (10 kB)
+2026-02-28T15:57:05.9461274Z Collecting annotated-types>=0.6.0 (from pydantic<3->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:05.9483917Z   Using cached annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+2026-02-28T15:57:06.7714157Z Collecting pydantic-core==2.41.5 (from pydantic<3->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:06.7764384Z   Using cached pydantic_core-2.41.5-cp310-cp310-win_amd64.whl.metadata (7.4 kB)
+2026-02-28T15:57:06.7987304Z Collecting typing-inspection>=0.4.2 (from pydantic<3->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:06.8011694Z   Using cached typing_inspection-0.4.2-py3-none-any.whl.metadata (2.6 kB)
+2026-02-28T15:57:06.9013705Z Collecting charset_normalizer<4,>=2 (from requests<3,>=2.0.0->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:06.9039051Z   Using cached charset_normalizer-3.4.4-cp310-cp310-win_amd64.whl.metadata (38 kB)
+2026-02-28T15:57:06.9293568Z Collecting idna<4,>=2.5 (from requests<3,>=2.0.0->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:06.9317336Z   Using cached idna-3.11-py3-none-any.whl.metadata (8.4 kB)
+2026-02-28T15:57:06.9671469Z Collecting urllib3<3,>=1.21.1 (from requests<3,>=2.0.0->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:06.9694275Z   Using cached urllib3-2.6.3-py3-none-any.whl.metadata (6.9 kB)
+2026-02-28T15:57:07.0031544Z Collecting certifi>=2017.4.17 (from requests<3,>=2.0.0->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:07.0059025Z   Using cached certifi-2026.2.25-py3-none-any.whl.metadata (2.5 kB)
+2026-02-28T15:57:07.0335571Z Collecting colorama (from tqdm>=4.64.0->-r requirements.txt (line 20))
+2026-02-28T15:57:07.0358465Z   Using cached colorama-0.4.6-py2.py3-none-any.whl.metadata (17 kB)
+2026-02-28T15:57:07.0625632Z Collecting exceptiongroup>=1 (from pytest>=7.0.0->-r requirements.txt (line 24))
+2026-02-28T15:57:07.0648455Z   Using cached exceptiongroup-1.3.1-py3-none-any.whl.metadata (6.7 kB)
+2026-02-28T15:57:07.0839415Z Collecting iniconfig>=1.0.1 (from pytest>=7.0.0->-r requirements.txt (line 24))
+2026-02-28T15:57:07.0862270Z   Using cached iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)
+2026-02-28T15:57:07.1087010Z Collecting pluggy<2,>=1.5 (from pytest>=7.0.0->-r requirements.txt (line 24))
+2026-02-28T15:57:07.1109430Z   Using cached pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+2026-02-28T15:57:07.1394640Z Collecting pygments>=2.7.2 (from pytest>=7.0.0->-r requirements.txt (line 24))
+2026-02-28T15:57:07.1417871Z   Using cached pygments-2.19.2-py3-none-any.whl.metadata (2.5 kB)
+2026-02-28T15:57:07.1717228Z Collecting tomli>=1 (from pytest>=7.0.0->-r requirements.txt (line 24))
+2026-02-28T15:57:07.1739545Z   Using cached tomli-2.4.0-py3-none-any.whl.metadata (10 kB)
+2026-02-28T15:57:07.6900899Z Collecting coverage>=7.10.6 (from coverage[toml]>=7.10.6->pytest-cov>=4.0.0->-r requirements.txt (line 25))
+2026-02-28T15:57:07.6928520Z   Using cached coverage-7.13.4-cp310-cp310-win_amd64.whl.metadata (8.7 kB)
+2026-02-28T15:57:08.3656650Z Collecting aiohttp (from alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:08.3706066Z   Using cached aiohttp-3.13.3-cp310-cp310-win_amd64.whl.metadata (8.4 kB)
+2026-02-28T15:57:08.4114941Z Collecting multitasking>=0.0.7 (from yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:08.4117511Z   Using cached multitasking-0.0.12-py3-none-any.whl
+2026-02-28T15:57:08.5297413Z Collecting frozendict>=2.3.4 (from yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:08.5323413Z   Using cached frozendict-2.4.7-cp310-cp310-win_amd64.whl.metadata (24 kB)
+2026-02-28T15:57:08.5599878Z Collecting peewee>=3.16.2 (from yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:08.5622918Z   Using cached peewee-4.0.0-py3-none-any.whl.metadata (8.1 kB)
+2026-02-28T15:57:08.5978169Z Collecting beautifulsoup4>=4.11.1 (from yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:08.6010591Z   Using cached beautifulsoup4-4.14.3-py3-none-any.whl.metadata (3.8 kB)
+2026-02-28T15:57:08.6660149Z Collecting curl_cffi<0.14,>=0.7 (from yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:08.6684678Z   Using cached curl_cffi-0.13.0-cp39-abi3-win_amd64.whl.metadata (13 kB)
+2026-02-28T15:57:08.7797281Z Collecting websockets>=13.0 (from yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:08.7823822Z   Using cached websockets-16.0-cp310-cp310-win_amd64.whl.metadata (7.0 kB)
+2026-02-28T15:57:08.9071788Z Collecting cffi>=1.12.0 (from curl_cffi<0.14,>=0.7->yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:08.9106989Z   Using cached cffi-2.0.0-cp310-cp310-win_amd64.whl.metadata (2.6 kB)
+2026-02-28T15:57:08.9510170Z Collecting six>=1.16.0 (from pandas-ta-classic>=0.3.14b->-r requirements.txt (line 30))
+2026-02-28T15:57:08.9533047Z   Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+2026-02-28T15:57:08.9802851Z Collecting soupsieve>=1.6.1 (from beautifulsoup4>=4.11.1->yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:08.9825341Z   Using cached soupsieve-2.8.3-py3-none-any.whl.metadata (4.6 kB)
+2026-02-28T15:57:09.0068325Z Collecting pycparser (from cffi>=1.12.0->curl_cffi<0.14,>=0.7->yfinance>=0.2.18->-r requirements.txt (line 29))
+2026-02-28T15:57:09.0091465Z   Using cached pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
+2026-02-28T15:57:09.0472453Z Collecting gitdb<5,>=4.0.1 (from gitpython!=3.1.29,>=1.0.0->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:09.0495938Z   Using cached gitdb-4.0.12-py3-none-any.whl.metadata (1.2 kB)
+2026-02-28T15:57:09.0729572Z Collecting smmap<6,>=3.0.1 (from gitdb<5,>=4.0.1->gitpython!=3.1.29,>=1.0.0->wandb>=0.15.0->-r requirements.txt (line 17))
+2026-02-28T15:57:09.0753277Z   Using cached smmap-5.0.2-py3-none-any.whl.metadata (4.3 kB)
+2026-02-28T15:57:09.1162705Z Collecting mpmath<1.4,>=1.1.0 (from sympy>=1.13.3->torch>=2.0.0->-r requirements.txt (line 4))
+2026-02-28T15:57:09.1185905Z   Using cached mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
+2026-02-28T15:57:09.1492609Z Collecting aiohappyeyeballs>=2.5.0 (from aiohttp->alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:09.1515434Z   Using cached aiohappyeyeballs-2.6.1-py3-none-any.whl.metadata (5.9 kB)
+2026-02-28T15:57:09.1713711Z Collecting aiosignal>=1.4.0 (from aiohttp->alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:09.1736119Z   Using cached aiosignal-1.4.0-py3-none-any.whl.metadata (3.7 kB)
+2026-02-28T15:57:09.1970882Z Collecting async-timeout<6.0,>=4.0 (from aiohttp->alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:09.1993516Z   Using cached async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)
+2026-02-28T15:57:09.2237307Z Collecting attrs>=17.3.0 (from aiohttp->alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:09.2260647Z   Using cached attrs-25.4.0-py3-none-any.whl.metadata (10 kB)
+2026-02-28T15:57:09.3122508Z Collecting frozenlist>=1.1.1 (from aiohttp->alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:09.3164720Z   Using cached frozenlist-1.8.0-cp310-cp310-win_amd64.whl.metadata (21 kB)
+2026-02-28T15:57:09.6082087Z Collecting multidict<7.0,>=4.5 (from aiohttp->alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:09.6109291Z   Using cached multidict-6.7.1-cp310-cp310-win_amd64.whl.metadata (5.5 kB)
+2026-02-28T15:57:09.8192587Z Collecting propcache>=0.2.0 (from aiohttp->alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:09.8219265Z   Using cached propcache-0.4.1-cp310-cp310-win_amd64.whl.metadata (14 kB)
+2026-02-28T15:57:10.1191170Z Collecting yarl<2.0,>=1.17.0 (from aiohttp->alpha_vantage>=2.3.1->-r requirements.txt (line 28))
+2026-02-28T15:57:10.1217945Z   Using cached yarl-1.22.0-cp310-cp310-win_amd64.whl.metadata (77 kB)
+2026-02-28T15:57:10.2194833Z Collecting MarkupSafe>=2.0 (from jinja2->torch>=2.0.0->-r requirements.txt (line 4))
+2026-02-28T15:57:10.2234826Z   Using cached markupsafe-3.0.3-cp310-cp310-win_amd64.whl.metadata (2.8 kB)
+2026-02-28T15:57:10.2302359Z Using cached torch-2.10.0-cp310-cp310-win_amd64.whl (113.7 MB)
+2026-02-28T15:57:10.2824770Z Using cached numpy-2.2.6-cp310-cp310-win_amd64.whl (12.9 MB)
+2026-02-28T15:57:10.2920453Z Using cached pandas-2.3.3-cp310-cp310-win_amd64.whl (11.3 MB)
+2026-02-28T15:57:10.2999637Z Using cached scikit_learn-1.7.2-cp310-cp310-win_amd64.whl (8.9 MB)
+2026-02-28T15:57:10.3063228Z Using cached scipy-1.15.3-cp310-cp310-win_amd64.whl (41.3 MB)
+2026-02-28T15:57:10.3315770Z Using cached matplotlib-3.10.8-cp310-cp310-win_amd64.whl (8.1 MB)
+2026-02-28T15:57:10.3375944Z Using cached seaborn-0.13.2-py3-none-any.whl (294 kB)
+2026-02-28T15:57:10.3399453Z Using cached wandb-0.25.0-py3-none-win_amd64.whl (24.6 MB)
+2026-02-28T15:57:10.3570876Z Using cached protobuf-6.33.5-cp310-abi3-win_amd64.whl (437 kB)
+2026-02-28T15:57:10.3602147Z Using cached pydantic-2.12.5-py3-none-any.whl (463 kB)
+2026-02-28T15:57:10.3630499Z Using cached pydantic_core-2.41.5-cp310-cp310-win_amd64.whl (2.0 MB)
+2026-02-28T15:57:10.3669005Z Using cached requests-2.32.5-py3-none-any.whl (64 kB)
+2026-02-28T15:57:10.3695589Z Using cached charset_normalizer-3.4.4-cp310-cp310-win_amd64.whl (107 kB)
+2026-02-28T15:57:10.3721414Z Using cached idna-3.11-py3-none-any.whl (71 kB)
+2026-02-28T15:57:10.3762888Z Using cached typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+2026-02-28T15:57:10.3783046Z Using cached urllib3-2.6.3-py3-none-any.whl (131 kB)
+2026-02-28T15:57:10.3803422Z Using cached tqdm-4.67.3-py3-none-any.whl (78 kB)
+2026-02-28T15:57:10.3823559Z Using cached pyyaml-6.0.3-cp310-cp310-win_amd64.whl (158 kB)
+2026-02-28T15:57:10.3844550Z Using cached pytest-9.0.2-py3-none-any.whl (374 kB)
+2026-02-28T15:57:10.3866045Z Using cached pluggy-1.6.0-py3-none-any.whl (20 kB)
+2026-02-28T15:57:10.3886501Z Using cached pytest_cov-7.0.0-py3-none-any.whl (22 kB)
+2026-02-28T15:57:10.3906357Z Using cached alpha_vantage-3.0.0-py3-none-any.whl (35 kB)
+2026-02-28T15:57:10.3927131Z Using cached yfinance-1.2.0-py2.py3-none-any.whl (130 kB)
+2026-02-28T15:57:10.3947572Z Using cached curl_cffi-0.13.0-cp39-abi3-win_amd64.whl (1.6 MB)
+2026-02-28T15:57:10.4054117Z Downloading pandas_ta_classic-0.3.78-py3-none-any.whl (261 kB)
+2026-02-28T15:57:10.4535896Z Using cached annotated_types-0.7.0-py3-none-any.whl (13 kB)
+2026-02-28T15:57:10.4557765Z Using cached beautifulsoup4-4.14.3-py3-none-any.whl (107 kB)
+2026-02-28T15:57:10.4578872Z Using cached certifi-2026.2.25-py3-none-any.whl (153 kB)
+2026-02-28T15:57:10.4613228Z Using cached cffi-2.0.0-cp310-cp310-win_amd64.whl (182 kB)
+2026-02-28T15:57:10.4633873Z Using cached click-8.3.1-py3-none-any.whl (108 kB)
+2026-02-28T15:57:10.4654469Z Using cached colorama-0.4.6-py2.py3-none-any.whl (25 kB)
+2026-02-28T15:57:10.4674856Z Using cached contourpy-1.3.2-cp310-cp310-win_amd64.whl (221 kB)
+2026-02-28T15:57:10.4696154Z Using cached coverage-7.13.4-cp310-cp310-win_amd64.whl (222 kB)
+2026-02-28T15:57:10.4717690Z Using cached cycler-0.12.1-py3-none-any.whl (8.3 kB)
+2026-02-28T15:57:10.4739326Z Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)
+2026-02-28T15:57:10.4781176Z Using cached fonttools-4.61.1-cp310-cp310-win_amd64.whl (1.6 MB)
+2026-02-28T15:57:10.4808953Z Using cached frozendict-2.4.7-cp310-cp310-win_amd64.whl (37 kB)
+2026-02-28T15:57:10.4829598Z Using cached fsspec-2026.2.0-py3-none-any.whl (202 kB)
+2026-02-28T15:57:10.4851553Z Using cached gitpython-3.1.46-py3-none-any.whl (208 kB)
+2026-02-28T15:57:10.4873267Z Using cached gitdb-4.0.12-py3-none-any.whl (62 kB)
+2026-02-28T15:57:10.4894067Z Using cached smmap-5.0.2-py3-none-any.whl (24 kB)
+2026-02-28T15:57:10.4914850Z Using cached iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
+2026-02-28T15:57:10.4935434Z Using cached joblib-1.5.3-py3-none-any.whl (309 kB)
+2026-02-28T15:57:10.4958095Z Using cached kiwisolver-1.4.9-cp310-cp310-win_amd64.whl (73 kB)
+2026-02-28T15:57:10.4978750Z Using cached networkx-3.4.2-py3-none-any.whl (1.7 MB)
+2026-02-28T15:57:10.5008268Z Using cached packaging-26.0-py3-none-any.whl (74 kB)
+2026-02-28T15:57:10.5030437Z Using cached peewee-4.0.0-py3-none-any.whl (139 kB)
+2026-02-28T15:57:10.5057364Z Using cached pillow-12.1.1-cp310-cp310-win_amd64.whl (7.0 MB)
+2026-02-28T15:57:10.5127915Z Using cached platformdirs-4.9.2-py3-none-any.whl (21 kB)
+2026-02-28T15:57:10.5166178Z Using cached pygments-2.19.2-py3-none-any.whl (1.2 MB)
+2026-02-28T15:57:10.5199626Z Using cached pyparsing-3.3.2-py3-none-any.whl (122 kB)
+2026-02-28T15:57:10.5221457Z Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+2026-02-28T15:57:10.5242097Z Using cached pytz-2025.2-py2.py3-none-any.whl (509 kB)
+2026-02-28T15:57:10.5264680Z Using cached sentry_sdk-2.53.0-py2.py3-none-any.whl (437 kB)
+2026-02-28T15:57:10.5287697Z Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+2026-02-28T15:57:10.5307547Z Using cached soupsieve-2.8.3-py3-none-any.whl (37 kB)
+2026-02-28T15:57:10.5328375Z Using cached sympy-1.14.0-py3-none-any.whl (6.3 MB)
+2026-02-28T15:57:10.5388151Z Using cached mpmath-1.3.0-py3-none-any.whl (536 kB)
+2026-02-28T15:57:10.5411962Z Using cached threadpoolctl-3.6.0-py3-none-any.whl (18 kB)
+2026-02-28T15:57:10.5431921Z Using cached tomli-2.4.0-py3-none-any.whl (14 kB)
+2026-02-28T15:57:10.5453134Z Using cached typing_inspection-0.4.2-py3-none-any.whl (14 kB)
+2026-02-28T15:57:10.5485941Z Using cached tzdata-2025.3-py2.py3-none-any.whl (348 kB)
+2026-02-28T15:57:10.5509112Z Using cached websockets-16.0-cp310-cp310-win_amd64.whl (178 kB)
+2026-02-28T15:57:10.5536126Z Using cached aiohttp-3.13.3-cp310-cp310-win_amd64.whl (456 kB)
+2026-02-28T15:57:10.5559462Z Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)
+2026-02-28T15:57:10.5580221Z Using cached multidict-6.7.1-cp310-cp310-win_amd64.whl (46 kB)
+2026-02-28T15:57:10.5600587Z Using cached yarl-1.22.0-cp310-cp310-win_amd64.whl (86 kB)
+2026-02-28T15:57:10.5621513Z Using cached aiohappyeyeballs-2.6.1-py3-none-any.whl (15 kB)
+2026-02-28T15:57:10.5641994Z Using cached aiosignal-1.4.0-py3-none-any.whl (7.5 kB)
+2026-02-28T15:57:10.5662403Z Using cached attrs-25.4.0-py3-none-any.whl (67 kB)
+2026-02-28T15:57:10.5696228Z Using cached frozenlist-1.8.0-cp310-cp310-win_amd64.whl (43 kB)
+2026-02-28T15:57:10.5716505Z Using cached propcache-0.4.1-cp310-cp310-win_amd64.whl (41 kB)
+2026-02-28T15:57:10.5737076Z Using cached filelock-3.24.3-py3-none-any.whl (24 kB)
+2026-02-28T15:57:10.5757483Z Using cached jinja2-3.1.6-py3-none-any.whl (134 kB)
+2026-02-28T15:57:10.5778387Z Using cached markupsafe-3.0.3-cp310-cp310-win_amd64.whl (15 kB)
+2026-02-28T15:57:10.5811962Z Using cached pycparser-3.0-py3-none-any.whl (48 kB)
+2026-02-28T15:57:11.4305479Z Installing collected packages: pytz, peewee, multitasking, mpmath, websockets, urllib3, tzdata, typing-extensions, tomli, threadpoolctl, sympy, soupsieve, smmap, six, PyYAML, pyparsing, pygments, pycparser, protobuf, propcache, pluggy, platformdirs, pillow, packaging, numpy, networkx, MarkupSafe, kiwisolver, joblib, iniconfig, idna, fsspec, frozenlist, frozendict, fonttools, filelock, cycler, coverage, colorama, charset_normalizer, certifi, attrs, async-timeout, annotated-types, aiohappyeyeballs, typing-inspection, tqdm, sentry-sdk, scipy, requests, python-dateutil, pydantic-core, multidict, jinja2, gitdb, exceptiongroup, contourpy, click, cffi, beautifulsoup4, aiosignal, yarl, torch, scikit-learn, pytest, pydantic, pandas, matplotlib, gitpython, curl_cffi, yfinance, wandb, seaborn, pytest-cov, pandas-ta-classic, aiohttp, alpha_vantage
+2026-02-28T15:58:45.3406379Z 
+2026-02-28T15:58:45.3766402Z Successfully installed MarkupSafe-3.0.3 PyYAML-6.0.3 aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 alpha_vantage-3.0.0 annotated-types-0.7.0 async-timeout-5.0.1 attrs-25.4.0 beautifulsoup4-4.14.3 certifi-2026.2.25 cffi-2.0.0 charset_normalizer-3.4.4 click-8.3.1 colorama-0.4.6 contourpy-1.3.2 coverage-7.13.4 curl_cffi-0.13.0 cycler-0.12.1 exceptiongroup-1.3.1 filelock-3.24.3 fonttools-4.61.1 frozendict-2.4.7 frozenlist-1.8.0 fsspec-2026.2.0 gitdb-4.0.12 gitpython-3.1.46 idna-3.11 iniconfig-2.3.0 jinja2-3.1.6 joblib-1.5.3 kiwisolver-1.4.9 matplotlib-3.10.8 mpmath-1.3.0 multidict-6.7.1 multitasking-0.0.12 networkx-3.4.2 numpy-2.2.6 packaging-26.0 pandas-2.3.3 pandas-ta-classic-0.3.78 peewee-4.0.0 pillow-12.1.1 platformdirs-4.9.2 pluggy-1.6.0 propcache-0.4.1 protobuf-6.33.5 pycparser-3.0 pydantic-2.12.5 pydantic-core-2.41.5 pygments-2.19.2 pyparsing-3.3.2 pytest-9.0.2 pytest-cov-7.0.0 python-dateutil-2.9.0.post0 pytz-2025.2 requests-2.32.5 scikit-learn-1.7.2 scipy-1.15.3 seaborn-0.13.2 sentry-sdk-2.53.0 six-1.17.0 smmap-5.0.2 soupsieve-2.8.3 sympy-1.14.0 threadpoolctl-3.6.0 tomli-2.4.0 torch-2.10.0 tqdm-4.67.3 typing-extensions-4.15.0 typing-inspection-0.4.2 tzdata-2025.3 urllib3-2.6.3 wandb-0.25.0 websockets-16.0 yarl-1.22.0 yfinance-1.2.0
+2026-02-28T15:58:47.0113475Z ##[group]Run python main.py --help
+2026-02-28T15:58:47.0113803Z [36;1mpython main.py --help[0m
+2026-02-28T15:58:47.0182812Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-02-28T15:58:47.0183138Z env:
+2026-02-28T15:58:47.0183398Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:58:47.0183836Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.10.11\x64/lib/pkgconfig
+2026-02-28T15:58:47.0184270Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:58:47.0184652Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:58:47.0185038Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:58:47.0185328Z ##[endgroup]
+2026-02-28T15:58:54.6465738Z usage: main.py [-h] --csv CSV --targets TARGETS [--date-col DATE_COL]
+2026-02-28T15:58:54.6466579Z                [--wandb-project WANDB_PROJECT] [--wandb-entity WANDB_ENTITY]
+2026-02-28T15:58:54.6467331Z                [--pred-len PRED_LEN] [--seq-len SEQ_LEN]
+2026-02-28T15:58:54.6467934Z                [--label-len LABEL_LEN] [--epochs EPOCHS] [--splits SPLITS]
+2026-02-28T15:58:54.6468601Z                [--batch-size BATCH_SIZE] [--use-checkpointing]
+2026-02-28T15:58:54.6469159Z                [--grad-accum-steps GRAD_ACCUM_STEPS]
+2026-02-28T15:58:54.6469750Z                [--finetune-from FINETUNE_FROM] [--freeze-backbone]
+2026-02-28T15:58:54.6470420Z                [--finetune-lr FINETUNE_LR] [--seed SEED] [--deterministic]
+2026-02-28T15:58:54.6471029Z                [--save-fig SAVE_FIG] [--no-show]
+2026-02-28T15:58:54.6471361Z 
+2026-02-28T15:58:54.6472095Z Monitor Vanguard: Motor Algor�tmico Flow FEDformer
+2026-02-28T15:58:54.6472465Z 
+2026-02-28T15:58:54.6472569Z options:
+2026-02-28T15:58:54.6472881Z   -h, --help            show this help message and exit
+2026-02-28T15:58:54.6473362Z   --csv CSV             Ruta de acceso directa al CSV
+2026-02-28T15:58:54.6473922Z   --targets TARGETS     Lista csv concatenada por una coma representando
+2026-02-28T15:58:54.6474521Z                         features anal�ticas
+2026-02-28T15:58:54.6475120Z   --date-col DATE_COL   �ndice de serie temporal a mitigar como feature
+2026-02-28T15:58:54.6475662Z   --wandb-project WANDB_PROJECT
+2026-02-28T15:58:54.6476068Z                         C�mara de telemetr�a W&B
+2026-02-28T15:58:54.6476437Z   --wandb-entity WANDB_ENTITY
+2026-02-28T15:58:54.6476887Z                         Organizaci�n receptora de m�tricas (W&B)
+2026-02-28T15:58:54.6477470Z   --pred-len PRED_LEN   Ventana predictiva m�xima inyectada
+2026-02-28T15:58:54.6478086Z   --seq-len SEQ_LEN     Tama�o de memoria de tensores emp�rica
+2026-02-28T15:58:54.6478533Z   --label-len LABEL_LEN
+2026-02-28T15:58:54.6478928Z                         Token hist�rico decoder overlap
+2026-02-28T15:58:54.6479848Z   --epochs EPOCHS       Sub-ciclos epocales forzados en walk-forwards
+2026-02-28T15:58:54.6480484Z   --splits SPLITS       Fraccionamiento perimetral cross-fold (K)
+2026-02-28T15:58:54.6480960Z   --batch-size BATCH_SIZE
+2026-02-28T15:58:54.6481344Z                         Densidad iterativa escalar paralela (Batch Size)
+2026-02-28T15:58:54.6481989Z   --use-checkpointing   Dispara Gradient Checkpointing sacrificando CPU por
+2026-02-28T15:58:54.6482530Z                         VRAM
+2026-02-28T15:58:54.6482836Z   --grad-accum-steps GRAD_ACCUM_STEPS
+2026-02-28T15:58:54.6483257Z                         Escalones virtuales permitidos para reventar
+2026-02-28T15:58:54.6483688Z                         gradientes
+2026-02-28T15:58:54.6484008Z   --finetune-from FINETUNE_FROM
+2026-02-28T15:58:54.6484424Z                         Directorio relativo de memoria .pt para transbordo
+2026-02-28T15:58:54.6484884Z                         warm-start.
+2026-02-28T15:58:54.6485384Z   --freeze-backbone     Inhibe el reajuste convolucional y se limita a redes
+2026-02-28T15:58:54.6485956Z                         normalizadoras exclusivas.
+2026-02-28T15:58:54.6488365Z   --finetune-lr FINETUNE_LR
+2026-02-28T15:58:54.6488991Z                         Ratio param�trico inespec�fico de convergencia
+2026-02-28T15:58:54.6489725Z                         descendiente del warm-start.
+2026-02-28T15:58:54.6490221Z   --seed SEED           Hash natural anclado para evitar pseudo-azar
+2026-02-28T15:58:54.6490959Z   --deterministic       Exige CUDNN bloqueante matem�tico purista (Muerte al
+2026-02-28T15:58:54.6491496Z                         Benchmark)
+2026-02-28T15:58:54.6492075Z   --save-fig SAVE_FIG   Directorio destino del render gr�fico de retornos del
+2026-02-28T15:58:54.6492597Z                         portafolio
+2026-02-28T15:58:54.6493122Z   --no-show             Anula expl�citamente despliegues de render X11
+2026-02-28T15:58:54.6493631Z                         (Bloqueos en head-less server).
+2026-02-28T15:58:55.2551009Z ##[group]Run pytest -q -m "not slow" --maxfail=1 --disable-warnings
+2026-02-28T15:58:55.2551548Z [36;1mpytest -q -m "not slow" --maxfail=1 --disable-warnings[0m
+2026-02-28T15:58:55.2615578Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-02-28T15:58:55.2615910Z env:
+2026-02-28T15:58:55.2616241Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:58:55.2616702Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.10.11\x64/lib/pkgconfig
+2026-02-28T15:58:55.2617157Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:58:55.2617538Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:58:55.2617919Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:58:55.2618511Z ##[endgroup]
+2026-02-28T15:59:03.1394777Z ..............s.....F
+2026-02-28T15:59:03.1395270Z ================================== FAILURES ===================================
+2026-02-28T15:59:03.1396168Z ________________________ test_dynamic_fold_checkpoint _________________________
+2026-02-28T15:59:03.1396725Z 
+2026-02-28T15:59:03.1397438Z tmp_path = WindowsPath('C:/Users/runneradmin/AppData/Local/Temp/pytest-of-runneradmin/pytest-0/test_dynamic_fold_checkpoint0')
+2026-02-28T15:59:03.1398368Z 
+2026-02-28T15:59:03.1398664Z     def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
+2026-02-28T15:59:03.1399705Z         """El checkpoint del �ltimo fold debe ser din�mico seg�n n_splits."""
+2026-02-28T15:59:03.1400324Z         import numpy as np
+2026-02-28T15:59:03.1400795Z         from training.sequential_finetuner import finetune_sequence
+2026-02-28T15:59:03.1401358Z     
+2026-02-28T15:59:03.1401622Z         for n_splits in [2, 3, 5]:
+2026-02-28T15:59:03.1402052Z             expected_fold_idx = n_splits - 1
+2026-02-28T15:59:03.1403068Z             expected_filename = f"best_model_fold_{expected_fold_idx}.pt"
+2026-02-28T15:59:03.1403651Z     
+2026-02-28T15:59:03.1404081Z             # Creamos el archivo de checkpoint esperado y uno base ficticio
+2026-02-28T15:59:03.1404702Z             base_ckpt = tmp_path / "base.pt"
+2026-02-28T15:59:03.1405137Z             base_ckpt.touch()
+2026-02-28T15:59:03.1405553Z             ckpt_dir = tmp_path / f"out_{n_splits}" / "MOCK"
+2026-02-28T15:59:03.1406059Z             ckpt_dir.mkdir(parents=True)
+2026-02-28T15:59:03.1406495Z             expected_ckpt = ckpt_dir / expected_filename
+2026-02-28T15:59:03.1406961Z             expected_ckpt.touch()
+2026-02-28T15:59:03.1407323Z     
+2026-02-28T15:59:03.1407573Z             mock_cfg = MagicMock()
+2026-02-28T15:59:03.1407922Z             with (
+2026-02-28T15:59:03.1408194Z                 patch(
+2026-02-28T15:59:03.1408752Z                     "training.sequential_finetuner.FEDformerConfig", return_value=mock_cfg
+2026-02-28T15:59:03.1409413Z                 ),
+2026-02-28T15:59:03.1409852Z                 patch("training.sequential_finetuner.TimeSeriesDataset"),
+2026-02-28T15:59:03.1410791Z                 patch("training.sequential_finetuner.WalkForwardTrainer") as MockTrainer,
+2026-02-28T15:59:03.1411542Z                 patch("os.path.exists", return_value=True),
+2026-02-28T15:59:03.1411963Z             ):
+2026-02-28T15:59:03.1412240Z                 mock_trainer = MagicMock()
+2026-02-28T15:59:03.1413052Z                 mock_trainer.checkpoint_dir = ckpt_dir
+2026-02-28T15:59:03.1413586Z                 mock_trainer.run_backtest.return_value = (
+2026-02-28T15:59:03.1414067Z                     np.zeros((1, 1, 1)),
+2026-02-28T15:59:03.1414471Z                     np.zeros((1, 1, 1)),
+2026-02-28T15:59:03.1414862Z                     np.zeros((1, 1, 1)),
+2026-02-28T15:59:03.1415220Z                 )
+2026-02-28T15:59:03.1415555Z                 MockTrainer.return_value = mock_trainer
+2026-02-28T15:59:03.1415996Z     
+2026-02-28T15:59:03.1416290Z                 result_ckpt = finetune_sequence(
+2026-02-28T15:59:03.1416708Z                     symbols=["MOCK"],
+2026-02-28T15:59:03.1419735Z                     base_checkpoint=str(base_ckpt),
+2026-02-28T15:59:03.1420386Z                     output_dir=str(tmp_path / f"out_{n_splits}"),
+2026-02-28T15:59:03.1420881Z                     n_splits=n_splits,
+2026-02-28T15:59:03.1421228Z                 )
+2026-02-28T15:59:03.1421483Z     
+2026-02-28T15:59:03.1421775Z             assert result_ckpt is not None
+2026-02-28T15:59:03.1422262Z >           assert expected_filename in result_ckpt, (
+2026-02-28T15:59:03.1423354Z                 f"n_splits={n_splits}: esperado '{expected_filename}', obtenido '{result_ckpt}'"
+2026-02-28T15:59:03.1424045Z             )
+2026-02-28T15:59:03.1425287Z E           AssertionError: n_splits=2: esperado 'best_model_fold_1.pt', obtenido 'C:\Users\runneradmin\AppData\Local\Temp\pytest-of-runneradmin\pytest-0\test_dynamic_fold_checkpoint0\base.pt'
+2026-02-28T15:59:03.1427462Z E           assert 'best_model_fold_1.pt' in 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\pytest-of-runneradmin\\pytest-0\\test_dynamic_fold_checkpoint0\\base.pt'
+2026-02-28T15:59:03.1428440Z 
+2026-02-28T15:59:03.1428611Z tests\test_finetune.py:112: AssertionError
+2026-02-28T15:59:03.1429139Z ------------------------------ Captured log call ------------------------------
+2026-02-28T15:59:03.1430340Z ERROR    training.sequential_finetuner:sequential_finetuner.py:75 Fallo durante el finetuning de MOCK: 'tuple' object has no attribute 'preds_scaled'
+2026-02-28T15:59:03.1431540Z =========================== short test summary info ===========================
+2026-02-28T15:59:03.1433365Z FAILED tests/test_finetune.py::test_dynamic_fold_checkpoint - AssertionError: n_splits=2: esperado 'best_model_fold_1.pt', obtenido 'C:\Users\runneradmin\AppData\Local\Temp\pytest-of-runneradmin\pytest-0\test_dynamic_fold_checkpoint0\base.pt'
+2026-02-28T15:59:03.1435698Z assert 'best_model_fold_1.pt' in 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\pytest-of-runneradmin\\pytest-0\\test_dynamic_fold_checkpoint0\\base.pt'
+2026-02-28T15:59:03.1436898Z !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+2026-02-28T15:59:03.8578052Z ##[error]Process completed with exit code 1.
+2026-02-28T15:59:03.8746723Z ##[group]Run pytest -q -m "not slow" --cov=. --cov-report=xml:coverage.xml || true
+2026-02-28T15:59:03.8747323Z [36;1mpytest -q -m "not slow" --cov=. --cov-report=xml:coverage.xml || true[0m
+2026-02-28T15:59:03.8813169Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-02-28T15:59:03.8813497Z env:
+2026-02-28T15:59:03.8813743Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:59:03.8814197Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.10.11\x64/lib/pkgconfig
+2026-02-28T15:59:03.8814628Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:59:03.8815020Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:59:03.8815410Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.10.11\x64
+2026-02-28T15:59:03.8815695Z ##[endgroup]
+2026-02-28T15:59:15.9019887Z ..............s.....F.................................                   [100%]
+2026-02-28T15:59:15.9020694Z ================================== FAILURES ===================================
+2026-02-28T15:59:15.9021127Z ________________________ test_dynamic_fold_checkpoint _________________________
+2026-02-28T15:59:15.9021691Z 
+2026-02-28T15:59:15.9022152Z tmp_path = WindowsPath('C:/Users/runneradmin/AppData/Local/Temp/pytest-of-runneradmin/pytest-1/test_dynamic_fold_checkpoint0')
+2026-02-28T15:59:15.9022657Z 
+2026-02-28T15:59:15.9022821Z     def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
+2026-02-28T15:59:15.9023550Z         """El checkpoint del �ltimo fold debe ser din�mico seg�n n_splits."""
+2026-02-28T15:59:15.9023937Z         import numpy as np
+2026-02-28T15:59:15.9024230Z         from training.sequential_finetuner import finetune_sequence
+2026-02-28T15:59:15.9024532Z     
+2026-02-28T15:59:15.9024679Z         for n_splits in [2, 3, 5]:
+2026-02-28T15:59:15.9024924Z             expected_fold_idx = n_splits - 1
+2026-02-28T15:59:15.9025272Z             expected_filename = f"best_model_fold_{expected_fold_idx}.pt"
+2026-02-28T15:59:15.9025581Z     
+2026-02-28T15:59:15.9025817Z             # Creamos el archivo de checkpoint esperado y uno base ficticio
+2026-02-28T15:59:15.9026170Z             base_ckpt = tmp_path / "base.pt"
+2026-02-28T15:59:15.9026402Z             base_ckpt.touch()
+2026-02-28T15:59:15.9026658Z             ckpt_dir = tmp_path / f"out_{n_splits}" / "MOCK"
+2026-02-28T15:59:15.9026941Z             ckpt_dir.mkdir(parents=True)
+2026-02-28T15:59:15.9027211Z             expected_ckpt = ckpt_dir / expected_filename
+2026-02-28T15:59:15.9027473Z             expected_ckpt.touch()
+2026-02-28T15:59:15.9027673Z     
+2026-02-28T15:59:15.9027819Z             mock_cfg = MagicMock()
+2026-02-28T15:59:15.9028015Z             with (
+2026-02-28T15:59:15.9028177Z                 patch(
+2026-02-28T15:59:15.9028511Z                     "training.sequential_finetuner.FEDformerConfig", return_value=mock_cfg
+2026-02-28T15:59:15.9028878Z                 ),
+2026-02-28T15:59:15.9029143Z                 patch("training.sequential_finetuner.TimeSeriesDataset"),
+2026-02-28T15:59:15.9029604Z                 patch("training.sequential_finetuner.WalkForwardTrainer") as MockTrainer,
+2026-02-28T15:59:15.9030026Z                 patch("os.path.exists", return_value=True),
+2026-02-28T15:59:15.9030273Z             ):
+2026-02-28T15:59:15.9030448Z                 mock_trainer = MagicMock()
+2026-02-28T15:59:15.9030712Z                 mock_trainer.checkpoint_dir = ckpt_dir
+2026-02-28T15:59:15.9031001Z                 mock_trainer.run_backtest.return_value = (
+2026-02-28T15:59:15.9031269Z                     np.zeros((1, 1, 1)),
+2026-02-28T15:59:15.9031490Z                     np.zeros((1, 1, 1)),
+2026-02-28T15:59:15.9031707Z                     np.zeros((1, 1, 1)),
+2026-02-28T15:59:15.9031916Z                 )
+2026-02-28T15:59:15.9032118Z                 MockTrainer.return_value = mock_trainer
+2026-02-28T15:59:15.9032356Z     
+2026-02-28T15:59:15.9034898Z                 result_ckpt = finetune_sequence(
+2026-02-28T15:59:15.9035262Z                     symbols=["MOCK"],
+2026-02-28T15:59:15.9035535Z                     base_checkpoint=str(base_ckpt),
+2026-02-28T15:59:15.9035867Z                     output_dir=str(tmp_path / f"out_{n_splits}"),
+2026-02-28T15:59:15.9036164Z                     n_splits=n_splits,
+2026-02-28T15:59:15.9036385Z                 )
+2026-02-28T15:59:15.9036537Z     
+2026-02-28T15:59:15.9036696Z             assert result_ckpt is not None
+2026-02-28T15:59:15.9036969Z >           assert expected_filename in result_ckpt, (
+2026-02-28T15:59:15.9037371Z                 f"n_splits={n_splits}: esperado '{expected_filename}', obtenido '{result_ckpt}'"
+2026-02-28T15:59:15.9037853Z             )
+2026-02-28T15:59:15.9038964Z E           AssertionError: n_splits=2: esperado 'best_model_fold_1.pt', obtenido 'C:\Users\runneradmin\AppData\Local\Temp\pytest-of-runneradmin\pytest-1\test_dynamic_fold_checkpoint0\base.pt'
+2026-02-28T15:59:15.9040134Z E           assert 'best_model_fold_1.pt' in 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\pytest-of-runneradmin\\pytest-1\\test_dynamic_fold_checkpoint0\\base.pt'
+2026-02-28T15:59:15.9040697Z 
+2026-02-28T15:59:15.9040973Z tests\test_finetune.py:112: AssertionError
+2026-02-28T15:59:15.9041323Z ------------------------------ Captured log call ------------------------------
+2026-02-28T15:59:15.9042029Z ERROR    training.sequential_finetuner:sequential_finetuner.py:75 Fallo durante el finetuning de MOCK: 'tuple' object has no attribute 'preds_scaled'
+2026-02-28T15:59:15.9042677Z ============================== warnings summary ===============================
+2026-02-28T15:59:15.9043040Z tests/test_fedformer_basic.py::test_amp_optional
+2026-02-28T15:59:15.9044036Z   D:\a\FEDformer-Probabilistic-Time-Series-Forecasting\FEDformer-Probabilistic-Time-Series-Forecasting\tests\test_fedformer_basic.py:116: UserWarning: torch.cuda.amp.GradScaler is enabled, but CUDA is not available.  Disabling.
+2026-02-28T15:59:15.9045038Z     scaler = torch.amp.GradScaler("cuda")
+2026-02-28T15:59:15.9045214Z 
+2026-02-28T15:59:15.9045392Z tests/test_preprocessing_pipeline.py::test_return_inverse_transform
+2026-02-28T15:59:15.9046906Z   D:\a\FEDformer-Probabilistic-Time-Series-Forecasting\FEDformer-Probabilistic-Time-Series-Forecasting\data\preprocessing.py:119: FutureWarning: The default fill_method='pad' in Series.pct_change is deprecated and will be removed in a future version. Either fill in any non-leading NA values prior to calling pct_change or specify 'fill_method=None' to not fill NA values.
+2026-02-28T15:59:15.9048359Z     out[col] = series.pct_change()
+2026-02-28T15:59:15.9048514Z 
+2026-02-28T15:59:15.9048710Z -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2026-02-28T15:59:15.9049117Z =============================== tests coverage ================================
+2026-02-28T15:59:15.9049519Z ______________ coverage: platform win32, python 3.10.11-final-0 _______________
+2026-02-28T15:59:15.9049842Z 
+2026-02-28T15:59:15.9049946Z Coverage XML written to file coverage.xml
+2026-02-28T15:59:15.9050379Z =========================== short test summary info ===========================
+2026-02-28T15:59:15.9051474Z FAILED tests/test_finetune.py::test_dynamic_fold_checkpoint - AssertionError: n_splits=2: esperado 'best_model_fold_1.pt', obtenido 'C:\Users\runneradmin\AppData\Local\Temp\pytest-of-runneradmin\pytest-1\test_dynamic_fold_checkpoint0\base.pt'
+2026-02-28T15:59:15.9052785Z assert 'best_model_fold_1.pt' in 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\pytest-of-runneradmin\\pytest-1\\test_dynamic_fold_checkpoint0\\base.pt'
+2026-02-28T15:59:16.7102392Z Post job cleanup.
+2026-02-28T15:59:16.9797356Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-02-28T15:59:17.0187181Z git version 2.53.0.windows.1
+2026-02-28T15:59:17.0285798Z Temporarily overriding HOME='D:\a\_temp\c682ca98-e703-4912-afcf-2eab5f2c0d34' before making global git config changes
+2026-02-28T15:59:17.0287156Z Adding repository directory to the temporary git global config as a safe directory
+2026-02-28T15:59:17.0302601Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\FEDformer-Probabilistic-Time-Series-Forecasting\FEDformer-Probabilistic-Time-Series-Forecasting
+2026-02-28T15:59:17.0701357Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-02-28T15:59:17.1086249Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-02-28T15:59:17.6813055Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-02-28T15:59:17.7074432Z http.https://github.com/.extraheader
+2026-02-28T15:59:17.7125569Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-02-28T15:59:17.7427501Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-02-28T15:59:18.3084402Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-02-28T15:59:18.3399857Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-02-28T15:59:18.9319837Z Cleaning up orphan processes
