@@ -42,8 +42,10 @@ def run_base_training():
     logger.info("Ejecutando Backtest (Entrenamiento Walk-Forward)...")
     # Utilizamos n_splits=5 para simular un ambiente realista en finanzas
     try:
-        preds, gt, samples = trainer.run_backtest(n_splits=5)
-        logger.info(f"Entrenamiento base finalizado. Predicciones forma: {preds.shape}")
+        forecast = trainer.run_backtest(n_splits=5)
+        logger.info(
+            f"Entrenamiento base finalizado. Predicciones forma: {forecast.preds.shape}"
+        )
     except Exception as e:
         logger.error(f"Fallo durante el entrenamiento base: {e}")
 
