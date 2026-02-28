@@ -71,6 +71,7 @@ reports/**
 logs/
 outputs/
 run*/
+github_log/
 
 # === IDE & editor settings ===
 .vscode/
