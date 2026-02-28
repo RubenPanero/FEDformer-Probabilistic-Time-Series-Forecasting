@@ -39,6 +39,7 @@ from config import FEDformerConfig
 from data import TimeSeriesDataset
 from simulations import PortfolioSimulator, RiskSimulator
 from training import WalkForwardTrainer
+from training.forecast_output import ForecastOutput
 from utils import get_device, setup_cuda_optimizations
 from utils.helpers import set_seed
 
@@ -53,9 +54,7 @@ logger = logging.getLogger(__name__)
 class SimulationData:
     """Contenedor puente de artefactos expuestos con la visualización matricial final."""
 
-    predictions: np.ndarray
-    ground_truth: np.ndarray
-    samples: np.ndarray
+    forecast: ForecastOutput
     dataset: TimeSeriesDataset
 
 
@@ -225,15 +224,13 @@ def _load_dataset(config: FEDformerConfig) -> TimeSeriesDataset:
 
 def _run_backtest(
     config: FEDformerConfig, full_dataset: TimeSeriesDataset, splits: int
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> ForecastOutput:
     """Acciona el motor rotatorio de fraccionamiento evaluativo (Walk-forward)."""
     logger.info("Iniciando rampa de backtesting secuencial dinámico...")
     wf_trainer = WalkForwardTrainer(config, full_dataset)
-    predictions_oos, ground_truth_oos, samples_oos = wf_trainer.run_backtest(
-        n_splits=splits
-    )
+    forecast = wf_trainer.run_backtest(n_splits=splits)
 
-    if predictions_oos.size == 0:
+    if forecast.preds_scaled.size == 0:
         logger.error(
             "Imposible procesar sin simulaciones emitidas por la heurística evaluativa. Se fuerza salida."
         )
@@ -246,9 +243,9 @@ def _run_backtest(
     )
     logger.info(
         "Receptado tensor de previsiones fuera-de-muestra (%s items predictivos)",
-        len(predictions_oos),
+        len(forecast.preds_scaled),
     )
-    return predictions_oos, ground_truth_oos, samples_oos
+    return forecast
 
 
 def _log_risk_summary(var: np.ndarray, cvar: np.ndarray) -> None:
@@ -279,63 +276,6 @@ def _log_portfolio_metrics(metrics: Dict[str, Any]) -> None:
         "  Seguimiento asimétrico sin trampa bajista (Sortino Ratio): %.3f",
         float(metrics.get("sortino_ratio", 0.0)),
     )
-
-
-def _prepare_unscaled_series(
-    data: SimulationData,
-    config: FEDformerConfig,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Retorna los datos pre-escalados a su ambiente bursátil genuino usando la magia del transformado inverso."""
-    preprocessor = getattr(data.dataset, "preprocessor", None)
-    if preprocessor is not None and hasattr(preprocessor, "inverse_transform_targets"):
-        unscaled_preds = preprocessor.inverse_transform_targets(
-            data.predictions, config.target_features
-        )
-        unscaled_gt = preprocessor.inverse_transform_targets(
-            data.ground_truth, config.target_features
-        )
-        return unscaled_preds, unscaled_gt
-
-    scaler = getattr(data.dataset, "scaler", None)
-    target_indices = getattr(data.dataset, "target_indices", None)
-    if scaler is None or not target_indices:
-        raise ValueError(
-            "No pudimos localizar constructos asimilables en las directrices maestras (Scaler / Targets missing)."
-        )
-
-    # Validar que los índices estén dentro de rango
-    if max(target_indices) >= config.enc_in:
-        raise ValueError(
-            f"target_indices contiene índices inválidos: máximo es {max(target_indices)}, "
-            f"pero config.enc_in es {config.enc_in}"
-        )
-
-    # Garantizar que enc_in es un entero válido
-    enc_in: int = int(config.enc_in) if config.enc_in is not None else 0
-    if enc_in <= 0:
-        raise ValueError("config.enc_in debe ser un valor positivo")
-
-    dummy_preds = np.zeros(
-        (data.predictions.shape[0], data.predictions.shape[1], enc_in)
-    )
-    for feature_idx, target_idx in enumerate(target_indices):
-        dummy_preds[..., target_idx] = data.predictions[..., feature_idx]
-
-    unscaled_preds = scaler.inverse_transform(dummy_preds.reshape(-1, enc_in)).reshape(
-        dummy_preds.shape
-    )[..., target_indices]
-
-    dummy_gt = np.zeros(
-        (data.ground_truth.shape[0], data.ground_truth.shape[1], enc_in)
-    )
-    for feature_idx, target_idx in enumerate(target_indices):
-        dummy_gt[..., target_idx] = data.ground_truth[..., feature_idx]
-
-    unscaled_gt = scaler.inverse_transform(dummy_gt.reshape(-1, enc_in)).reshape(
-        dummy_gt.shape
-    )[..., target_indices]
-
-    return unscaled_preds, unscaled_gt
 
 
 def _create_portfolio_figure(
@@ -454,14 +394,12 @@ def _handle_visualization_output(fig: Figure, args: argparse.Namespace) -> None:
 
 def _run_portfolio_simulation(
     data: SimulationData,
-    config: FEDformerConfig,
     risk_stats: Tuple[np.ndarray, np.ndarray],
 ) -> Tuple[Dict[str, Any], Figure]:
     """Acciona el emulador lógico de trade-in uniendo lo predicho versus lo comprobado."""
     var, cvar = risk_stats
-    unscaled_preds, unscaled_gt = _prepare_unscaled_series(data, config)
 
-    portfolio_sim = PortfolioSimulator(unscaled_preds, unscaled_gt)
+    portfolio_sim = PortfolioSimulator(data.forecast)
     strategy_returns = portfolio_sim.run_simple_strategy()
 
     metrics = portfolio_sim.calculate_metrics(strategy_returns)
@@ -473,26 +411,25 @@ def _run_portfolio_simulation(
 def _run_simulations_and_visualize(
     data: SimulationData,
     args: argparse.Namespace,
-    config: FEDformerConfig,
 ) -> None:
     """Ejecuta los peritajes estadísticos marginales derivados de toda la secuencia matemática general."""
     logger.info(
         "Lanzando subsistemas analíticos (Validador Riesgo & Estrategia Portafolio)..."
     )
 
-    risk_sim = RiskSimulator(data.samples)
+    risk_sim = RiskSimulator(data.forecast)
     var = risk_sim.calculate_var()
     cvar = risk_sim.calculate_cvar()
     _log_risk_summary(var, cvar)
 
-    if data.ground_truth.shape[1] <= 1:
+    if data.forecast.gt_for_metrics.shape[1] <= 1:
         logger.info(
             "Omitiendo cálculos de simulación por límite infranqueable predictivo (Paso Ciego de TimeStep <= 1)"
         )
         return
 
     try:
-        metrics, fig = _run_portfolio_simulation(data, config, (var, cvar))
+        metrics, fig = _run_portfolio_simulation(data, (var, cvar))
     except ValueError as exc:
         logger.warning(
             "Evaluador financiero corrompido, bloque ignorado preventivamente: %s", exc
@@ -515,18 +452,14 @@ def main() -> None:
 
         full_dataset = _load_dataset(config)
 
-        predictions_oos, ground_truth_oos, samples_oos = _run_backtest(
-            config, full_dataset, args.splits
-        )
+        forecast = _run_backtest(config, full_dataset, args.splits)
 
         sim_data = SimulationData(
-            predictions=predictions_oos,
-            ground_truth=ground_truth_oos,
-            samples=samples_oos,
+            forecast=forecast,
             dataset=full_dataset,
         )
 
-        _run_simulations_and_visualize(sim_data, args, config)
+        _run_simulations_and_visualize(sim_data, args)
 
         logger.info(
             "Validación, Entrenamiento e Inferencias resueltas triunfalmente. Flujo terminado."

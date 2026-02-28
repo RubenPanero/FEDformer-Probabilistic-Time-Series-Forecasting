@@ -75,3 +75,79 @@ def test_portfolio_single_timestep_fallback() -> None:
     sim = PortfolioSimulator(predictions, ground_truth)
     returns = sim.run_simple_strategy()
     assert returns.shape[0] == 19
+
+
+def test_risk_simulator_accepts_forecast_output() -> None:
+    """RiskSimulator acepta ForecastOutput y usa samples_for_metrics."""
+    from training.forecast_output import ForecastOutput
+
+    n_samples, n_windows, pred_len, n_targets = 100, 20, 5, 1
+    rng = np.random.default_rng(7)
+    samples_scaled = rng.normal(0, 1, (n_samples, n_windows, pred_len, n_targets))
+    samples_real = samples_scaled * 50 + 100  # precios simulados positivos
+
+    # metric_space="returns" → samples_for_metrics == samples_scaled
+    fo_returns = ForecastOutput(
+        preds_scaled=np.zeros((n_windows, pred_len, n_targets)),
+        gt_scaled=np.zeros((n_windows, pred_len, n_targets)),
+        samples_scaled=samples_scaled,
+        preds_real=np.zeros((n_windows, pred_len, n_targets)),
+        gt_real=np.zeros((n_windows, pred_len, n_targets)),
+        samples_real=samples_real,
+        metric_space="returns",
+        return_transform="none",
+        target_names=["Close"],
+    )
+    risk = RiskSimulator(fo_returns)
+    var = risk.calculate_var()
+    assert var.shape == (pred_len, n_targets)
+
+    # metric_space="prices" → samples_for_metrics == samples_real
+    fo_prices = ForecastOutput(
+        preds_scaled=np.zeros((n_windows, pred_len, n_targets)),
+        gt_scaled=np.zeros((n_windows, pred_len, n_targets)),
+        samples_scaled=samples_scaled,
+        preds_real=np.zeros((n_windows, pred_len, n_targets)),
+        gt_real=np.zeros((n_windows, pred_len, n_targets)),
+        samples_real=samples_real,
+        metric_space="prices",
+        return_transform="log_return",
+        target_names=["Close"],
+    )
+    risk2 = RiskSimulator(fo_prices)
+    var2 = risk2.calculate_var()
+    assert var2.shape == (pred_len, n_targets)
+    # Con precios reales, el VaR debe ser diferente al calculado sobre retornos escalados
+    assert not np.allclose(risk.calculate_var(), risk2.calculate_var())
+
+
+def test_portfolio_simulator_accepts_forecast_output() -> None:
+    """PortfolioSimulator acepta ForecastOutput y usa preds/gt_for_metrics."""
+    from training.forecast_output import ForecastOutput
+
+    n_windows, pred_len, n_targets = 20, 10, 1
+    rng = np.random.default_rng(13)
+    preds_scaled = rng.normal(0, 0.01, (n_windows, pred_len, n_targets))
+    gt_scaled = preds_scaled + rng.normal(0, 0.001, (n_windows, pred_len, n_targets))
+    samples_scaled = rng.normal(0, 0.01, (50, n_windows, pred_len, n_targets))
+
+    fo = ForecastOutput(
+        preds_scaled=preds_scaled,
+        gt_scaled=gt_scaled,
+        samples_scaled=samples_scaled,
+        preds_real=preds_scaled * 100 + 200,
+        gt_real=gt_scaled * 100 + 200,
+        samples_real=samples_scaled * 100 + 200,
+        metric_space="returns",
+        return_transform="none",
+        target_names=["Close"],
+    )
+
+    ps = PortfolioSimulator(fo)
+    strategy_returns = ps.run_simple_strategy()
+    metrics = ps.calculate_metrics(strategy_returns)
+
+    assert "sharpe_ratio" in metrics
+    assert "max_drawdown" in metrics
+    assert "volatility" in metrics
+    assert "sortino_ratio" in metrics

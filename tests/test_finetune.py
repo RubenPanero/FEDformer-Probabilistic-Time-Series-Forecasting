@@ -69,6 +69,7 @@ def test_trainer_finetune_checkpoint_and_freeze(tmp_path: Path) -> None:
 def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
     """El checkpoint del último fold debe ser dinámico según n_splits."""
     import numpy as np
+    from training.forecast_output import ForecastOutput
     from training.sequential_finetuner import finetune_sequence
 
     for n_splits in [2, 3, 5]:
@@ -94,10 +95,16 @@ def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
         ):
             mock_trainer = MagicMock()
             mock_trainer.checkpoint_dir = ckpt_dir
-            mock_trainer.run_backtest.return_value = (
-                np.zeros((1, 1, 1)),
-                np.zeros((1, 1, 1)),
-                np.zeros((1, 1, 1)),
+            mock_trainer.run_backtest.return_value = ForecastOutput(
+                preds_scaled=np.zeros((1, 1, 1)),
+                gt_scaled=np.zeros((1, 1, 1)),
+                samples_scaled=np.zeros((1, 1, 1, 1)),
+                preds_real=np.zeros((1, 1, 1)),
+                gt_real=np.zeros((1, 1, 1)),
+                samples_real=np.zeros((1, 1, 1, 1)),
+                metric_space="returns",
+                return_transform="none",
+                target_names=["Close"],
             )
             MockTrainer.return_value = mock_trainer
 

@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover
     WandbError = Exception
 
 from config import FEDformerConfig
+from training.forecast_output import ForecastOutput
 from data import TimeSeriesDataset
 from models import Flow_FEDformer
 from training.utils import mc_dropout_inference
@@ -36,6 +37,17 @@ from utils import MetricsTracker, get_device
 
 logger = logging.getLogger(__name__)
 device = get_device()
+
+
+def _cumulative_returns_to_prices(
+    returns: np.ndarray, last_prices: np.ndarray, mode: str
+) -> np.ndarray:
+    """Reconstruye precios desde retornos acumulados. returns shape: (..., n_targets)."""
+    if mode == "log_return":
+        multipliers = np.exp(np.cumsum(returns, axis=-2))
+    else:  # simple_return
+        multipliers = np.cumprod(1 + returns, axis=-2)
+    return last_prices * multipliers
 
 
 class _EarlyStopping:
@@ -679,9 +691,53 @@ class WalkForwardTrainer:
         test_indices = list(range(test_start, test_limit))
         return train_indices, test_indices
 
-    def run_backtest(
-        self, n_splits: int = 5
+    def _inverse_transform_all(
+        self,
+        preds_scaled: np.ndarray,
+        gt_scaled: np.ndarray,
+        samples_scaled: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Aplica inverse_transform_targets y, si aplica, inverse_transform_returns."""
+        pipeline = self.full_dataset.preprocessor
+
+        # Invertir scaler para predicciones y ground truth
+        preds_unscaled = pipeline.inverse_transform_targets(
+            preds_scaled, self.config.target_features
+        )
+        gt_unscaled = pipeline.inverse_transform_targets(
+            gt_scaled, self.config.target_features
+        )
+
+        # Para samples: reshape a 2D, invertir scaler, reshape de vuelta
+        orig_shape = samples_scaled.shape
+        samples_flat = samples_scaled.reshape(-1, orig_shape[-1])
+        samples_unscaled = pipeline.inverse_transform_targets(
+            samples_flat, self.config.target_features
+        )
+        samples_unscaled = samples_unscaled.reshape(orig_shape)
+
+        # Si return_transform != "none" y metric_space == "prices", reconstruir precios
+        if pipeline.return_transform != "none" and self.config.metric_space == "prices":
+            last_prices = np.array(
+                [pipeline.last_prices.get(t, 1.0) for t in self.config.target_features]
+            )
+            preds_real = _cumulative_returns_to_prices(
+                preds_unscaled, last_prices, pipeline.return_transform
+            )
+            gt_real = _cumulative_returns_to_prices(
+                gt_unscaled, last_prices, pipeline.return_transform
+            )
+            samples_real = _cumulative_returns_to_prices(
+                samples_unscaled, last_prices, pipeline.return_transform
+            )
+        else:
+            preds_real = preds_unscaled
+            gt_real = gt_unscaled
+            samples_real = samples_unscaled
+
+        return preds_real, gt_real, samples_real
+
+    def run_backtest(self, n_splits: int = 5) -> ForecastOutput:
         """Despliegue operativo automatizado del algoritmo sobre cortes asincrónos."""
         self._initialize_wandb()
 
@@ -721,10 +777,35 @@ class WalkForwardTrainer:
             logger.error(
                 "No existió ni un sólo bloque precalculado de inferencias. Colapso."
             )
-            return np.array([]), np.array([]), np.array([])
+            empty = np.array([])
+            return ForecastOutput(
+                preds_scaled=empty,
+                gt_scaled=empty,
+                samples_scaled=empty,
+                preds_real=empty,
+                gt_real=empty,
+                samples_real=empty,
+                metric_space=self.config.metric_space,
+                return_transform=self.config.preprocessing.return_transform,
+                target_names=list(self.config.target_features),
+            )
 
-        return (
-            np.concatenate(all_preds, axis=0),
-            np.concatenate(all_gt, axis=0),
-            np.concatenate(all_samples, axis=1),
+        preds_scaled = np.concatenate(all_preds, axis=0)
+        gt_scaled = np.concatenate(all_gt, axis=0)
+        samples_scaled = np.concatenate(all_samples, axis=1)
+
+        preds_real, gt_real, samples_real = self._inverse_transform_all(
+            preds_scaled, gt_scaled, samples_scaled
+        )
+
+        return ForecastOutput(
+            preds_scaled=preds_scaled,
+            gt_scaled=gt_scaled,
+            samples_scaled=samples_scaled,
+            preds_real=preds_real,
+            gt_real=gt_real,
+            samples_real=samples_real,
+            metric_space=self.config.metric_space,
+            return_transform=self.config.preprocessing.return_transform,
+            target_names=list(self.config.target_features),
         )
