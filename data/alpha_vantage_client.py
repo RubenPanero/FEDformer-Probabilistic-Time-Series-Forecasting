@@ -51,7 +51,9 @@ class AlphaVantageClient:
             data = response.json()
 
             if "Time Series (Daily)" in data:
-                df = pd.DataFrame.from_dict(data["Time Series (Daily)"], orient="index")
+                df: pd.DataFrame = pd.DataFrame.from_dict(
+                    data["Time Series (Daily)"], orient="index"
+                )
                 df.index = pd.to_datetime(df.index)
                 df = df.rename(
                     columns={
@@ -64,7 +66,7 @@ class AlphaVantageClient:
                 )
                 # Volver numéricos
                 for col in df.columns:
-                    df[col] = pd.to_numeric(df[col])
+                    df[col] = pd.to_numeric(df[col])  # pylint: disable=unsupported-assignment-operation,unsubscriptable-object
 
                 df.sort_index(inplace=True)
                 return df
