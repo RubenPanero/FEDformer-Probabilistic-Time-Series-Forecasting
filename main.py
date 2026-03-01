@@ -16,9 +16,12 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 import numpy as np
+import pandas as pd
 
 try:
     import matplotlib.pyplot as plt
@@ -63,7 +66,12 @@ def _parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Monitor Vanguard: Motor Algorítmico Flow FEDformer"
     )
-    parser.add_argument("--csv", required=True, help="Ruta de acceso directa al CSV")
+    parser.add_argument(
+        "--csv",
+        required=True,
+        nargs="+",
+        help="Ruta(s) de acceso directa al CSV (uno o varios tickers)",
+    )
     parser.add_argument(
         "--targets",
         required=True,
@@ -157,14 +165,21 @@ def _parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Anula explícitamente despliegues de render X11 (Bloqueos en head-less server).",
     )
+    parser.add_argument(
+        "--save-results",
+        action="store_true",
+        help="Exporta predicciones y métricas de riesgo/portafolio como CSVs en results/.",
+    )
     return parser.parse_args()
 
 
 def _validate_inputs(args: argparse.Namespace) -> List[str]:
     """Asegura la coherencia básica del mapeo interactivo de usuario evitando fallas ruidosas posteriores."""
-    if not os.path.exists(args.csv):
-        logger.error("Dataset inaccesible o inexistente bajo: %s", args.csv)
-        raise FileNotFoundError(f"Lectura imposible sobre {args.csv}")
+    # Valida que cada CSV provisto sea accesible en disco
+    for csv_path in args.csv:
+        if not os.path.exists(csv_path):
+            logger.error("Dataset inaccesible o inexistente bajo: %s", csv_path)
+            raise FileNotFoundError(f"Lectura imposible sobre {csv_path}")
 
     targets = [t.strip() for t in args.targets.split(",") if t.strip()]
     if not targets:
@@ -174,10 +189,12 @@ def _validate_inputs(args: argparse.Namespace) -> List[str]:
     return targets
 
 
-def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerConfig:
+def _create_config(
+    args: argparse.Namespace, targets: List[str], csv_path: str
+) -> FEDformerConfig:
     """Preinstala instancias de comportamiento dictadas externamente al manifest nativo."""
     config = FEDformerConfig(
-        file_path=args.csv,
+        file_path=csv_path,
         target_features=targets,
         pred_len=args.pred_len,
         seq_len=args.seq_len,
@@ -392,6 +409,82 @@ def _handle_visualization_output(fig: Figure, args: argparse.Namespace) -> None:
     plt.close(fig)
 
 
+def _save_results_to_csv(
+    forecast: ForecastOutput,
+    risk_metrics: Dict[str, Any],
+    portfolio_metrics: Dict[str, Any],
+    results_dir: Path,
+    timestamp: str,
+) -> None:
+    """Exporta predicciones y métricas a CSVs con marca temporal en results/."""
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- CSV 1: predicciones por ventana y paso temporal ---
+    preds = forecast.preds_for_metrics  # (n_windows, pred_len, n_targets)
+    gt = forecast.gt_for_metrics  # (n_windows, pred_len, n_targets)
+    n_windows, pred_len, n_targets = preds.shape
+    target_names = forecast.target_names
+
+    rows: list[dict[str, Any]] = []
+    for w in range(n_windows):
+        for s in range(pred_len):
+            for t_idx, t_name in enumerate(target_names):
+                rows.append(
+                    {
+                        "window_idx": w,
+                        "step": s,
+                        "target": t_name,
+                        "pred": float(preds[w, s, t_idx]),
+                        "ground_truth": float(gt[w, s, t_idx]),
+                    }
+                )
+    preds_path = results_dir / f"predictions_{timestamp}.csv"
+    pd.DataFrame(rows).to_csv(preds_path, index=False)
+    logger.info("Predicciones exportadas a: %s", preds_path)
+
+    # --- CSV 2: métricas de riesgo (VaR, CVaR por paso y target) ---
+    var_arr = risk_metrics.get("var")
+    cvar_arr = risk_metrics.get("cvar")
+    if var_arr is not None and cvar_arr is not None:
+        risk_rows: list[dict[str, Any]] = []
+        for s in range(var_arr.shape[0]):
+            for t_idx in range(var_arr.shape[1]):
+                risk_rows.append(
+                    {
+                        "step": s,
+                        "target_idx": t_idx,
+                        "var_95": float(var_arr[s, t_idx]),
+                        "cvar_95": float(cvar_arr[s, t_idx]),
+                    }
+                )
+        risk_path = results_dir / f"risk_metrics_{timestamp}.csv"
+        pd.DataFrame(risk_rows).to_csv(risk_path, index=False)
+        logger.info("Métricas de riesgo exportadas a: %s", risk_path)
+
+    # --- CSV 3: métricas de portafolio (Sharpe, drawdown, Sortino) ---
+    portfolio_rows = [
+        {
+            "metric": "sharpe_ratio",
+            "value": float(portfolio_metrics.get("sharpe_ratio", 0.0)),
+        },
+        {
+            "metric": "max_drawdown",
+            "value": float(portfolio_metrics.get("max_drawdown", 0.0)),
+        },
+        {
+            "metric": "volatility",
+            "value": float(portfolio_metrics.get("volatility", 0.0)),
+        },
+        {
+            "metric": "sortino_ratio",
+            "value": float(portfolio_metrics.get("sortino_ratio", 0.0)),
+        },
+    ]
+    portfolio_path = results_dir / f"portfolio_metrics_{timestamp}.csv"
+    pd.DataFrame(portfolio_rows).to_csv(portfolio_path, index=False)
+    logger.info("Métricas de portafolio exportadas a: %s", portfolio_path)
+
+
 def _run_portfolio_simulation(
     data: SimulationData,
     risk_stats: Tuple[np.ndarray, np.ndarray],
@@ -411,8 +504,12 @@ def _run_portfolio_simulation(
 def _run_simulations_and_visualize(
     data: SimulationData,
     args: argparse.Namespace,
-) -> None:
-    """Ejecuta los peritajes estadísticos marginales derivados de toda la secuencia matemática general."""
+    timestamp: str | None = None,
+) -> Dict[str, Any]:
+    """Ejecuta los peritajes estadísticos marginales derivados de toda la secuencia matemática general.
+
+    Retorna las métricas de portafolio calculadas (vacío si no aplica).
+    """
     logger.info(
         "Lanzando subsistemas analíticos (Validador Riesgo & Estrategia Portafolio)..."
     )
@@ -426,7 +523,7 @@ def _run_simulations_and_visualize(
         logger.info(
             "Omitiendo cálculos de simulación por límite infranqueable predictivo (Paso Ciego de TimeStep <= 1)"
         )
-        return
+        return {}
 
     try:
         metrics, fig = _run_portfolio_simulation(data, (var, cvar))
@@ -434,11 +531,70 @@ def _run_simulations_and_visualize(
         logger.warning(
             "Evaluador financiero corrompido, bloque ignorado preventivamente: %s", exc
         )
-        return
+        return {}
 
     _log_portfolio_metrics(metrics)
     _log_metrics_to_wandb(fig, metrics, var, cvar)
     _handle_visualization_output(fig, args)
+
+    # Exportar CSVs de resultados si el usuario lo solicitó
+    if getattr(args, "save_results", False):
+        ts = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_dir = Path("results")
+        _save_results_to_csv(
+            forecast=data.forecast,
+            risk_metrics={"var": var, "cvar": cvar},
+            portfolio_metrics=metrics,
+            results_dir=results_dir,
+            timestamp=ts,
+        )
+
+    return metrics
+
+
+def _print_ticker_summary(
+    ticker_results: List[Dict[str, Any]],
+    args: argparse.Namespace,
+    timestamp: str,
+) -> None:
+    """Imprime resumen comparativo de métricas por ticker y exporta CSV si --save-results."""
+    if not ticker_results:
+        return
+
+    logger.info("=" * 60)
+    logger.info("RESUMEN COMPARATIVO MULTI-TICKER")
+    logger.info("=" * 60)
+    logger.info("%-30s %10s %12s", "Ticker (CSV)", "Sharpe", "Max Drawdown")
+    logger.info("-" * 60)
+
+    for entry in ticker_results:
+        logger.info(
+            "%-30s %10.3f %11.2f%%",
+            Path(entry["csv"]).stem,
+            entry["sharpe_ratio"],
+            entry["max_drawdown"] * 100,
+        )
+
+    logger.info("=" * 60)
+
+    # Exportar comparativa si se solicitó
+    if getattr(args, "save_results", False):
+        results_dir = Path("results")
+        results_dir.mkdir(parents=True, exist_ok=True)
+        comparison_rows = [
+            {
+                "ticker": Path(e["csv"]).stem,
+                "csv_path": e["csv"],
+                "sharpe_ratio": e["sharpe_ratio"],
+                "max_drawdown": e["max_drawdown"],
+                "volatility": e["volatility"],
+                "sortino_ratio": e["sortino_ratio"],
+            }
+            for e in ticker_results
+        ]
+        comparison_path = results_dir / f"ticker_comparison_{timestamp}.csv"
+        pd.DataFrame(comparison_rows).to_csv(comparison_path, index=False)
+        logger.info("Comparativa multi-ticker exportada a: %s", comparison_path)
 
 
 def main() -> None:
@@ -448,18 +604,46 @@ def main() -> None:
         set_seed(args.seed, deterministic=args.deterministic)
 
         targets = _validate_inputs(args)
-        config = _create_config(args, targets)
 
-        full_dataset = _load_dataset(config)
+        # Marca temporal compartida para todos los CSVs de esta ejecución
+        run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        forecast = _run_backtest(config, full_dataset, args.splits)
+        # Acumula métricas por ticker para el resumen comparativo final
+        ticker_results: List[Dict[str, Any]] = []
 
-        sim_data = SimulationData(
-            forecast=forecast,
-            dataset=full_dataset,
-        )
+        for csv_path in args.csv:
+            logger.info("Procesando ticker: %s", csv_path)
 
-        _run_simulations_and_visualize(sim_data, args)
+            config = _create_config(args, targets, csv_path)
+            full_dataset = _load_dataset(config)
+            forecast = _run_backtest(config, full_dataset, args.splits)
+
+            sim_data = SimulationData(
+                forecast=forecast,
+                dataset=full_dataset,
+            )
+
+            # Sufijo por ticker para evitar colisión de nombres de archivo
+            ticker_stem = Path(csv_path).stem
+            ticker_ts = f"{run_timestamp}_{ticker_stem}"
+
+            metrics = _run_simulations_and_visualize(
+                sim_data, args, timestamp=ticker_ts
+            )
+
+            ticker_results.append(
+                {
+                    "csv": csv_path,
+                    "sharpe_ratio": float(metrics.get("sharpe_ratio", 0.0)),
+                    "max_drawdown": float(metrics.get("max_drawdown", 0.0)),
+                    "volatility": float(metrics.get("volatility", 0.0)),
+                    "sortino_ratio": float(metrics.get("sortino_ratio", 0.0)),
+                }
+            )
+
+        # Resumen comparativo sólo cuando se procesaron múltiples tickers
+        if len(args.csv) > 1:
+            _print_ticker_summary(ticker_results, args, run_timestamp)
 
         logger.info(
             "Validación, Entrenamiento e Inferencias resueltas triunfalmente. Flujo terminado."
