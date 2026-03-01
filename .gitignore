@@ -67,6 +67,9 @@ data/**
 reports/**
 !reports/.gitkeep
 
+# === Planes de implementación (locales hasta validar) ===
+docs/plans/
+
 # === Runtime & CLI outputs ===
 logs/
 outputs/
