@@ -110,6 +110,9 @@ class WalkForwardTrainer:
         self.checkpoint_dir = Path("checkpoints")
         self.checkpoint_dir.mkdir(exist_ok=True)
 
+    # GPUs con menos de este número de SMs no soportan max-autotune fiablemente
+    _MIN_SMS_FOR_MAX_AUTOTUNE = 40
+
     @staticmethod
     def _python_headers_available() -> bool:
         """Comprueba si Python.h está disponible para compilación JIT de triton."""
@@ -120,17 +123,35 @@ class WalkForwardTrainer:
             return False
         return os.path.exists(os.path.join(include_dir, "Python.h"))
 
+    @staticmethod
+    def _effective_compile_mode(requested_mode: str) -> str:
+        """Degrada max-autotune a '' en GPUs con SMs insuficientes.
+
+        max-autotune requiere suficientes SMs para los kernels GEMM optimizados.
+        En GPUs con pocos SMs (e.g. RTX 4050 Laptop: 20 SMs) el inductor
+        genera kernels incorrectos que producen NaN en la loss.
+        """
+        if requested_mode != "max-autotune" or not torch.cuda.is_available():
+            return requested_mode
+        n_sms = torch.cuda.get_device_properties(0).multi_processor_count
+        if n_sms < WalkForwardTrainer._MIN_SMS_FOR_MAX_AUTOTUNE:
+            logger.warning(
+                "GPU tiene %d SMs (mínimo para max-autotune: %d). "
+                "Desactivando torch.compile para evitar NaN en loss.",
+                n_sms,
+                WalkForwardTrainer._MIN_SMS_FOR_MAX_AUTOTUNE,
+            )
+            return ""
+        return requested_mode
+
     def _get_model(self) -> Flow_FEDformer:
         """Crea y preferiblemente compila el submodelo instanciado."""
         try:
             model = Flow_FEDformer(self.config).to(device, non_blocking=True)
             if self.config.finetune_from or self.config.freeze_backbone:
                 return model
-            if (
-                self.config.compile_mode
-                and device.type == "cuda"
-                and hasattr(torch, "compile")
-            ):
+            compile_mode = self._effective_compile_mode(self.config.compile_mode)
+            if compile_mode and device.type == "cuda" and hasattr(torch, "compile"):
                 if not self._python_headers_available():
                     logger.warning(
                         "Python.h no encontrado — torch.compile desactivado. "
@@ -139,9 +160,9 @@ class WalkForwardTrainer:
                     return model
                 logger.info(
                     "Compilando el modelo con modo dinámico: %s",
-                    self.config.compile_mode,
+                    compile_mode,
                 )
-                return torch.compile(model, mode=self.config.compile_mode)
+                return torch.compile(model, mode=compile_mode)
             return model
         except (RuntimeError, TypeError) as exc:
             logger.warning(
