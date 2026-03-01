@@ -14,9 +14,12 @@ from torch.nn.functional import avg_pool1d, interpolate, pad
 
 
 def _apply_rfft(x: torch.Tensor, *, dim: int) -> torch.Tensor:
-    """Wrapper around torch.fft.rfft for static analysis."""
-    # Tipado explícito obviando conversiones innecesarias 'cast' importadas
-    return rfft(x, dim=dim)  # pylint: disable=not-callable
+    """Aplica rfft casteando a float32 si el dtype no está soportado (e.g. bfloat16).
+
+    torch.fft.rfft no soporta bfloat16/float16. Con AMP en GPUs Ada Lovelace
+    los tensores llegan en bfloat16, por lo que se castea temporalmente a float32.
+    """
+    return rfft(x.float(), dim=dim)  # pylint: disable=not-callable
 
 
 def _apply_irfft(x: torch.Tensor, *, n: int, dim: int) -> torch.Tensor:
