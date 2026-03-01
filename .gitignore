@@ -29,6 +29,9 @@ coverage.xml
 # === Git worktrees ===
 .worktrees/
 
+# === Symlink de hooks en worktrees ===
+.claude
+
 # === Tool caches & logs ===
 .ruff_cache/
 .mypy_cache/
@@ -46,6 +49,7 @@ env/
 ENV/
 .env/
 .envrc
+.env
 *.env
 *.venv
 pip-log.txt
