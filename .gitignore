@@ -26,6 +26,9 @@ htmlcov/
 .coverage*
 coverage.xml
 
+# === Git worktrees ===
+.worktrees/
+
 # === Tool caches & logs ===
 .ruff_cache/
 .mypy_cache/
