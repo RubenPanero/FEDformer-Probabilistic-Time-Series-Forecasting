@@ -110,6 +110,16 @@ class WalkForwardTrainer:
         self.checkpoint_dir = Path("checkpoints")
         self.checkpoint_dir.mkdir(exist_ok=True)
 
+    @staticmethod
+    def _python_headers_available() -> bool:
+        """Comprueba si Python.h está disponible para compilación JIT de triton."""
+        import sysconfig  # pylint: disable=import-outside-toplevel
+
+        include_dir = sysconfig.get_path("include")
+        if not include_dir:
+            return False
+        return os.path.exists(os.path.join(include_dir, "Python.h"))
+
     def _get_model(self) -> Flow_FEDformer:
         """Crea y preferiblemente compila el submodelo instanciado."""
         try:
@@ -121,6 +131,12 @@ class WalkForwardTrainer:
                 and device.type == "cuda"
                 and hasattr(torch, "compile")
             ):
+                if not self._python_headers_available():
+                    logger.warning(
+                        "Python.h no encontrado — torch.compile desactivado. "
+                        "Instala python3-dev para activar compilación JIT."
+                    )
+                    return model
                 logger.info(
                     "Compilando el modelo con modo dinámico: %s",
                     self.config.compile_mode,
