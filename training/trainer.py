@@ -741,7 +741,9 @@ class WalkForwardTrainer:
         """Despliegue operativo automatizado del algoritmo sobre cortes asincrónos."""
         self._initialize_wandb()
 
-        total_size = len(self.full_dataset)
+        # Usar filas crudas (no ventanas) para que train_end_idx sea un índice
+        # de fila consistente con _build_fold_indices y refit_for_cutoff.
+        total_size = len(self.full_dataset.full_data_scaled)
         split_size = max(
             total_size // n_splits, self.config.seq_len + self.config.pred_len
         )

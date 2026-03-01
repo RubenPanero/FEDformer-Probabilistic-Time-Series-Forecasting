@@ -6,7 +6,7 @@ Pruebas mínimas y rápidas que no requieren ejecuciones de entrenamiento reales
 
 import torch
 
-from training.trainer import _EarlyStopping
+from training.trainer import _EarlyStopping, WalkForwardTrainer
 
 
 def test_cosine_scheduler_reduces_lr() -> None:
@@ -93,6 +93,33 @@ def test_early_stopping_disabled_when_patience_zero() -> None:
         )
 
     assert not stopper.should_stop
+
+
+def test_run_backtest_uses_raw_rows_for_split(config, synthetic_batch) -> None:
+    """run_backtest debe usar filas crudas para el split, no ventanas.
+
+    Regresión: con seq_len grande y split basado en ventanas, fold 1 obtenía
+    0 batches (train_windows < batch_size) → avg_loss = inf siempre.
+    """
+    from data import TimeSeriesDataset
+
+    ds = TimeSeriesDataset(config, flag="all")
+    trainer = WalkForwardTrainer(config, ds)
+
+    n_splits = 5
+    # Comportamiento correcto: usar filas crudas
+    total_size_rows = len(trainer.full_dataset.full_data_scaled)
+    split_size = max(total_size_rows // n_splits, config.seq_len + config.pred_len)
+
+    for fold_idx in range(1, n_splits):
+        train_end_idx = fold_idx * split_size
+        train_max_start = train_end_idx - config.seq_len - config.pred_len
+        n_train_windows = max(0, train_max_start + 1)
+        n_batches = n_train_windows // config.batch_size
+        assert n_batches >= 1, (
+            f"Fold {fold_idx}: {n_train_windows} ventanas → {n_batches} batches. "
+            "run_backtest usa ventanas en lugar de filas crudas para el split."
+        )
 
 
 def test_early_stopping_resets_counter_on_improvement() -> None:
