@@ -825,7 +825,7 @@ class WalkForwardTrainer:
                 gt_real=empty,
                 samples_real=empty,
                 metric_space=self.config.metric_space,
-                return_transform=self.config.preprocessing.return_transform,
+                return_transform=self.config.sections.preprocessing.return_transform,
                 target_names=list(self.config.target_features),
             )
 
@@ -845,6 +845,6 @@ class WalkForwardTrainer:
             gt_real=gt_real,
             samples_real=samples_real,
             metric_space=self.config.metric_space,
-            return_transform=self.config.preprocessing.return_transform,
+            return_transform=self.config.sections.preprocessing.return_transform,
             target_names=list(self.config.target_features),
         )
