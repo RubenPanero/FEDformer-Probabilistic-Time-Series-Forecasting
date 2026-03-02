@@ -85,6 +85,7 @@ class TrainingComponents:
     test_loader: DataLoader
     fold: int
     scheduler: Any = None
+    val_loader: DataLoader | None = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,21 @@ class WalkForwardTrainer:
             **({"prefetch_factor": 2} if num_workers > 0 else {}),
         )
         return train_loader, test_loader
+
+    def _make_loader(self, subset: Subset, shuffle: bool = False) -> DataLoader:
+        """Crea un DataLoader con la configuración estándar del trainer."""
+        num_workers = min(4, os.cpu_count() // 2) if os.cpu_count() else 0
+        generator = torch.Generator()
+        generator.manual_seed(self.config.seed)
+        return DataLoader(
+            subset,
+            batch_size=self.config.batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=torch.cuda.is_available(),
+            persistent_workers=False,
+            **({"prefetch_factor": 2} if num_workers > 0 else {}),
+        )
 
     def _prepare_batch(self, batch: dict[str, torch.Tensor]) -> BatchTensors:
         """Transborda el bloque de tensores al dispositivo hardware principal."""
@@ -265,12 +281,17 @@ class WalkForwardTrainer:
         return None
 
     def _build_training_components(
-        self, train_subset: Subset, test_subset: Subset, fold_idx: int
+        self,
+        train_subset: Subset,
+        test_subset: Subset,
+        fold_idx: int,
+        val_subset: Subset | None = None,
     ) -> TrainingComponents:
         """Instancia un bloque paramétrico ciego de modelo y loaders preajustados."""
         train_loader, test_loader = self._prepare_data_loaders(
             train_subset, test_subset
         )
+        val_loader = self._make_loader(val_subset) if val_subset is not None else None
         model = self._get_model()
         self._maybe_load_finetune_checkpoint(model)
 
@@ -314,6 +335,7 @@ class WalkForwardTrainer:
             test_loader=test_loader,
             fold=fold_idx,
             scheduler=scheduler,
+            val_loader=val_loader,
         )
 
     def _maybe_load_finetune_checkpoint(self, model: Flow_FEDformer) -> None:
@@ -517,6 +539,28 @@ class WalkForwardTrainer:
         self.metrics_tracker.log_metrics({"train_loss": avg_loss}, epoch)
         return avg_loss
 
+    def _eval_epoch(self, model: Flow_FEDformer, val_loader: DataLoader) -> float:
+        """Evalúa el modelo sobre el conjunto de validación sin actualizar gradientes.
+
+        Retorna la pérdida NLL promedio sobre todos los batches. Si no hay batches
+        válidos, retorna inf para que el early stopper no registre una mejora falsa.
+        """
+        import math  # pylint: disable=import-outside-toplevel
+
+        model.eval()
+        val_losses: list[float] = []
+        with torch.no_grad():
+            for batch in val_loader:
+                try:
+                    tensors = self._prepare_batch(batch)
+                    dist = model(tensors.encoder, tensors.decoder, tensors.regime)
+                    loss_val = float(self._nll_loss(dist, tensors.target).item())
+                    if math.isfinite(loss_val):
+                        val_losses.append(loss_val)
+                except (RuntimeError, ValueError) as exc:
+                    logger.warning("Batch de validación descartado: %s", exc)
+        return float(np.mean(val_losses)) if val_losses else float("inf")
+
     def _evaluate_model(
         self, model: Flow_FEDformer, test_loader: DataLoader
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -598,11 +642,19 @@ class WalkForwardTrainer:
             )
             return None
 
+        # Reservar el final del bloque train como validación intra-fold (respeta causalidad temporal)
+        val_subset: Subset | None = None
+        if self.config.val_fraction > 0 and len(train_indices) > 2:
+            val_size = max(1, int(len(train_indices) * self.config.val_fraction))
+            val_indices = train_indices[-val_size:]
+            train_indices = train_indices[:-val_size]
+            val_subset = Subset(self.full_dataset, val_indices)
+
         train_subset = Subset(self.full_dataset, train_indices)
         test_subset = Subset(self.full_dataset, test_indices)
 
         components = self._build_training_components(
-            train_subset, test_subset, fold_idx
+            train_subset, test_subset, fold_idx, val_subset=val_subset
         )
 
         best_loss = float("inf")
@@ -613,9 +665,22 @@ class WalkForwardTrainer:
         for epoch in range(self.config.n_epochs_per_fold):
             avg_loss = self._train_epoch(components, epoch)
 
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                self.save_checkpoint(components, epoch, avg_loss, best=True)
+            # Evaluar en validación para early stopping; si no hay val_loader, usar train_loss
+            if components.val_loader is not None:
+                monitor_loss = self._eval_epoch(components.model, components.val_loader)
+                logger.info(
+                    "  Val Loss época %s/%s: %.4f",
+                    epoch + 1,
+                    self.config.n_epochs_per_fold,
+                    monitor_loss,
+                )
+                self.metrics_tracker.log_metrics({"val_loss": monitor_loss}, epoch)
+            else:
+                monitor_loss = avg_loss
+
+            if monitor_loss < best_loss:
+                best_loss = monitor_loss
+                self.save_checkpoint(components, epoch, monitor_loss, best=True)
 
             if (epoch + 1) % 5 == 0:
                 self.save_checkpoint(components, epoch, avg_loss, best=False)
@@ -625,12 +690,13 @@ class WalkForwardTrainer:
                 components.scheduler.step()
 
             if self.wandb_run:
-                self.wandb_run.log(
-                    {"train_loss": avg_loss, "epoch": epoch, "fold": fold_idx}
-                )
+                log_data = {"train_loss": avg_loss, "epoch": epoch, "fold": fold_idx}
+                if components.val_loader is not None:
+                    log_data["val_loss"] = monitor_loss
+                self.wandb_run.log(log_data)
 
-            # Verificar parada anticipada
-            if early_stopper.step(avg_loss):
+            # Verificar parada anticipada sobre val_loss (o train_loss si no hay val)
+            if early_stopper.step(monitor_loss):
                 logger.warning(
                     "Parada anticipada activada en época %s/%s para fold %s (patience=%s).",
                     epoch + 1,

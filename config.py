@@ -97,6 +97,9 @@ class LoopSettings:
     gradient_accumulation_steps: int = 1
     patience: int = 0  # 0 = deshabilitado
     min_delta: float = 1e-4
+    val_fraction: float = (
+        0.15  # fracción del bloque train reservada para validación intra-fold
+    )
 
 
 @dataclass
@@ -683,6 +686,14 @@ class FEDformerConfig:
     @min_delta.setter
     def min_delta(self, value: float) -> None:
         self.sections.training.loop.min_delta = value
+
+    @property
+    def val_fraction(self) -> float:
+        return self.sections.training.loop.val_fraction
+
+    @val_fraction.setter
+    def val_fraction(self, value: float) -> None:
+        self.sections.training.loop.val_fraction = value
 
     # -- Preprocessing settings proxies ---------------------------------------
     @property

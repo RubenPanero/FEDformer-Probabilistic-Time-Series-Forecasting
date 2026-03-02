@@ -4,6 +4,8 @@ Tests unitarios para el scheduler de LR y el early stopping del WalkForwardTrain
 Pruebas mínimas y rápidas que no requieren ejecuciones de entrenamiento reales.
 """
 
+from unittest.mock import MagicMock
+
 import torch
 
 from training.trainer import _EarlyStopping
@@ -110,3 +112,63 @@ def test_early_stopping_resets_counter_on_improvement() -> None:
         f"El contador debe ser 0 después de una mejora, got {stopper.counter}"
     )
     assert stopper.best_loss == 0.5
+
+
+# ---------------------------------------------------------------------------
+# Tests para _eval_epoch
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_batches(config, n_batches: int = 3, batch_size: int = 2) -> list:
+    """Crea una lista de dicts que simula un DataLoader de validación."""
+    return [
+        {
+            "x_enc": torch.randn(batch_size, config.seq_len, config.enc_in),
+            "x_dec": torch.randn(
+                batch_size,
+                config.label_len + config.pred_len,
+                config.dec_in,
+            ),
+            "y_true": torch.randn(batch_size, config.pred_len, config.c_out),
+            "x_regime": torch.zeros(batch_size, 1, dtype=torch.long),
+        }
+        for _ in range(n_batches)
+    ]
+
+
+def test_eval_epoch_returns_finite_loss(config, model_factory) -> None:
+    """_eval_epoch debe retornar un float finito con batches válidos."""
+    from utils import get_device
+    from training.trainer import WalkForwardTrainer
+
+    trainer = WalkForwardTrainer(config, MagicMock())
+    model = model_factory().to(get_device())
+
+    fake_batches = _make_fake_batches(config)
+    result = trainer._eval_epoch(model, fake_batches)  # type: ignore[arg-type]
+
+    assert isinstance(result, float), f"Se esperaba float, got {type(result)}"
+    assert result != float("inf"), "La pérdida no debe ser inf con batches válidos"
+    assert result == result, "La pérdida no debe ser NaN"  # NaN != NaN
+
+
+def test_eval_epoch_empty_loader_returns_inf(config, model_factory) -> None:
+    """Con val_loader vacío, _eval_epoch debe retornar float('inf')."""
+    from utils import get_device
+    from training.trainer import WalkForwardTrainer
+
+    trainer = WalkForwardTrainer(config, MagicMock())
+    model = model_factory().to(get_device())
+
+    result = trainer._eval_epoch(model, [])  # type: ignore[arg-type]
+
+    assert result == float("inf"), f"Con loader vacío se esperaba inf, got {result}"
+
+
+def test_val_fraction_zero_disables_split(config) -> None:
+    """val_fraction=0 debe desactivar el split de validación intra-fold."""
+    config.val_fraction = 0.0
+    assert config.val_fraction == 0.0
+
+    # Verificar que el valor se propaga al config anidado
+    assert config.sections.training.loop.val_fraction == 0.0
