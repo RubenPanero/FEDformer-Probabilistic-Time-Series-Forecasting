@@ -111,22 +111,59 @@ class WalkForwardTrainer:
         self.checkpoint_dir = Path("checkpoints")
         self.checkpoint_dir.mkdir(exist_ok=True)
 
+    # GPUs con menos de este número de SMs no soportan max-autotune fiablemente
+    _MIN_SMS_FOR_MAX_AUTOTUNE = 40
+
+    @staticmethod
+    def _python_headers_available() -> bool:
+        """Comprueba si Python.h está disponible para compilación JIT de triton."""
+        import sysconfig  # pylint: disable=import-outside-toplevel
+
+        include_dir = sysconfig.get_path("include")
+        if not include_dir:
+            return False
+        return os.path.exists(os.path.join(include_dir, "Python.h"))
+
+    @staticmethod
+    def _effective_compile_mode(requested_mode: str) -> str:
+        """Degrada max-autotune a '' en GPUs con SMs insuficientes.
+
+        max-autotune requiere suficientes SMs para los kernels GEMM optimizados.
+        En GPUs con pocos SMs (e.g. RTX 4050 Laptop: 20 SMs) el inductor
+        genera kernels incorrectos que producen NaN en la loss.
+        """
+        if requested_mode != "max-autotune" or not torch.cuda.is_available():
+            return requested_mode
+        n_sms = torch.cuda.get_device_properties(0).multi_processor_count
+        if n_sms < WalkForwardTrainer._MIN_SMS_FOR_MAX_AUTOTUNE:
+            logger.warning(
+                "GPU tiene %d SMs (mínimo para max-autotune: %d). "
+                "Desactivando torch.compile para evitar NaN en loss.",
+                n_sms,
+                WalkForwardTrainer._MIN_SMS_FOR_MAX_AUTOTUNE,
+            )
+            return ""
+        return requested_mode
+
     def _get_model(self) -> Flow_FEDformer:
         """Crea y preferiblemente compila el submodelo instanciado."""
         try:
             model = Flow_FEDformer(self.config).to(device, non_blocking=True)
             if self.config.finetune_from or self.config.freeze_backbone:
                 return model
-            if (
-                self.config.compile_mode
-                and device.type == "cuda"
-                and hasattr(torch, "compile")
-            ):
+            compile_mode = self._effective_compile_mode(self.config.compile_mode)
+            if compile_mode and device.type == "cuda" and hasattr(torch, "compile"):
+                if not self._python_headers_available():
+                    logger.warning(
+                        "Python.h no encontrado — torch.compile desactivado. "
+                        "Instala python3-dev para activar compilación JIT."
+                    )
+                    return model
                 logger.info(
                     "Compilando el modelo con modo dinámico: %s",
-                    self.config.compile_mode,
+                    compile_mode,
                 )
-                return torch.compile(model, mode=self.config.compile_mode)
+                return torch.compile(model, mode=compile_mode)
             return model
         except (RuntimeError, TypeError) as exc:
             logger.warning(
@@ -749,7 +786,14 @@ class WalkForwardTrainer:
         if test_max_start < train_end_idx:
             return train_indices, []
 
-        test_limit = min(test_max_start + 1, len(self.full_dataset))
+        # n_ventanas == total_filas - seq_len - pred_len + 1, consistente con run_backtest
+        n_ventanas = (
+            len(self.full_dataset.full_data_scaled)
+            - self.config.seq_len
+            - self.config.pred_len
+            + 1
+        )
+        test_limit = min(test_max_start + 1, n_ventanas)
         test_start = max(0, train_end_idx - self.config.seq_len)
         if test_start >= test_limit:
             return train_indices, []
@@ -807,7 +851,9 @@ class WalkForwardTrainer:
         """Despliegue operativo automatizado del algoritmo sobre cortes asincrónos."""
         self._initialize_wandb()
 
-        total_size = len(self.full_dataset)
+        # Usar filas crudas (no ventanas) para que train_end_idx sea un índice
+        # de fila consistente con _build_fold_indices y refit_for_cutoff.
+        total_size = len(self.full_dataset.full_data_scaled)
         split_size = max(
             total_size // n_splits, self.config.seq_len + self.config.pred_len
         )
@@ -852,7 +898,7 @@ class WalkForwardTrainer:
                 gt_real=empty,
                 samples_real=empty,
                 metric_space=self.config.metric_space,
-                return_transform=self.config.preprocessing.return_transform,
+                return_transform=self.config.sections.preprocessing.return_transform,
                 target_names=list(self.config.target_features),
             )
 
@@ -872,6 +918,6 @@ class WalkForwardTrainer:
             gt_real=gt_real,
             samples_real=samples_real,
             metric_space=self.config.metric_space,
-            return_transform=self.config.preprocessing.return_transform,
+            return_transform=self.config.sections.preprocessing.return_transform,
             target_names=list(self.config.target_features),
         )
