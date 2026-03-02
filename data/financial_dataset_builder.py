@@ -8,6 +8,7 @@ import argparse
 import os
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 import pandas as pd
 import pandas_ta as ta  # noqa: F401
@@ -15,12 +16,7 @@ import pandas_ta as ta  # noqa: F401
 from data.alpha_vantage_client import AlphaVantageClient
 from data.vix_data import VixDataFetcher
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
-
-_SEVEN_YEARS_AGO = (datetime.now() - timedelta(days=7 * 365)).strftime("%Y-%m-%d")
 
 
 def build_financial_dataset(
@@ -41,8 +37,9 @@ def build_financial_dataset(
     # 1. Obtener OHLCV (7 años)
     df = _fetch_ohlcv(symbol, use_mock)
 
-    # Filtrar a los últimos 7 años
-    cutoff = pd.Timestamp(_SEVEN_YEARS_AGO)
+    # Filtrar a los últimos 7 años — calculado en tiempo de llamada para evitar drift por import
+    seven_years_ago = (datetime.now() - timedelta(days=7 * 365)).strftime("%Y-%m-%d")
+    cutoff = pd.Timestamp(seven_years_ago)
     df = df[df.index >= cutoff]
 
     if df.empty:
@@ -77,7 +74,7 @@ def build_financial_dataset(
     return output_path
 
 
-def validate_dataset(df: pd.DataFrame, symbol: str) -> dict:
+def validate_dataset(df: pd.DataFrame, symbol: str) -> dict[str, Any]:
     """Comprueba la integridad del dataset antes del entrenamiento.
 
     Args:
@@ -88,7 +85,7 @@ def validate_dataset(df: pd.DataFrame, symbol: str) -> dict:
         dict con: shape, date_range, max_date_gap_days, null_counts,
                   price_inconsistencies, y out_of_range por indicador.
     """
-    report: dict = {}
+    report: dict[str, Any] = {}
 
     # Continuidad temporal
     date_gaps = df.index.to_series().diff().dt.days
@@ -154,7 +151,8 @@ def _fetch_ohlcv(symbol: str, use_mock: bool) -> pd.DataFrame:
         df = yf.download(symbol, period="7y", progress=False)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.droplevel(1)
-        df.index = df.index.tz_localize(None)
+        if df.index.tz is not None:  # guard: yfinance moderno retorna índice tz-naive
+            df.index = df.index.tz_localize(None)
     else:
         av_client = AlphaVantageClient()
         df = av_client.get_daily_data(symbol, outputsize="full")

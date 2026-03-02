@@ -1,5 +1,8 @@
 """Tests para financial_dataset_builder — 11 features mínimas y validate_dataset."""
 
+from unittest.mock import patch
+
+import numpy as np
 import pandas as pd
 import pytest
 from data.financial_dataset_builder import build_financial_dataset, validate_dataset
@@ -31,10 +34,42 @@ REMOVED_FEATURES = [
 ]
 
 
+def _make_ohlcv_df(n_days: int = 1900) -> pd.DataFrame:
+    """Genera OHLCV sintético con n_days días hábiles acabando hoy."""
+    end = pd.Timestamp.today().normalize()
+    dates = pd.bdate_range(end=end, periods=n_days)
+    rng = np.random.default_rng(42)
+    close = 100.0 + np.cumsum(rng.normal(0, 1, n_days))
+    close = np.maximum(close, 10.0)  # mantener siempre positivo
+    spread = np.abs(rng.normal(1.0, 0.5, n_days)) + 0.5
+    return pd.DataFrame(
+        {
+            "Open": close + rng.normal(0, 0.5, n_days),
+            "High": close + spread,
+            "Low": close - spread,
+            "Close": close,
+            "Volume": rng.integers(1_000_000, 10_000_000, n_days).astype(float),
+        },
+        index=dates,
+    )
+
+
 @pytest.fixture
 def nvda_df(tmp_path):
-    """Construye dataset NVDA en modo mock y retorna el DataFrame."""
-    output_path = build_financial_dataset("NVDA", str(tmp_path), use_mock=True)
+    """Construye dataset NVDA con mocks de red (yfinance y VIX)."""
+    ohlcv_mock = _make_ohlcv_df()
+    vix_mock = pd.DataFrame(
+        {"VIX_Close": np.random.default_rng(0).uniform(10, 40, len(ohlcv_mock))},
+        index=ohlcv_mock.index,
+    )
+    with (
+        patch("yfinance.download", return_value=ohlcv_mock),
+        patch(
+            "data.vix_data.VixDataFetcher.get_vix_data",
+            return_value=vix_mock,
+        ),
+    ):
+        output_path = build_financial_dataset("NVDA", str(tmp_path), use_mock=True)
     return pd.read_csv(output_path, index_col="date", parse_dates=True)
 
 
