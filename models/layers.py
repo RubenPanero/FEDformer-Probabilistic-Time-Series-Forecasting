@@ -97,6 +97,7 @@ class FourierAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply Fourier attention over the provided multi-head representations."""
         _b, _h, seq_len, _d = x.shape
+        orig_dtype = x.dtype  # preservar dtype original para restaurar tras irfft
         x = x.transpose(-1, -2)
 
         x_ft = _apply_rfft(x, dim=-1)
@@ -111,7 +112,8 @@ class FourierAttention(nn.Module):
         out_ft = torch.zeros_like(x_ft)
         out_ft[..., idx_buffer] = processed_modes
 
-        return _apply_irfft(out_ft, n=seq_len, dim=-1).transpose(-1, -2)
+        # .to(orig_dtype) restaura bfloat16/float16 que _apply_rfft convirtió a float32
+        return _apply_irfft(out_ft, n=seq_len, dim=-1).to(orig_dtype).transpose(-1, -2)
 
 
 class AttentionLayer(nn.Module):
