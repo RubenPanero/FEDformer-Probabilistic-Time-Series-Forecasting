@@ -135,20 +135,25 @@ class TimeSeriesDataset(Dataset):
             self.preprocessor.save_artifacts(self.config.artifact_dir)
 
     def _set_split_view(self) -> None:
-        """Fragmentación estática para iteradores fold de entrenamiento."""
+        """Vista estática 70/20/10 (train/val/test) para uso standalone o en tests.
+
+        El pipeline walk-forward usa flag="all" + Subset con índices calculados
+        por WalkForwardTrainer; este método no interviene en ese flujo.
+        """
         n_rows = len(self.full_data_scaled)
         num_train = int(n_rows * 0.7)
         num_val = int(n_rows * 0.2)
+        # num_test = n_rows - num_train - num_val  (~10%)
 
         border1s = {
             "train": 0,
             "val": max(0, num_train - self.config.seq_len),
-            "test": max(0, n_rows - num_val - self.config.seq_len),
+            "test": max(0, num_train + num_val - self.config.seq_len),
             "all": 0,
         }
         border2s = {
             "train": num_train,
-            "val": n_rows,
+            "val": num_train + num_val,
             "test": n_rows,
             "all": n_rows,
         }

@@ -148,3 +148,38 @@ def test_dataset_with_return_transform(sample_csv: str) -> None:
     assert item["x_enc"].shape[0] == config.seq_len
     assert item["y_true"].shape[0] == config.pred_len
     assert item["y_true"].shape[1] == 1  # una sola columna objetivo
+
+
+def test_split_view_sizes_and_no_overlap(sample_csv: str) -> None:
+    """Los splits train/val/test deben cubrir 70/20/10 y no solaparse."""
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=sample_csv,
+        date_column="date",
+        seq_len=10,
+        pred_len=4,
+        label_len=5,
+    )
+
+    ds_train = TimeSeriesDataset(config=config, flag="train")
+    ds_val = TimeSeriesDataset(config=config, flag="val")
+    ds_test = TimeSeriesDataset(config=config, flag="test")
+    ds_all = TimeSeriesDataset(config=config, flag="all")
+
+    n_rows = len(ds_all.full_data_scaled)
+    num_train = int(n_rows * 0.7)
+    num_val = int(n_rows * 0.2)
+
+    # train cubre exactamente el 70%
+    assert len(ds_train.data_x) == num_train
+
+    # val cubre el 20% (sin incluir el 10% de test)
+    assert len(ds_val.data_x) == num_val + config.seq_len  # contexto solapado incluido
+
+    # el final de train == el inicio del bloque val puro (sin overlap)
+    train_end = num_train
+    val_end = num_train + num_val
+    assert train_end <= val_end <= n_rows
+
+    # test comienza donde termina val (con overlap de seq_len para contexto)
+    assert len(ds_test.data_x) == n_rows - (num_train + num_val) + config.seq_len
