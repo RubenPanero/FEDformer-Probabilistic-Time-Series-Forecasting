@@ -126,10 +126,11 @@ def test_early_stopping_resets_counter_on_improvement() -> None:
     """El contador debe reiniciarse a cero cuando se observa una mejora suficiente."""
     stopper = _EarlyStopping(patience=3, min_delta=1e-4)
 
-    # Dos pasos sin mejora — counter sube a 2
+    # Primer paso: mejora desde inf → best_loss=1.0, counter queda en 0
+    # Segundo paso: sin mejora (1.0 no supera 1.0 - min_delta) → counter sube a 1
     stopper.step(1.0)
     stopper.step(1.0)
-    assert stopper.counter == 1  # sólo la segunda sin mejora
+    assert stopper.counter == 1
 
     # Mejora significativa — counter debe reiniciarse
     stopper.step(0.5)

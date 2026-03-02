@@ -720,7 +720,14 @@ class WalkForwardTrainer:
         if test_max_start < train_end_idx:
             return train_indices, []
 
-        test_limit = min(test_max_start + 1, len(self.full_dataset))
+        # n_ventanas == total_filas - seq_len - pred_len + 1, consistente con run_backtest
+        n_ventanas = (
+            len(self.full_dataset.full_data_scaled)
+            - self.config.seq_len
+            - self.config.pred_len
+            + 1
+        )
+        test_limit = min(test_max_start + 1, n_ventanas)
         test_start = max(0, train_end_idx - self.config.seq_len)
         if test_start >= test_limit:
             return train_indices, []
