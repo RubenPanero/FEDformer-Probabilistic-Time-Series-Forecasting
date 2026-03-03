@@ -493,7 +493,10 @@ class PreprocessingPipeline:
         feature_df = self._apply_outlier_policy(
             feature_df, skip_cols=set(self.target_cols)
         )
-        self.validate_input_schema(df, feature_df=feature_df)
+        # El chequeo de deriva solo aplica al bloque de entrenamiento: el test period
+        # puede (y debe) diferir en distribución — eso es leakage-free walk-forward.
+        train_end = self.fit_end_idx or len(feature_df)
+        self.validate_input_schema(df, feature_df=feature_df.iloc[:train_end])
 
         feature_df = feature_df.reindex(columns=self.feature_columns, fill_value=0.0)
         transformed = self.scaler.transform(feature_df.values)
