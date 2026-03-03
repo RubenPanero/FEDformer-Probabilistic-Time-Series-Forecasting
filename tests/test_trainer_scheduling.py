@@ -200,3 +200,117 @@ def test_val_fraction_zero_disables_split(config) -> None:
 
     # Verificar que el valor se propaga al config anidado
     assert config.sections.training.loop.val_fraction == 0.0
+
+
+def test_train_loader_drop_last_false_produces_batches_when_subset_smaller_than_batch(
+    config,
+) -> None:
+    """drop_last=False en train_loader debe producir ≥1 batch cuando n_ventanas < batch_size.
+
+    Regresión: con drop_last=True y fold 1 con seq_len grande, el subset de train
+    podía tener menos ventanas que batch_size → 0 batches → train_loss=inf en todas
+    las épocas del fold.
+    """
+    import torch
+    from torch.utils.data import Subset, TensorDataset
+    from training.trainer import WalkForwardTrainer
+
+    # Dataset sintético con n_samples < batch_size (simula fold 1 con seq_len=252)
+    batch_size = config.batch_size  # 8 en el fixture de tests
+    n_samples = max(1, batch_size - 1)  # garantiza n_samples < batch_size
+
+    # TensorDataset mínimo para construir un Subset válido
+    dummy_x = torch.zeros(n_samples, config.seq_len, config.enc_in)
+    dummy_dataset = TensorDataset(dummy_x)
+    small_subset = Subset(dummy_dataset, list(range(n_samples)))
+    full_subset = Subset(dummy_dataset, list(range(n_samples)))  # test loader
+
+    trainer = WalkForwardTrainer(config, MagicMock())
+    train_loader, _ = trainer._prepare_data_loaders(small_subset, full_subset)
+
+    n_batches = len(train_loader)
+    assert n_batches >= 1, (
+        f"Con drop_last=False y {n_samples} muestras (< batch_size={batch_size}), "
+        f"se esperaba ≥1 batch, pero se obtuvieron {n_batches}. "
+        "Verifica que drop_last=False en _prepare_data_loaders."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests para los nuevos defaults de LoopSettings
+# ---------------------------------------------------------------------------
+
+
+def test_loop_settings_new_defaults() -> None:
+    """Los defaults de LoopSettings deben reflejar la configuración de entrenamiento aumentada.
+
+    Regresión: antes n_epochs_per_fold=5, patience=0, min_delta=1e-4, accum=1.
+    Ahora: n_epochs_per_fold=20, patience=5, min_delta=5e-3, accum=2.
+    """
+    from config import LoopSettings
+
+    loop = LoopSettings()
+    assert loop.n_epochs_per_fold == 20, (
+        f"n_epochs_per_fold default debe ser 20, got {loop.n_epochs_per_fold}"
+    )
+    assert loop.patience == 5, f"patience default debe ser 5, got {loop.patience}"
+    assert loop.min_delta == 5e-3, (
+        f"min_delta default debe ser 5e-3, got {loop.min_delta}"
+    )
+    assert loop.gradient_accumulation_steps == 2, (
+        f"gradient_accumulation_steps default debe ser 2, got {loop.gradient_accumulation_steps}"
+    )
+
+
+def test_gradient_accumulation_halves_optimizer_steps() -> None:
+    """Con gradient_accumulation_steps=2, el optimizador se ejecuta la mitad de veces que con accum=1.
+
+    _should_step activa el paso solo cada `accum` batches (o en el último batch).
+    """
+    from training.trainer import WalkForwardTrainer
+
+    n_batches = 4
+
+    # accum=1: todos los batches producen un paso → 4 pasos
+    steps_accum1 = sum(
+        1
+        for i in range(n_batches)
+        if WalkForwardTrainer._should_step(i, n_batches, accumulation_steps=1)
+    )
+    # accum=2: un paso cada 2 batches + último batch → 2 pasos
+    steps_accum2 = sum(
+        1
+        for i in range(n_batches)
+        if WalkForwardTrainer._should_step(i, n_batches, accumulation_steps=2)
+    )
+
+    assert steps_accum1 == 4, f"Con accum=1 se esperaban 4 pasos, got {steps_accum1}"
+    assert steps_accum2 == 2, f"Con accum=2 se esperaban 2 pasos, got {steps_accum2}"
+    assert steps_accum2 == steps_accum1 // 2, (
+        "Con accum=2 el número de pasos debe ser la mitad que con accum=1"
+    )
+
+
+def test_patience_min_delta_ignores_small_noise() -> None:
+    """Con min_delta=5e-3, fluctuaciones menores no deben incrementar el contador de patience.
+
+    Regresión: con min_delta=1e-4 (anterior), ruido típico de folds pequeños (~1e-3)
+    activaba el contador prematuramente. Con 5e-3 se filtra ese ruido.
+    """
+    stopper = _EarlyStopping(patience=5, min_delta=5e-3)
+
+    # Primera pérdida: establece best_loss=1.0
+    stopper.step(1.0)
+
+    # Fluctuaciones menores que min_delta no deben incrementar el contador
+    for noisy_loss in [1.003, 1.002, 0.998, 1.001]:
+        result = stopper.step(noisy_loss)
+        assert not result, (
+            f"Ruido {noisy_loss} (Δ < 5e-3 respecto a 1.0) no debe activar early stopping"
+        )
+
+    # Una mejora real sí debe resetear el contador
+    stopper.step(0.990)  # Δ = 0.01 > min_delta → resetea contador
+    assert stopper.counter == 0, (
+        f"Tras mejora real (Δ=0.01 > min_delta=5e-3), counter debe ser 0, got {stopper.counter}"
+    )

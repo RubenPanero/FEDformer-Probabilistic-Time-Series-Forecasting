@@ -92,11 +92,11 @@ class OptimizationSettings:
 class LoopSettings:
     """Training loop batch/epoch controls."""
 
-    n_epochs_per_fold: int = 5
+    n_epochs_per_fold: int = 20
     batch_size: int = 32
-    gradient_accumulation_steps: int = 1
-    patience: int = 0  # 0 = deshabilitado
-    min_delta: float = 1e-4
+    gradient_accumulation_steps: int = 2
+    patience: int = 5
+    min_delta: float = 5e-3
     val_fraction: float = (
         0.15  # fracción del bloque train reservada para validación intra-fold
     )
