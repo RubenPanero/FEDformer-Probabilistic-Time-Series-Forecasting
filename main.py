@@ -171,6 +171,20 @@ def _parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Exporta predicciones y métricas de riesgo/portafolio como CSVs en results/.",
     )
+    parser.add_argument(
+        "--return-transform",
+        default="none",
+        choices=["none", "log_return", "simple_return"],
+        help="Transformación de retorno aplicada antes del escalado: 'none' (precios absolutos), "
+        "'log_return' (log(P_t/P_{t-1})), 'simple_return' ((P_t-P_{t-1})/P_{t-1}).",
+    )
+    parser.add_argument(
+        "--metric-space",
+        default="returns",
+        choices=["returns", "prices"],
+        help="Espacio en que se reportan métricas y muestras: 'returns' (default) o 'prices' "
+        "(reconstruye precios desde retornos acumulados usando last_prices del fold).",
+    )
     return parser.parse_args()
 
 
@@ -212,6 +226,8 @@ def _create_config(
         wandb_run_name=f"Modular-Flow-FEDformer_{int(time.time())}",
         seed=args.seed,
         deterministic=args.deterministic,
+        return_transform=args.return_transform,
+        metric_space=args.metric_space,
     )
 
     if args.epochs is not None:
