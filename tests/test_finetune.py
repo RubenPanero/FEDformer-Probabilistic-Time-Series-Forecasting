@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests para sequential_finetuner: CLI flags, carga de símbolos y propagación de config."""
+"""Tests para sequential_finetuner y main CLI: flags, propagación de config."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -202,3 +202,44 @@ def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
         assert expected_filename in result_ckpt, (
             f"n_splits={n_splits}: esperado '{expected_filename}', obtenido '{result_ckpt}'"
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests de wiring main.py → _create_config
+# ---------------------------------------------------------------------------
+
+
+def test_create_config_wires_return_transform_and_metric_space() -> None:
+    """_create_config propaga --return-transform y --metric-space a FEDformerConfig."""
+    import argparse
+
+    import main as main_module
+
+    args = argparse.Namespace(
+        pred_len=20,
+        seq_len=96,
+        label_len=48,
+        batch_size=8,
+        use_checkpointing=False,
+        grad_accum_steps=1,
+        finetune_from=None,
+        freeze_backbone=False,
+        finetune_lr=None,
+        wandb_project="test",
+        wandb_entity=None,
+        date_col=None,
+        seed=42,
+        deterministic=False,
+        epochs=None,
+        return_transform="log_return",
+        metric_space="prices",
+    )
+
+    cfg = main_module._create_config(
+        args,
+        targets=["Close"],
+        csv_path="data/nvidia_stock_2024-08-20_to_2025-08-20.csv",
+    )
+
+    assert cfg.return_transform == "log_return"
+    assert cfg.metric_space == "prices"
