@@ -190,7 +190,7 @@ class WalkForwardTrainer:
             train_subset,
             batch_size=self.config.batch_size,
             shuffle=True,
-            drop_last=True,
+            drop_last=False,  # False evita 0 batches cuando n_ventanas < batch_size (ej. fold 1 con seq_len grande)
             num_workers=num_workers,
             pin_memory=torch.cuda.is_available(),
             persistent_workers=False,  # Explicitely false per safe memory policy between folds
@@ -573,7 +573,9 @@ class WalkForwardTrainer:
             self.config.n_epochs_per_fold,
             avg_loss,
         )
-        self.metrics_tracker.log_metrics({"train_loss": avg_loss}, epoch)
+        self.metrics_tracker.log_metrics(
+            {"train_loss": avg_loss}, epoch, fold=components.fold
+        )
         return avg_loss
 
     def _eval_epoch(self, model: Flow_FEDformer, val_loader: DataLoader) -> float:
@@ -711,7 +713,9 @@ class WalkForwardTrainer:
                     self.config.n_epochs_per_fold,
                     monitor_loss,
                 )
-                self.metrics_tracker.log_metrics({"val_loss": monitor_loss}, epoch)
+                self.metrics_tracker.log_metrics(
+                    {"val_loss": monitor_loss}, epoch, fold=fold_idx
+                )
             else:
                 monitor_loss = avg_loss
 

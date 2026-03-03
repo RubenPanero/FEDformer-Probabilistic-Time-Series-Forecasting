@@ -59,6 +59,7 @@ class SimulationData:
 
     forecast: ForecastOutput
     dataset: TimeSeriesDataset
+    training_history: pd.DataFrame | None = None
 
 
 def _parse_arguments() -> argparse.Namespace:
@@ -241,8 +242,11 @@ def _load_dataset(config: FEDformerConfig) -> TimeSeriesDataset:
 
 def _run_backtest(
     config: FEDformerConfig, full_dataset: TimeSeriesDataset, splits: int
-) -> ForecastOutput:
-    """Acciona el motor rotatorio de fraccionamiento evaluativo (Walk-forward)."""
+) -> tuple[ForecastOutput, pd.DataFrame | None]:
+    """Acciona el motor rotatorio de fraccionamiento evaluativo (Walk-forward).
+
+    Devuelve el ForecastOutput y el histórico de entrenamiento por fold/época.
+    """
     logger.info("Iniciando rampa de backtesting secuencial dinámico...")
     wf_trainer = WalkForwardTrainer(config, full_dataset)
     forecast = wf_trainer.run_backtest(n_splits=splits)
@@ -262,7 +266,9 @@ def _run_backtest(
         "Receptado tensor de previsiones fuera-de-muestra (%s items predictivos)",
         len(forecast.preds_scaled),
     )
-    return forecast
+
+    history = wf_trainer.metrics_tracker.to_dataframe()
+    return forecast, history if not history.empty else None
 
 
 def _log_risk_summary(var: np.ndarray, cvar: np.ndarray) -> None:
@@ -415,6 +421,7 @@ def _save_results_to_csv(
     portfolio_metrics: Dict[str, Any],
     results_dir: Path,
     timestamp: str,
+    training_history: pd.DataFrame | None = None,
 ) -> None:
     """Exporta predicciones y métricas a CSVs con marca temporal en results/."""
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -484,6 +491,12 @@ def _save_results_to_csv(
     pd.DataFrame(portfolio_rows).to_csv(portfolio_path, index=False)
     logger.info("Métricas de portafolio exportadas a: %s", portfolio_path)
 
+    # --- CSV 4: histórico de entrenamiento por fold y época ---
+    if training_history is not None and not training_history.empty:
+        history_path = results_dir / f"training_history_{timestamp}.csv"
+        training_history.to_csv(history_path, index=False)
+        logger.info("Histórico de entrenamiento exportado a: %s", history_path)
+
 
 def _run_portfolio_simulation(
     data: SimulationData,
@@ -547,6 +560,7 @@ def _run_simulations_and_visualize(
             portfolio_metrics=metrics,
             results_dir=results_dir,
             timestamp=ts,
+            training_history=data.training_history,
         )
 
     return metrics
@@ -616,11 +630,14 @@ def main() -> None:
 
             config = _create_config(args, targets, csv_path)
             full_dataset = _load_dataset(config)
-            forecast = _run_backtest(config, full_dataset, args.splits)
+            forecast, training_history = _run_backtest(
+                config, full_dataset, args.splits
+            )
 
             sim_data = SimulationData(
                 forecast=forecast,
                 dataset=full_dataset,
+                training_history=training_history,
             )
 
             # Sufijo por ticker para evitar colisión de nombres de archivo

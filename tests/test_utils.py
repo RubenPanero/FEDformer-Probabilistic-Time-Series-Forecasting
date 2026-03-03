@@ -271,15 +271,37 @@ class TestMetricsTracker:
         assert summary == {}
 
     def test_metrics_tracker_step_order_preserved(self) -> None:
-        """El historial interno debe conservar el orden de inserción (step, value)."""
+        """El historial interno debe conservar el orden de inserción (fold, step, value)."""
         tracker = MetricsTracker()
 
         pasos = [(1, 1.0), (2, 0.5), (3, 0.25)]
         for step, val in pasos:
             tracker.log_metrics({"loss": val}, step=step)
 
-        # Acceso directo al historial interno
+        # Acceso directo al historial interno: formato (fold=0, step, value)
         historial = tracker.metrics["loss"]
-        assert historial == pasos, (
+        esperado = [(0, step, val) for step, val in pasos]
+        assert historial == esperado, (
             f"El orden del historial interno no coincide. Se obtuvo: {historial}"
         )
+
+    def test_metrics_tracker_to_dataframe(self) -> None:
+        """to_dataframe() debe exportar el historial con columnas fold, epoch, metric, value."""
+        tracker = MetricsTracker()
+        tracker.log_metrics({"train_loss": 0.8, "val_loss": 0.9}, step=0, fold=1)
+        tracker.log_metrics({"train_loss": 0.6, "val_loss": 0.7}, step=1, fold=1)
+
+        df = tracker.to_dataframe()
+
+        assert set(df.columns) == {"fold", "epoch", "metric", "value"}
+        assert len(df) == 4  # 2 métricas × 2 pasos
+        assert set(df["metric"].unique()) == {"train_loss", "val_loss"}
+        assert list(df[df["metric"] == "train_loss"]["value"]) == [0.8, 0.6]
+        assert all(df["fold"] == 1)
+
+    def test_metrics_tracker_to_dataframe_empty(self) -> None:
+        """to_dataframe() sin datos debe devolver DataFrame vacío con columnas correctas."""
+        tracker = MetricsTracker()
+        df = tracker.to_dataframe()
+        assert list(df.columns) == ["fold", "epoch", "metric", "value"]
+        assert len(df) == 0
