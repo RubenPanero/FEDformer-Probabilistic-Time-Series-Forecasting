@@ -866,6 +866,7 @@ class WalkForwardTrainer:
         all_preds: list[np.ndarray] = []
         all_gt: list[np.ndarray] = []
         all_samples: list[np.ndarray] = []
+        all_fold_ids: list[np.ndarray] = []
 
         try:
             for fold_idx in range(1, n_splits):
@@ -879,6 +880,7 @@ class WalkForwardTrainer:
                 all_preds.append(preds)
                 all_gt.append(gt)
                 all_samples.append(samples)
+                all_fold_ids.append(np.full(len(preds), fold_idx, dtype=np.int32))
 
         except (RuntimeError, ValueError):
             logger.exception(
@@ -904,11 +906,13 @@ class WalkForwardTrainer:
                 metric_space=self.config.metric_space,
                 return_transform=self.config.sections.preprocessing.return_transform,
                 target_names=list(self.config.target_features),
+                window_fold_ids=empty.astype(np.int32),
             )
 
         preds_scaled = np.concatenate(all_preds, axis=0)
         gt_scaled = np.concatenate(all_gt, axis=0)
         samples_scaled = np.concatenate(all_samples, axis=1)
+        window_fold_ids = np.concatenate(all_fold_ids, axis=0)
 
         preds_real, gt_real, samples_real = self._inverse_transform_all(
             preds_scaled, gt_scaled, samples_scaled
@@ -924,4 +928,5 @@ class WalkForwardTrainer:
             metric_space=self.config.metric_space,
             return_transform=self.config.sections.preprocessing.return_transform,
             target_names=list(self.config.target_features),
+            window_fold_ids=window_fold_ids,
         )

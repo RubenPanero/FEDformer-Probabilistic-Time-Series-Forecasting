@@ -28,6 +28,8 @@ class ForecastOutput:
     metric_space: str  # "returns" | "prices"
     return_transform: str  # "none" | "log_return" | "simple_return"
     target_names: list[str]
+    # Índice de fold por ventana — shape (n_windows,), dtype int32; None si no disponible
+    window_fold_ids: np.ndarray | None = None
 
     @property
     def preds_for_metrics(self) -> np.ndarray:

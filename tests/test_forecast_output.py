@@ -87,6 +87,33 @@ def test_inverse_transform_noop_when_no_return_transform():
     assert not np.array_equal(fo.preds_real, fo.preds_scaled)
 
 
+def test_window_fold_ids_shape_and_default():
+    """window_fold_ids tiene shape (n_windows,) cuando se proporciona; None por defecto."""
+    fo_sin_ids = _make_forecast()
+    assert fo_sin_ids.window_fold_ids is None
+
+    n_windows = 10
+    fold_ids = np.array([1, 1, 1, 2, 2, 2, 3, 3, 3, 3], dtype=np.int32)
+    fo_con_ids = _make_forecast()
+    # Reconstruir con window_fold_ids explícito
+    fo_con_ids = ForecastOutput(
+        preds_scaled=fo_con_ids.preds_scaled,
+        gt_scaled=fo_con_ids.gt_scaled,
+        samples_scaled=fo_con_ids.samples_scaled,
+        preds_real=fo_con_ids.preds_real,
+        gt_real=fo_con_ids.gt_real,
+        samples_real=fo_con_ids.samples_real,
+        metric_space="returns",
+        return_transform="none",
+        target_names=["Close"],
+        window_fold_ids=fold_ids,
+    )
+    assert fo_con_ids.window_fold_ids is not None
+    assert fo_con_ids.window_fold_ids.shape == (n_windows,)
+    assert fo_con_ids.window_fold_ids.dtype == np.int32
+    assert set(fo_con_ids.window_fold_ids.tolist()) == {1, 2, 3}
+
+
 def test_inverse_transform_log_return_produces_positive_prices():
     """Con return_transform='log_return' y metric_space='prices', samples_for_metrics
     devuelve samples_real (que debe ser positivo si representan precios)."""

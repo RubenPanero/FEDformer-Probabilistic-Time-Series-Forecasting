@@ -432,12 +432,15 @@ def _save_results_to_csv(
     n_windows, pred_len, n_targets = preds.shape
     target_names = forecast.target_names
 
+    fold_ids = forecast.window_fold_ids  # (n_windows,) int32 o None
     rows: list[dict[str, Any]] = []
     for w in range(n_windows):
+        fold = int(fold_ids[w]) if fold_ids is not None and len(fold_ids) > w else -1
         for s in range(pred_len):
             for t_idx, t_name in enumerate(target_names):
                 rows.append(
                     {
+                        "fold": fold,
                         "window_idx": w,
                         "step": s,
                         "target": t_name,
