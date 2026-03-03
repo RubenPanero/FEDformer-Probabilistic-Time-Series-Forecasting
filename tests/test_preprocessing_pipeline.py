@@ -56,35 +56,84 @@ def test_missing_impute_is_deterministic(mixed_csv: str) -> None:
     assert np.allclose(first, second, atol=1e-12)
 
 
-def test_outlier_winsorize_clips_extremes(mixed_csv: str) -> None:
-    raw = pd.read_csv(mixed_csv, parse_dates=["date"])
+def test_outlier_winsorize_clips_features_not_targets(tmp_path: Path) -> None:
+    """winsorize clippea features no-target; las columnas target NO se clippean en transform()."""
+    rng = np.random.default_rng(42)
+    rows = 120
+    df = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=rows, freq="D"),
+            "Close": rng.normal(100, 5, rows),
+            "Volume": rng.normal(1_000, 50, rows),
+        }
+    )
+    # Outlier de feature (Volume) en entrenamiento → debe ser clipeado en transform()
+    df.loc[20, "Volume"] = 100_000.0
+    # Outlier de target (Close) en PERIODO TEST (fila 90 > cutoff 80) → NO debe clipearse
+    df.loc[90, "Close"] = 9_999.0
+
+    csv_path = tmp_path / "outlier_test.csv"
+    df.to_csv(csv_path, index=False)
+
     base_cfg = dict(
         target_features=["Close"],
-        file_path=mixed_csv,
+        file_path=str(csv_path),
         date_column="date",
-        missing_policy="impute_median",
+        missing_policy="ffill_bfill",
         scaling_strategy="none",
+        drift_checks={"enabled": False},
     )
-    cfg_none = FEDformerConfig(**base_cfg, outlier_policy="none")
-    cfg_win = FEDformerConfig(**base_cfg, outlier_policy="winsorize")
-
-    pipe_none = PreprocessingPipeline.from_config(
-        cfg_none,
-        target_features=cfg_none.target_features,
-        date_column=cfg_none.date_column,
-    )
-    pipe_none.fit(raw, fit_end_idx=80)
-    none_vals = pipe_none.transform(raw)["Close"].to_numpy()
-
     pipe_win = PreprocessingPipeline.from_config(
-        cfg_win,
-        target_features=cfg_win.target_features,
-        date_column=cfg_win.date_column,
+        FEDformerConfig(**base_cfg, outlier_policy="winsorize"),
+        target_features=["Close"],
+        date_column="date",
     )
-    pipe_win.fit(raw, fit_end_idx=80)
-    win_vals = pipe_win.transform(raw)["Close"].to_numpy()
+    pipe_win.fit(df, fit_end_idx=80)
+    result = pipe_win.transform(df)
 
-    assert np.max(np.abs(win_vals)) < np.max(np.abs(none_vals))
+    # Feature no-target (Volume) SÍ se clippea en transform()
+    assert result["Volume"].max() < 100_000.0
+    # Target (Close) NO se clippea aunque supere el rango de entrenamiento
+    assert result["Close"].iloc[90] == pytest.approx(9_999.0, rel=1e-3)
+
+
+def test_last_prices_uses_training_cutoff(tmp_path: Path) -> None:
+    """last_prices refleja el último precio del bloque de entrenamiento, no del dataset completo."""
+    rng = np.random.default_rng(7)
+    rows = 80
+    prices = np.cumsum(rng.normal(0, 1, rows)) + 100.0
+    df = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=rows, freq="D"),
+            "Close": prices,
+        }
+    )
+    # El último precio del dataset completo es distinto del de training
+    cutoff = 50
+    last_train_price = float(df["Close"].iloc[cutoff])
+    last_full_price = float(df["Close"].iloc[-1])
+    assert last_train_price != pytest.approx(last_full_price, rel=1e-3)
+
+    csv_path = tmp_path / "prices.csv"
+    df.to_csv(csv_path, index=False)
+
+    cfg = FEDformerConfig(
+        target_features=["Close"],
+        file_path=str(csv_path),
+        date_column="date",
+        scaling_strategy="none",
+        outlier_policy="none",
+        missing_policy="ffill_bfill",
+        return_transform="log_return",
+    )
+    pipe = PreprocessingPipeline.from_config(
+        cfg, target_features=["Close"], date_column="date"
+    )
+    pipe.fit(df, fit_end_idx=cutoff)
+
+    # last_prices debe ser el precio en df.iloc[cutoff], no df.iloc[-1]
+    assert pipe.last_prices["Close"] == pytest.approx(last_train_price, rel=1e-6)
+    assert pipe.last_prices["Close"] != pytest.approx(last_full_price, rel=1e-3)
 
 
 def test_persistence_roundtrip_equivalence(mixed_csv: str, tmp_path: Path) -> None:

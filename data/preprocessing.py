@@ -346,13 +346,15 @@ class PreprocessingPipeline:
                 upper = q3 + 1.5 * iqr
             self.outlier_bounds[col] = (lower, upper)
 
-    def _apply_outlier_policy(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _apply_outlier_policy(
+        self, df: pd.DataFrame, skip_cols: set[str] | None = None
+    ) -> pd.DataFrame:
         if self.settings.outlier_policy == "none":
             return df
 
         out = df.copy()
         for col, (lower, upper) in self.outlier_bounds.items():
-            if col in out.columns:
+            if col in out.columns and (skip_cols is None or col not in skip_cols):
                 out[col] = out[col].clip(lower=lower, upper=upper)
         return out
 
@@ -432,12 +434,6 @@ class PreprocessingPipeline:
         self, df: pd.DataFrame, fit_end_idx: int | None = None
     ) -> "PreprocessingPipeline":
         """Precomputa y entabla el sistema de transformado matemático."""
-        # Guardar últimos precios para inversión de transformada de retornos
-        if self.return_transform != "none":
-            self.last_prices = {
-                col: float(df[col].iloc[-1]) for col in self.target_cols
-            }
-
         raw_features = self._build_feature_frame(df, fit=True)
 
         # Aplicar transformada de retornos antes de escalar
@@ -446,6 +442,16 @@ class PreprocessingPipeline:
         cutoff = fit_end_idx if fit_end_idx is not None else len(raw_features)
         cutoff = int(max(1, min(cutoff, len(raw_features))))
         self.fit_end_idx = cutoff
+
+        # Guardar el último precio del bloque de entrenamiento para inversión de retornos.
+        # Con return_transform != "none", raw_features pierde la primera fila por el shift;
+        # raw_features.iloc[k] corresponde a df.iloc[k+1], por lo que el último precio
+        # de entrenamiento en el espacio de precios originales es df.iloc[cutoff].
+        if self.return_transform != "none":
+            price_idx = min(cutoff, len(df) - 1)
+            self.last_prices = {
+                col: float(df[col].iloc[price_idx]) for col in self.target_cols
+            }
 
         fit_df = raw_features.iloc[:cutoff].copy()
 
@@ -482,8 +488,15 @@ class PreprocessingPipeline:
         # Aplicar transformada de retornos antes de escalar
         feature_df = self._apply_return_transform(feature_df, fit=False)
         feature_df = self._apply_missing_policy(feature_df)
-        feature_df = self._apply_outlier_policy(feature_df)
-        self.validate_input_schema(df, feature_df=feature_df)
+        # No clampear columnas target: sus valores fuera del rango de entrenamiento son
+        # señal real (ej. NVDA en régimen post-AI-boom), no outliers ruidosos.
+        feature_df = self._apply_outlier_policy(
+            feature_df, skip_cols=set(self.target_cols)
+        )
+        # El chequeo de deriva solo aplica al bloque de entrenamiento: el test period
+        # puede (y debe) diferir en distribución — eso es leakage-free walk-forward.
+        train_end = self.fit_end_idx or len(feature_df)
+        self.validate_input_schema(df, feature_df=feature_df.iloc[:train_end])
 
         feature_df = feature_df.reindex(columns=self.feature_columns, fill_value=0.0)
         transformed = self.scaler.transform(feature_df.values)

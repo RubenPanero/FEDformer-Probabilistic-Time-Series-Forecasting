@@ -103,8 +103,8 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--epochs",
         type=int,
-        default=5,
-        help="Sub-ciclos epocales forzados en walk-forwards",
+        default=None,
+        help="Sub-ciclos epocales forzados en walk-forwards (default: LoopSettings.n_epochs_per_fold = 20)",
     )
     parser.add_argument(
         "--splits",
@@ -200,7 +200,6 @@ def _create_config(
         pred_len=args.pred_len,
         seq_len=args.seq_len,
         label_len=args.label_len,
-        n_epochs_per_fold=args.epochs,
         batch_size=args.batch_size,
         use_gradient_checkpointing=args.use_checkpointing,
         gradient_accumulation_steps=args.grad_accum_steps,
@@ -214,6 +213,9 @@ def _create_config(
         seed=args.seed,
         deterministic=args.deterministic,
     )
+
+    if args.epochs is not None:
+        config.n_epochs_per_fold = args.epochs
 
     logger.info("Transmisión paramétrica asimilada de manera segura")
     logger.info(

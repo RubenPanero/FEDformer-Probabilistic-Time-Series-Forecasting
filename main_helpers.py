@@ -35,7 +35,12 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--pred-len", type=int, default=24, help="Prediction horizon")
     parser.add_argument("--seq-len", type=int, default=96, help="Sequence length")
     parser.add_argument("--label-len", type=int, default=48, help="Label length")
-    parser.add_argument("--epochs", type=int, default=5, help="Epochs per fold")
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Epochs per fold (default: LoopSettings.n_epochs_per_fold = 20)",
+    )
     parser.add_argument("--splits", type=int, default=5, help="Number of splits")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     parser.add_argument(
@@ -82,7 +87,6 @@ def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerCon
         pred_len=args.pred_len,
         seq_len=args.seq_len,
         label_len=args.label_len,
-        n_epochs_per_fold=args.epochs,
         batch_size=args.batch_size,
         use_gradient_checkpointing=args.use_checkpointing,
         gradient_accumulation_steps=args.grad_accum_steps,
@@ -93,6 +97,9 @@ def _create_config(args: argparse.Namespace, targets: List[str]) -> FEDformerCon
         seed=args.seed,
         deterministic=args.deterministic,
     )
+
+    if args.epochs is not None:
+        config.n_epochs_per_fold = args.epochs
 
     logger.info("Configuration validated successfully")
     logger.info(f"Model parameters: d_model={config.d_model}, n_heads={config.n_heads}")

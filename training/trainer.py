@@ -756,6 +756,17 @@ class WalkForwardTrainer:
                     )
                 break
 
+        # Siempre restaurar el mejor checkpoint antes de inferencia (independientemente
+        # de si el early stopping llegó a disparar o el training agotó las épocas).
+        best_ckpt_path = self.checkpoint_dir / f"best_model_fold_{fold_idx}.pt"
+        if best_ckpt_path.exists():
+            self.load_checkpoint(
+                components.model,
+                components.optimizer,
+                components.scaler,
+                str(best_ckpt_path),
+            )
+
         fold_preds, fold_gt, fold_samples = self._evaluate_model(
             components.model, components.test_loader
         )
@@ -867,6 +878,10 @@ class WalkForwardTrainer:
         all_gt: list[np.ndarray] = []
         all_samples: list[np.ndarray] = []
         all_fold_ids: list[np.ndarray] = []
+        # Resultados en espacio real, invertidos con el scaler propio de cada fold
+        all_preds_real: list[np.ndarray] = []
+        all_gt_real: list[np.ndarray] = []
+        all_samples_real: list[np.ndarray] = []
 
         try:
             for fold_idx in range(1, n_splits):
@@ -881,6 +896,15 @@ class WalkForwardTrainer:
                 all_gt.append(gt)
                 all_samples.append(samples)
                 all_fold_ids.append(np.full(len(preds), fold_idx, dtype=np.int32))
+
+                # Invertir con el scaler activo en ESTE fold, antes de que el siguiente
+                # fold llame a refit_for_cutoff y lo sobreescriba.
+                preds_r, gt_r, samples_r = self._inverse_transform_all(
+                    preds, gt, samples
+                )
+                all_preds_real.append(preds_r)
+                all_gt_real.append(gt_r)
+                all_samples_real.append(samples_r)
 
         except (RuntimeError, ValueError):
             logger.exception(
@@ -914,9 +938,9 @@ class WalkForwardTrainer:
         samples_scaled = np.concatenate(all_samples, axis=1)
         window_fold_ids = np.concatenate(all_fold_ids, axis=0)
 
-        preds_real, gt_real, samples_real = self._inverse_transform_all(
-            preds_scaled, gt_scaled, samples_scaled
-        )
+        preds_real = np.concatenate(all_preds_real, axis=0)
+        gt_real = np.concatenate(all_gt_real, axis=0)
+        samples_real = np.concatenate(all_samples_real, axis=1)
 
         return ForecastOutput(
             preds_scaled=preds_scaled,
