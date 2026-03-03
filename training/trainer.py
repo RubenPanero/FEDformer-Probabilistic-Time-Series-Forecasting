@@ -756,6 +756,17 @@ class WalkForwardTrainer:
                     )
                 break
 
+        # Siempre restaurar el mejor checkpoint antes de inferencia (independientemente
+        # de si el early stopping llegó a disparar o el training agotó las épocas).
+        best_ckpt_path = self.checkpoint_dir / f"best_model_fold_{fold_idx}.pt"
+        if best_ckpt_path.exists():
+            self.load_checkpoint(
+                components.model,
+                components.optimizer,
+                components.scaler,
+                str(best_ckpt_path),
+            )
+
         fold_preds, fold_gt, fold_samples = self._evaluate_model(
             components.model, components.test_loader
         )
