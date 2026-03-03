@@ -34,11 +34,19 @@ def _make_forecast(
 
 
 def test_forecast_output_returns_space():
-    """Con metric_space='returns', *_for_metrics devuelve los arrays escalados."""
+    """Con metric_space='returns', *_for_metrics devuelve preds_real (desescalados).
+
+    Corrección: antes devolvía preds_scaled (standardizados), lo que hacía que
+    Sharpe/VaR/CVaR se calcularan sobre valores z-score en vez de retornos reales.
+    metric_space controla qué contiene preds_real (vía _inverse_transform_all),
+    no qué array se selecciona en la propiedad.
+    """
     fo = _make_forecast(metric_space="returns")
-    assert np.array_equal(fo.preds_for_metrics, fo.preds_scaled)
-    assert np.array_equal(fo.gt_for_metrics, fo.gt_scaled)
-    assert np.array_equal(fo.samples_for_metrics, fo.samples_scaled)
+    assert np.array_equal(fo.preds_for_metrics, fo.preds_real)
+    assert np.array_equal(fo.gt_for_metrics, fo.gt_real)
+    assert np.array_equal(fo.samples_for_metrics, fo.samples_real)
+    # Los valores son x100 (mock de inverse_transform), no los valores escalados
+    assert not np.array_equal(fo.preds_for_metrics, fo.preds_scaled)
 
 
 def test_forecast_output_prices_space():
@@ -67,12 +75,15 @@ def test_portfolio_simulator_backward_compat():
 
 
 def test_inverse_transform_noop_when_no_return_transform():
-    """Con return_transform='none', preds_real y preds_scaled no son iguales
-    (son los valores que el trainer calculó), pero el dataclass los almacena correctamente."""
+    """Con return_transform='none', preds_for_metrics devuelve preds_real (precios desescalados).
+
+    El dataclass almacena ambos arrays correctamente; preds_for_metrics siempre
+    apunta al espacio interpretable (preds_real), independiente del return_transform.
+    """
     fo = _make_forecast(metric_space="returns", return_transform="none")
-    # Con metric_space='returns', preds_for_metrics == preds_scaled
-    assert np.array_equal(fo.preds_for_metrics, fo.preds_scaled)
-    # preds_real existe y es diferente de preds_scaled (x100 en nuestro mock)
+    # preds_for_metrics siempre devuelve preds_real
+    assert np.array_equal(fo.preds_for_metrics, fo.preds_real)
+    # preds_real es diferente de preds_scaled (x100 en nuestro mock de inverse_transform)
     assert not np.array_equal(fo.preds_real, fo.preds_scaled)
 
 

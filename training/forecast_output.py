@@ -31,17 +31,20 @@ class ForecastOutput:
 
     @property
     def preds_for_metrics(self) -> np.ndarray:
-        """Predicciones en el espacio configurado para métricas financieras."""
-        return self.preds_real if self.metric_space == "prices" else self.preds_scaled
+        """Predicciones desescaladas para métricas financieras.
+
+        Siempre devuelve preds_real: el espacio interpretable (retornos o precios
+        dependiendo de return_transform). metric_space controla qué contiene
+        preds_real (vía _inverse_transform_all), no qué array se selecciona aquí.
+        """
+        return self.preds_real
 
     @property
     def gt_for_metrics(self) -> np.ndarray:
-        """Ground truth en el espacio configurado para métricas financieras."""
-        return self.gt_real if self.metric_space == "prices" else self.gt_scaled
+        """Ground truth desescalado para métricas financieras."""
+        return self.gt_real
 
     @property
     def samples_for_metrics(self) -> np.ndarray:
-        """Muestras en el espacio configurado para métricas financieras."""
-        return (
-            self.samples_real if self.metric_space == "prices" else self.samples_scaled
-        )
+        """Muestras desescaladas para métricas financieras."""
+        return self.samples_real

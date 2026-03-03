@@ -27,28 +27,44 @@ class PortfolioSimulator:
         if isinstance(forecast, ForecastOutput):
             self.predictions = forecast.preds_for_metrics
             self.ground_truth = forecast.gt_for_metrics
+            # True cuando gt ya contiene retornos (log o simples), no niveles de precio.
+            # En ese caso gt[:, t, :] ya es el retorno en el paso t; no calcular diff.
+            self._in_return_space = (
+                forecast.return_transform != "none"
+                and forecast.metric_space == "returns"
+            )
         else:
             self.predictions = forecast
             self.ground_truth = ground_truth  # type: ignore[assignment]
+            self._in_return_space = False
 
     def run_simple_strategy(self) -> np.ndarray:
         """Opera una estrategia base de impulso temporal (momentum)."""
         try:
             if self.predictions.shape[1] > 1 and self.ground_truth.shape[1] > 1:
-                # Señal: pendiente promedio predicha a través de todos los pasos temporales
-                predicted_trend = (
-                    self.predictions[:, -1, :] - self.predictions[:, 0, :]
-                ) / (np.abs(self.predictions[:, 0, :]) + 1e-9)
-                signals = np.sign(predicted_trend)
-
-                # Retornos reales: promedio de retornos a través de todos los pasos
-                step_returns = np.diff(self.ground_truth, axis=1) / (
-                    np.abs(self.ground_truth[:, :-1, :]) + 1e-9
-                )
-                avg_actual_returns = step_returns.mean(axis=1)
+                if self._in_return_space:
+                    # En espacio de retornos: señal = dirección del retorno medio predicho.
+                    # gt[:, t, :] ya es el retorno en el paso t; no calcular diff.
+                    signals = np.sign(self.predictions.mean(axis=1))
+                    avg_actual_returns = self.ground_truth.mean(axis=1)
+                else:
+                    # En espacio de precios: señal = pendiente normalizada predicha
+                    predicted_trend = (
+                        self.predictions[:, -1, :] - self.predictions[:, 0, :]
+                    ) / (np.abs(self.predictions[:, 0, :]) + 1e-9)
+                    signals = np.sign(predicted_trend)
+                    # Retornos paso a paso desde niveles de precio
+                    step_returns = np.diff(self.ground_truth, axis=1) / (
+                        np.abs(self.ground_truth[:, :-1, :]) + 1e-9
+                    )
+                    avg_actual_returns = step_returns.mean(axis=1)
                 return signals[:-1] * avg_actual_returns[1:]
 
             # Recesión tolerante (Fallback) para inferencias predictivas de 1 intervalo
+            if self._in_return_space:
+                signals = np.sign(self.predictions[:, 0, :])
+                actual_returns = self.ground_truth[:, 0, :]
+                return signals[:-1] * actual_returns[1:]
             signals = np.sign(np.diff(self.predictions[:, 0, :], axis=0))
             actual_returns = np.diff(self.ground_truth[:, 0, :], axis=0) / (
                 np.abs(self.ground_truth[:-1, 0, :]) + 1e-9
@@ -78,26 +94,36 @@ class PortfolioSimulator:
 
             cumulative_returns = np.cumprod(1 + strategy_returns) - 1
 
-            # Sharpe ratio
-            mean_return = np.mean(strategy_returns)
-            std_return = np.std(strategy_returns)
-            sharpe_ratio = float(mean_return / (std_return + 1e-9) * np.sqrt(252))
+            # Corrección de sesgo por ventanas solapadas: con pred_len > 1, cada elemento
+            # de strategy_returns es la media de pred_len pasos dentro de una ventana
+            # deslizante. Ventanas consecutivas solapan en pred_len-1 pasos → correlación
+            # ~(pred_len-1)/pred_len ≈ 0.95 con pred_len=20.
+            # Solución: subsamplear a ventanas no solapadas (cada pred_len-ésima muestra)
+            # y ajustar el factor de anualización a sqrt(252/pred_len).
+            pred_len = max(self.predictions.shape[1], 1)
+            independent_returns = strategy_returns[::pred_len]
+            annualization = np.sqrt(252 / pred_len)
 
-            # Maximum drawdown (Caída máxima sostenida)
+            # Sharpe ratio (sobre retornos independientes)
+            mean_return = np.mean(independent_returns)
+            std_return = np.std(independent_returns)
+            sharpe_ratio = float(mean_return / (std_return + 1e-9) * annualization)
+
+            # Maximum drawdown: curva de equity completa (sin subsamplear)
             equity_curve = np.concatenate(([1], 1 + cumulative_returns))
             peak = np.maximum.accumulate(equity_curve)
             drawdown = (equity_curve - peak) / (peak + 1e-9)
             max_drawdown = float(np.min(drawdown))
 
-            # Volatilidad estructural
-            volatility = float(std_return * np.sqrt(252))
+            # Volatilidad anualizada (sobre retornos independientes)
+            volatility = float(std_return * annualization)
 
-            # Sortino ratio (Penalización a los retornos divergentes negativos)
-            negative_returns = strategy_returns[strategy_returns < 0]
+            # Sortino ratio (sobre retornos independientes)
+            negative_returns = independent_returns[independent_returns < 0]
             downside_std = (
                 np.std(negative_returns) if len(negative_returns) > 0 else 1e-9
             )
-            sortino_ratio = float(mean_return / (downside_std + 1e-9) * np.sqrt(252))
+            sortino_ratio = float(mean_return / (downside_std + 1e-9) * annualization)
 
             return {
                 "cumulative_returns": cumulative_returns,
