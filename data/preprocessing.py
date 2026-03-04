@@ -443,10 +443,13 @@ class PreprocessingPipeline:
         cutoff = int(max(1, min(cutoff, len(raw_features))))
         self.fit_end_idx = cutoff
 
-        # Guardar el último precio del bloque de entrenamiento para inversión de retornos.
-        # Con return_transform != "none", raw_features pierde la primera fila por el shift;
-        # raw_features.iloc[k] corresponde a df.iloc[k+1], por lo que el último precio
-        # de entrenamiento en el espacio de precios originales es df.iloc[cutoff].
+        # Precio ancla para reconstruir precios desde retornos predichos en test.
+        # _apply_return_transform pierde la primera fila (NaN del shift), por lo que
+        # raw_features.iloc[k] = log(df.iloc[k+1] / df.iloc[k]).
+        # raw_features.iloc[:cutoff] usa precios de df.iloc[0..cutoff], siendo df.iloc[cutoff]
+        # el precio en la frontera train/test — ancla natural para reconstruir
+        # P_t = last_price * exp(cumsum(retornos_predichos)). No es leakage: este precio
+        # está implícito en el último retorno de entrenamiento y nunca se pasa al modelo.
         if self.return_transform != "none":
             price_idx = min(cutoff, len(df) - 1)
             self.last_prices = {
