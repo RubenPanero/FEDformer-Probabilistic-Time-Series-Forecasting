@@ -95,6 +95,7 @@ class LoopSettings:
     n_epochs_per_fold: int = 20
     batch_size: int = 32
     gradient_accumulation_steps: int = 2
+    gradient_clip_norm: float = 1.0
     patience: int = 5
     min_delta: float = 5e-3
     val_fraction: float = (
@@ -223,6 +224,7 @@ class FEDformerConfig:
         "use_amp",
         "use_gradient_checkpointing",
         "gradient_accumulation_steps",
+        "gradient_clip_norm",
         "compile_mode",
         "finetune_from",
         "freeze_backbone",
@@ -381,6 +383,10 @@ class FEDformerConfig:
             raise ValueError(
                 "Gradient accumulation steps must be positive, got "
                 f"{self.gradient_accumulation_steps}"
+            )
+        if self.gradient_clip_norm <= 0:
+            raise ValueError(
+                f"gradient_clip_norm debe ser positivo, got {self.gradient_clip_norm}"
             )
         if self.finetune_lr is not None and self.finetune_lr <= 0:
             raise ValueError(f"finetune_lr must be positive, got {self.finetune_lr}")
@@ -694,6 +700,14 @@ class FEDformerConfig:
     @val_fraction.setter
     def val_fraction(self, value: float) -> None:
         self.sections.training.loop.val_fraction = value
+
+    @property
+    def gradient_clip_norm(self) -> float:
+        return self.sections.training.loop.gradient_clip_norm
+
+    @gradient_clip_norm.setter
+    def gradient_clip_norm(self, value: float) -> None:
+        self.sections.training.loop.gradient_clip_norm = value
 
     # -- Preprocessing settings proxies ---------------------------------------
     @property

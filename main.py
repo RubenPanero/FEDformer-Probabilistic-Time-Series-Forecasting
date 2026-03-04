@@ -221,6 +221,12 @@ def _parse_arguments() -> argparse.Namespace:
         default=None,
         help="Mejora mínima de val_loss para early stopping (default: config 5e-3).",
     )
+    parser.add_argument(
+        "--gradient-clip-norm",
+        type=float,
+        default=None,
+        help="Norma máxima para gradient clipping (default: config 1.0). 0 desactiva el clipping.",
+    )
     return parser.parse_args()
 
 
@@ -280,6 +286,8 @@ def _create_config(
         config.patience = args.patience
     if args.min_delta is not None:
         config.min_delta = args.min_delta
+    if args.gradient_clip_norm is not None:
+        config.gradient_clip_norm = args.gradient_clip_norm
 
     logger.info("Transmisión paramétrica asimilada de manera segura")
     logger.info(

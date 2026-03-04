@@ -274,12 +274,13 @@ class WalkForwardTrainer:
         optimizer: Optimizer,
         scaler: torch.amp.GradScaler | None,
         model: nn.Module,
+        clip_norm: float = 1.0,
     ) -> None:
         """Asienta saltos en optimizer, validando clípeos dinámicos en pesos (Scale steps)."""
         if scaler:
             scaler.unscale_(optimizer)
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_norm)
 
         if scaler:
             scaler.step(optimizer)
@@ -574,7 +575,10 @@ class WalkForwardTrainer:
 
             if self._should_step(batch_idx, total_batches, accumulation_steps):
                 self._optimizer_step(
-                    components.optimizer, components.scaler, components.model
+                    components.optimizer,
+                    components.scaler,
+                    components.model,
+                    self.config.gradient_clip_norm,
                 )
 
             epoch_losses.append(loss_value)

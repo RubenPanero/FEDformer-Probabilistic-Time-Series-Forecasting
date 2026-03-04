@@ -239,6 +239,7 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
         warmup_epochs=None,
         patience=None,
         min_delta=None,
+        gradient_clip_norm=None,
     )
 
     cfg = main_module._create_config(
