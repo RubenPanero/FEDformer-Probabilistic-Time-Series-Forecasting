@@ -185,6 +185,42 @@ def _parse_arguments() -> argparse.Namespace:
         help="Espacio en que se reportan métricas y muestras: 'returns' (default) o 'prices' "
         "(reconstruye precios desde retornos acumulados usando last_prices del fold).",
     )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=None,
+        help="Probabilidad de dropout en embeddings, conv y atención (default: config 0.1).",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=None,
+        help="Regularización L2 en AdamW (default: config 1e-5).",
+    )
+    parser.add_argument(
+        "--scheduler-type",
+        default=None,
+        choices=["none", "cosine", "cosine_warmup"],
+        help="Scheduler de learning rate: none, cosine o cosine_warmup (default: config none).",
+    )
+    parser.add_argument(
+        "--warmup-epochs",
+        type=int,
+        default=None,
+        help="Épocas de warmup lineal para cosine_warmup (default: config 0).",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=None,
+        help="Paciencia de early stopping en épocas (default: config 5).",
+    )
+    parser.add_argument(
+        "--min-delta",
+        type=float,
+        default=None,
+        help="Mejora mínima de val_loss para early stopping (default: config 5e-3).",
+    )
     return parser.parse_args()
 
 
@@ -232,6 +268,18 @@ def _create_config(
 
     if args.epochs is not None:
         config.n_epochs_per_fold = args.epochs
+    if args.dropout is not None:
+        config.dropout = args.dropout
+    if args.weight_decay is not None:
+        config.weight_decay = args.weight_decay
+    if args.scheduler_type is not None:
+        config.scheduler_type = args.scheduler_type
+    if args.warmup_epochs is not None:
+        config.warmup_epochs = args.warmup_epochs
+    if args.patience is not None:
+        config.patience = args.patience
+    if args.min_delta is not None:
+        config.min_delta = args.min_delta
 
     logger.info("Transmisión paramétrica asimilada de manera segura")
     logger.info(

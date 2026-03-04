@@ -293,7 +293,6 @@ class WalkForwardTrainer:
         self, optimizer: torch.optim.Optimizer, total_epochs: int
     ) -> Any:
         """Crea el scheduler de LR según la configuración."""
-        import numpy as np  # pylint: disable=import-outside-toplevel
 
         stype = self.config.scheduler_type
         if stype == "none":
@@ -305,6 +304,8 @@ class WalkForwardTrainer:
                 eta_min=self.config.min_lr,
             )
         if stype == "cosine_warmup":
+            import math  # pylint: disable=import-outside-toplevel
+
             warmup = self.config.warmup_epochs
             lr_min_ratio = self.config.min_lr / max(self.config.learning_rate, 1e-10)
 
@@ -312,7 +313,7 @@ class WalkForwardTrainer:
                 if epoch < warmup:
                     return (epoch + 1) / max(warmup, 1)
                 progress = (epoch - warmup) / max(total_epochs - warmup, 1)
-                return max(lr_min_ratio, 0.5 * (1 + np.cos(np.pi * progress)))
+                return max(lr_min_ratio, 0.5 * (1 + math.cos(math.pi * progress)))
 
             return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
         return None
@@ -386,7 +387,12 @@ class WalkForwardTrainer:
                 f"Archivo de warm-start no encontrado en el sistema: {ckpt_path}"
             )
 
-        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
+        import numpy._core.multiarray as _npcma  # pylint: disable=import-outside-toplevel
+
+        with torch.serialization.safe_globals(
+            [_npcma.scalar, np.float64, np.float32, np.int64, np.int32, np.bool_]  # pylint: disable=no-member
+        ):
+            checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
         state_dict = (
             checkpoint["model_state_dict"]
             if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
@@ -447,9 +453,9 @@ class WalkForwardTrainer:
             "scaler_state_dict": components.scaler.state_dict()
             if components.scaler
             else None,
-            "epoch": epoch,
-            "fold": components.fold,
-            "loss": loss,
+            "epoch": int(epoch),
+            "fold": int(components.fold),
+            "loss": float(loss),
             "config": asdict(self.config),
         }
 
@@ -472,7 +478,14 @@ class WalkForwardTrainer:
         checkpoint_path: str,
     ) -> tuple[int, int, float]:
         """Transbordo temporal desde dict persistido devuelta a RAM GPU."""
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        import numpy._core.multiarray as _npcma  # pylint: disable=import-outside-toplevel
+
+        with torch.serialization.safe_globals(
+            [_npcma.scalar, np.float64, np.float32, np.int64, np.int32, np.bool_]  # pylint: disable=no-member
+        ):
+            checkpoint = torch.load(
+                checkpoint_path, map_location=device, weights_only=True
+            )
 
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

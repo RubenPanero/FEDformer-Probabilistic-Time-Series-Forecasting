@@ -233,6 +233,12 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
         epochs=None,
         return_transform="log_return",
         metric_space="prices",
+        dropout=None,
+        weight_decay=None,
+        scheduler_type=None,
+        warmup_epochs=None,
+        patience=None,
+        min_delta=None,
     )
 
     cfg = main_module._create_config(
