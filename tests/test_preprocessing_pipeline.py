@@ -322,3 +322,42 @@ def test_return_transform_leakage_safe(mixed_csv: str) -> None:
     fit_stat = pipe.fit_stats.get("Close", {})
     assert abs(fit_stat.get("mean", float("nan")) - train_mean) < 0.05
     assert abs(fit_stat.get("std", float("nan")) - train_std) < 0.05
+
+
+def test_last_prices_is_boundary_anchor(mixed_csv: str) -> None:
+    """last_prices debe ser df.iloc[cutoff]: el precio frontera train/test.
+
+    No es leakage: este precio ya está implícito en el último retorno de
+    entrenamiento (log(P[cutoff]/P[cutoff-1])). Sirve como ancla para
+    reconstruir precios desde retornos predichos en el período de test.
+    """
+    from config import FEDformerConfig
+    from data import PreprocessingPipeline
+
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=mixed_csv,
+        date_column="date",
+        scaling_strategy="standard",
+        outlier_policy="none",
+        missing_policy="impute_median",
+        drift_checks={"enabled": False},
+        return_transform="log_return",
+    )
+    raw = pd.read_csv(mixed_csv, parse_dates=["date"])
+    cutoff = 70
+
+    pipe = PreprocessingPipeline.from_config(
+        config, target_features=config.target_features, date_column=config.date_column
+    )
+    pipe.fit(raw, fit_end_idx=cutoff)
+
+    # last_prices debe ser exactamente df.iloc[cutoff] — el precio en la frontera
+    expected_anchor = float(raw["Close"].iloc[cutoff])
+    assert pipe.last_prices is not None
+    assert pipe.last_prices["Close"] == pytest.approx(expected_anchor, rel=1e-6)
+
+    # Verificar que NO es el precio anterior (cutoff-1) ni el posterior (cutoff+1)
+    assert pipe.last_prices["Close"] != pytest.approx(
+        float(raw["Close"].iloc[cutoff - 1]), rel=1e-6
+    )
