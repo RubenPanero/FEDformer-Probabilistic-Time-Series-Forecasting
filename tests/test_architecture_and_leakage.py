@@ -12,7 +12,7 @@ from utils import apply_conformal_interval, conformal_quantile
 def test_model_uses_configured_depth() -> None:
     cfg = FEDformerConfig(
         target_features=["Close"],
-        file_path="data/nvidia_stock_2024-08-20_to_2025-08-20.csv",
+        file_path="data/NVDA_features.csv",
         e_layers=3,
         d_layers=2,
     )
@@ -36,7 +36,7 @@ def test_attention_output_depends_on_values() -> None:
 def test_fold_indices_avoid_label_leakage() -> None:
     cfg = FEDformerConfig(
         target_features=["Close"],
-        file_path="data/nvidia_stock_2024-08-20_to_2025-08-20.csv",
+        file_path="data/NVDA_features.csv",
         seq_len=32,
         label_len=16,
         pred_len=8,
@@ -61,7 +61,7 @@ def test_fold_indices_avoid_label_leakage() -> None:
 def test_fold_refit_changes_scaler_distribution() -> None:
     cfg = FEDformerConfig(
         target_features=["Close"],
-        file_path="data/nvidia_stock_2024-08-20_to_2025-08-20.csv",
+        file_path="data/NVDA_features.csv",
     )
     ds = TimeSeriesDataset(cfg, flag="all")
     if hasattr(ds.scaler, "center_"):

@@ -19,7 +19,7 @@ from training.trainer import WalkForwardTrainer
 def _base_config(**kwargs: object) -> FEDformerConfig:
     return FEDformerConfig(
         target_features=["Close"],
-        file_path="data/nvidia_stock_2024-08-20_to_2025-08-20.csv",
+        file_path="data/NVDA_features.csv",
         **kwargs,
     )
 
@@ -166,6 +166,51 @@ def test_finetune_sequence_passes_new_params_to_config(tmp_path: Path) -> None:
     assert captured["time_features"] == ["month"]
 
 
+def test_finetune_sequence_wires_rehearsal_settings(tmp_path: Path) -> None:
+    """finetune_sequence activa el rehearsal buffer en la config cuando se pasa rehearsal_k."""
+    base_ckpt = tmp_path / "base.pt"
+    base_ckpt.touch()
+    ckpt_dir = tmp_path / "out" / "MOCK"
+    ckpt_dir.mkdir(parents=True)
+    (ckpt_dir / "best_model_fold_2.pt").touch()
+
+    captured_config: list[MagicMock] = []
+
+    def fake_config(*_args: object, **kwargs: object) -> MagicMock:
+        mock = MagicMock()
+        mock.sections.training.rehearsal.rehearsal_epochs = 1
+        captured_config.append(mock)
+        return mock
+
+    with (
+        patch("training.sequential_finetuner.FEDformerConfig", side_effect=fake_config),
+        patch("training.sequential_finetuner.TimeSeriesDataset"),
+        patch("training.sequential_finetuner.WalkForwardTrainer") as MockTrainer,
+        patch("os.path.exists", return_value=True),
+    ):
+        mock_trainer = MagicMock()
+        mock_trainer.checkpoint_dir = ckpt_dir
+        mock_trainer.run_backtest.return_value = _make_forecast_output()
+        MockTrainer.return_value = mock_trainer
+
+        finetune_sequence(
+            symbols=["MOCK"],
+            base_checkpoint=str(base_ckpt),
+            output_dir=str(tmp_path / "out"),
+            n_splits=3,
+            rehearsal_k=200,
+            rehearsal_epochs=2,
+            rehearsal_lr_mult=0.05,
+        )
+
+    cfg = captured_config[0]
+    # Verificar que se activó el rehearsal buffer en la config
+    assert cfg.rehearsal_enabled is True
+    assert cfg.rehearsal_buffer_size == 200
+    assert cfg.rehearsal_lr_mult == 0.05
+    assert cfg.sections.training.rehearsal.rehearsal_epochs == 2
+
+
 def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
     """El checkpoint propagado al siguiente ticker usa el índice del último fold."""
     for n_splits in [2, 3, 5]:
@@ -240,12 +285,15 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
         patience=None,
         min_delta=None,
         gradient_clip_norm=None,
+        rehearsal_k=None,
+        rehearsal_epochs=None,
+        rehearsal_lr_mult=None,
     )
 
     cfg = main_module._create_config(
         args,
         targets=["Close"],
-        csv_path="data/nvidia_stock_2024-08-20_to_2025-08-20.csv",
+        csv_path="data/NVDA_features.csv",
     )
 
     assert cfg.return_transform == "log_return"

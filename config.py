@@ -116,12 +116,23 @@ class RuntimeSettings:
 
 
 @dataclass
+class RehearsalSettings:
+    """Configuración del rehearsal buffer para continual learning."""
+
+    enabled: bool = False
+    buffer_size: int = 1000  # capacidad máxima (nº ventanas individuales)
+    rehearsal_epochs: int = 1  # pasos de replay por época de entrenamiento
+    rehearsal_lr_mult: float = 0.1  # multiplicador de LR para pasos de replay
+
+
+@dataclass
 class TrainingSettings:
     """Grouped training-related settings."""
 
     optimization: OptimizationSettings = field(default_factory=OptimizationSettings)
     loop: LoopSettings = field(default_factory=LoopSettings)
     runtime: RuntimeSettings = field(default_factory=RuntimeSettings)
+    rehearsal: RehearsalSettings = field(default_factory=RehearsalSettings)
 
 
 @dataclass
@@ -253,6 +264,9 @@ class FEDformerConfig:
         "scheduler_type",
         "patience",
         "min_delta",
+        "rehearsal_enabled",
+        "rehearsal_buffer_size",
+        "rehearsal_lr_mult",
     }
 
     def __init__(
@@ -263,17 +277,10 @@ class FEDformerConfig:
     ) -> None:
         # Set defaults if not provided
         if file_path is None:
-            # Use smoke_test.csv if available, otherwise nvidia_stock
-            default_path = os.path.join(
-                os.path.dirname(__file__), "data", "smoke_test.csv"
+            # Dataset permanente NVDA como fallback por defecto
+            file_path = os.path.join(
+                os.path.dirname(__file__), "data", "NVDA_features.csv"
             )
-            if not os.path.exists(default_path):
-                default_path = os.path.join(
-                    os.path.dirname(__file__),
-                    "data",
-                    "nvidia_stock_2024-08-20_to_2025-08-20.csv",
-                )
-            file_path = default_path
 
         # Auto-detect target features if not provided
         if target_features is None:
@@ -888,3 +895,28 @@ class FEDformerConfig:
     @c_out.setter
     def c_out(self, value: Optional[int]) -> None:
         self.sections.derived.c_out = value
+
+    # -- Rehearsal settings proxies ------------------------------------------
+    @property
+    def rehearsal_enabled(self) -> bool:
+        return self.sections.training.rehearsal.enabled
+
+    @rehearsal_enabled.setter
+    def rehearsal_enabled(self, value: bool) -> None:
+        self.sections.training.rehearsal.enabled = value
+
+    @property
+    def rehearsal_buffer_size(self) -> int:
+        return self.sections.training.rehearsal.buffer_size
+
+    @rehearsal_buffer_size.setter
+    def rehearsal_buffer_size(self, value: int) -> None:
+        self.sections.training.rehearsal.buffer_size = value
+
+    @property
+    def rehearsal_lr_mult(self) -> float:
+        return self.sections.training.rehearsal.rehearsal_lr_mult
+
+    @rehearsal_lr_mult.setter
+    def rehearsal_lr_mult(self, value: float) -> None:
+        self.sections.training.rehearsal.rehearsal_lr_mult = value

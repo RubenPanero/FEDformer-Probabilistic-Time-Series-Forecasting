@@ -117,3 +117,6 @@ tests/test_critical_fixes.py
 tests/test_critical_fixes_simple.py
 tests/validate_fixes.py
 
+# === Archivos auxiliares (locales) ===
+archivos auxiliares/
+

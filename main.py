@@ -16,7 +16,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
@@ -45,6 +45,7 @@ from training import WalkForwardTrainer
 from training.forecast_output import ForecastOutput
 from utils import get_device, setup_cuda_optimizations
 from utils.helpers import set_seed
+from utils.model_registry import register_specialist
 
 # Consolidación inicial de determinismo e inicializaciones del clúster físico
 set_seed(42, deterministic=False)
@@ -172,6 +173,15 @@ def _parse_arguments() -> argparse.Namespace:
         help="Exporta predicciones y métricas de riesgo/portafolio como CSVs en results/.",
     )
     parser.add_argument(
+        "--save-canonical",
+        action="store_true",
+        default=False,
+        help=(
+            "Guarda el checkpoint del último fold como {ticker}_canonical.pt "
+            "y registra el especialista en checkpoints/model_registry.json."
+        ),
+    )
+    parser.add_argument(
         "--return-transform",
         default="none",
         choices=["none", "log_return", "simple_return"],
@@ -226,6 +236,24 @@ def _parse_arguments() -> argparse.Namespace:
         type=float,
         default=None,
         help="Norma máxima para gradient clipping (default: config 1.0). 0 desactiva el clipping.",
+    )
+    parser.add_argument(
+        "--rehearsal-k",
+        type=int,
+        default=None,
+        help="Tamaño del rehearsal buffer (nº ventanas). Activa el continual learning.",
+    )
+    parser.add_argument(
+        "--rehearsal-epochs",
+        type=int,
+        default=None,
+        help="Pasos de replay por época de entrenamiento (default: config 1).",
+    )
+    parser.add_argument(
+        "--rehearsal-lr-mult",
+        type=float,
+        default=None,
+        help="Multiplicador de LR para pasos de rehearsal (default: config 0.1).",
     )
     return parser.parse_args()
 
@@ -288,6 +316,13 @@ def _create_config(
         config.min_delta = args.min_delta
     if args.gradient_clip_norm is not None:
         config.gradient_clip_norm = args.gradient_clip_norm
+    if args.rehearsal_k is not None:
+        config.rehearsal_enabled = True
+        config.rehearsal_buffer_size = args.rehearsal_k
+    if args.rehearsal_epochs is not None:
+        config.sections.training.rehearsal.rehearsal_epochs = args.rehearsal_epochs
+    if args.rehearsal_lr_mult is not None:
+        config.rehearsal_lr_mult = args.rehearsal_lr_mult
 
     logger.info("Transmisión paramétrica asimilada de manera segura")
     logger.info(
@@ -688,6 +723,102 @@ def _print_ticker_summary(
         logger.info("Comparativa multi-ticker exportada a: %s", comparison_path)
 
 
+def _save_canonical_specialist(
+    csv_path: str,
+    args: argparse.Namespace,
+    config: FEDformerConfig,
+    full_dataset: TimeSeriesDataset,
+    metrics: Dict[str, Any],
+) -> None:
+    """Registra el especialista del ticker en el model_registry y copia su checkpoint canónico.
+
+    Extrae el ticker del nombre del CSV, localiza el checkpoint del último fold,
+    construye los metadatos y llama a register_specialist.
+
+    Args:
+        csv_path: Ruta al CSV del ticker procesado.
+        args: Namespace de argparse con todos los flags CLI.
+        config: Configuración FEDformerConfig usada en el entrenamiento.
+        full_dataset: Dataset cargado (para obtener nº de filas y features).
+        metrics: Métricas de portafolio calculadas por PortfolioSimulator.
+    """
+    # Derivar ticker del nombre del CSV eliminando sufijo "_features"
+    ticker = Path(csv_path).stem.replace("_features", "").upper()
+
+    # Checkpoint del último fold (índice = n_splits - 1)
+    last_fold_idx = args.splits - 1
+    checkpoint_src = Path("checkpoints") / f"best_model_fold_{last_fold_idx}.pt"
+
+    if not checkpoint_src.exists():
+        logger.warning(
+            "Checkpoint del último fold no encontrado en %s; "
+            "omitiendo registro canónico para %s.",
+            checkpoint_src,
+            ticker,
+        )
+        return
+
+    # Construir dict de métricas desde el resultado de simulación
+    metrics_dict = {
+        "sharpe": float(metrics.get("sharpe_ratio", 0.0)),
+        "sortino": float(metrics.get("sortino_ratio", 0.0)),
+        "max_drawdown": float(metrics.get("max_drawdown", 0.0)),
+        "volatility": float(metrics.get("volatility", 0.0)),
+    }
+
+    # Construir dict de configuración con los parámetros del entrenamiento
+    config_dict = {
+        "seq_len": config.seq_len,
+        "pred_len": config.pred_len,
+        "n_splits": args.splits,
+        "return_transform": config.return_transform,
+        "metric_space": config.metric_space,
+        "gradient_clip_norm": config.gradient_clip_norm,
+        "batch_size": config.batch_size,
+    }
+
+    # Información del dataset (nº de filas del dataset completo)
+    n_rows = len(full_dataset.full_data_scaled)
+    n_features = (
+        full_dataset.full_data_scaled.shape[1]
+        if hasattr(full_dataset.full_data_scaled, "shape")
+        else 0
+    )
+    data_info = {
+        "file": csv_path,
+        "rows": n_rows,
+        "features": n_features,
+    }
+
+    # Reconstruir el comando CLI de forma aproximada para reproducibilidad
+    training_command = (
+        f"MPLBACKEND=Agg python3 main.py --csv {csv_path} --targets {args.targets} "
+        f"--seq-len {args.seq_len} --pred-len {args.pred_len} "
+        f"--batch-size {args.batch_size} --splits {args.splits} "
+        f"--return-transform {args.return_transform} --metric-space {args.metric_space} "
+        f"--gradient-clip-norm {args.gradient_clip_norm} "
+        "--save-results --no-show --save-canonical"
+    )
+
+    try:
+        canonical_path = register_specialist(
+            ticker=ticker,
+            checkpoint_src=checkpoint_src,
+            metrics=metrics_dict,
+            config_dict=config_dict,
+            data_info=data_info,
+            training_command=training_command,
+            notes=f"Auto-registrado por --save-canonical en {date.today().isoformat()}.",
+        )
+        logger.info(
+            "Especialista '%s' registrado con checkpoint canónico: %s",
+            ticker,
+            canonical_path,
+        )
+    except OSError as exc:
+        logger.warning("Error al registrar especialista '%s': %s", ticker, exc)
+
+
 def main() -> None:
     """Nodo central asimilador operando los subsistemas acoplados iterativos."""
     try:
@@ -724,6 +855,16 @@ def main() -> None:
             metrics = _run_simulations_and_visualize(
                 sim_data, args, timestamp=ticker_ts
             )
+
+            # Registrar checkpoint canónico del especialista si se solicitó
+            if getattr(args, "save_canonical", False):
+                _save_canonical_specialist(
+                    csv_path=csv_path,
+                    args=args,
+                    config=config,
+                    full_dataset=full_dataset,
+                    metrics=metrics,
+                )
 
             ticker_results.append(
                 {

@@ -40,6 +40,9 @@ def finetune_sequence(
     return_transform: str = "none",
     metric_space: str = "returns",
     time_features: list[str] | None = None,
+    rehearsal_k: int | None = None,
+    rehearsal_epochs: int | None = None,
+    rehearsal_lr_mult: float | None = None,
 ) -> str:
     """Fine-tuna secuencialmente el modelo base sobre cada ticker en ``symbols``.
 
@@ -56,6 +59,9 @@ def finetune_sequence(
         return_transform: Transformación de retornos ('none', 'log_return', 'simple_return').
         metric_space: Espacio de métricas ('returns', 'prices').
         time_features: Features temporales adicionales incluidas en el dataset.
+        rehearsal_k: Tamaño del rehearsal buffer (nº ventanas). None desactiva el rehearsal.
+        rehearsal_epochs: Pasos de replay por época (default config: 1).
+        rehearsal_lr_mult: Multiplicador de LR para pasos de rehearsal (default config: 0.1).
 
     Returns:
         Ruta al checkpoint final maestro (último ticker procesado con éxito).
@@ -104,6 +110,15 @@ def finetune_sequence(
             metric_space=metric_space,
             time_features=time_features or [],
         )
+
+        # 2b. Configurar rehearsal buffer si se solicitó
+        if rehearsal_k is not None:
+            config.rehearsal_enabled = True
+            config.rehearsal_buffer_size = rehearsal_k
+        if rehearsal_epochs is not None:
+            config.sections.training.rehearsal.rehearsal_epochs = rehearsal_epochs
+        if rehearsal_lr_mult is not None:
+            config.rehearsal_lr_mult = rehearsal_lr_mult
 
         # 3. Dataset y entrenador
         dataset = TimeSeriesDataset(config, flag="all")
@@ -247,6 +262,24 @@ if __name__ == "__main__":
         metavar="FEATURE",
         help="Features temporales adicionales (ej. --time-features month weekday)",
     )
+    parser.add_argument(
+        "--rehearsal-k",
+        type=int,
+        default=None,
+        help="Tamaño del rehearsal buffer (nº ventanas). Activa el continual learning.",
+    )
+    parser.add_argument(
+        "--rehearsal-epochs",
+        type=int,
+        default=None,
+        help="Pasos de replay por época de entrenamiento (default: config 1).",
+    )
+    parser.add_argument(
+        "--rehearsal-lr-mult",
+        type=float,
+        default=None,
+        help="Multiplicador de LR para pasos de rehearsal (default: config 0.1).",
+    )
 
     args = parser.parse_args()
 
@@ -269,4 +302,7 @@ if __name__ == "__main__":
         return_transform=args.return_transform,
         metric_space=args.metric_space,
         time_features=args.time_features,
+        rehearsal_k=args.rehearsal_k,
+        rehearsal_epochs=args.rehearsal_epochs,
+        rehearsal_lr_mult=args.rehearsal_lr_mult,
     )

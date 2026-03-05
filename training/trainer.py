@@ -30,6 +30,7 @@ except ImportError:  # pragma: no cover
 
 from config import FEDformerConfig
 from training.forecast_output import ForecastOutput
+from training.rehearsal_buffer import RehearsalBuffer
 from data import TimeSeriesDataset
 from models import Flow_FEDformer
 from training.utils import mc_dropout_inference
@@ -110,6 +111,12 @@ class WalkForwardTrainer:
         self.metrics_tracker = MetricsTracker()
         self.checkpoint_dir = Path("checkpoints")
         self.checkpoint_dir.mkdir(exist_ok=True)
+        rehearsal_cfg = config.sections.training.rehearsal
+        self.rehearsal_buffer: RehearsalBuffer | None = (
+            RehearsalBuffer(rehearsal_cfg.buffer_size, "uniform")
+            if rehearsal_cfg.enabled
+            else None
+        )
 
     # GPUs con menos de este número de SMs no soportan max-autotune fiablemente
     _MIN_SMS_FOR_MAX_AUTOTUNE = 40
@@ -653,6 +660,45 @@ class WalkForwardTrainer:
         )
         return np.array([]), np.array([]), np.array([])
 
+    def _populate_buffer_from_loader(self, loader: DataLoader) -> None:
+        """Alimenta el buffer con las ventanas del fold recién entrenado."""
+        for batch in loader:
+            self.rehearsal_buffer.add_batch(batch)  # type: ignore[union-attr]
+
+    def _rehearsal_step(self, components: TrainingComponents) -> None:
+        """Un paso de replay: forward+backward con LR reducido sobre muestras históricas."""
+        settings = self.config.sections.training.rehearsal
+        batch = self.rehearsal_buffer.sample(k=self.config.batch_size)  # type: ignore[union-attr]
+        if batch is None:
+            return
+
+        # Reducir LR temporalmente para el paso de rehearsal
+        original_lrs = [pg["lr"] for pg in components.optimizer.param_groups]
+        for pg in components.optimizer.param_groups:
+            pg["lr"] *= settings.rehearsal_lr_mult
+
+        try:
+            tensors = self._prepare_batch(batch)
+            loss = self._forward_and_compute_loss(
+                components.model,
+                tensors,
+                components.scaler,
+                accumulation_steps=1,
+            )
+            if loss is not None:
+                self._optimizer_step(
+                    components.optimizer,
+                    components.scaler,
+                    components.model,
+                    self.config.gradient_clip_norm,
+                )
+        except RuntimeError as exc:
+            logger.warning("Rehearsal step fallido: %s", exc)
+        finally:
+            # Siempre restaurar LR original
+            for pg, lr in zip(components.optimizer.param_groups, original_lrs):
+                pg["lr"] = lr
+
     def _run_single_fold(
         self,
         fold_idx: int,
@@ -721,6 +767,12 @@ class WalkForwardTrainer:
         for epoch in range(self.config.n_epochs_per_fold):
             avg_loss = self._train_epoch(components, epoch)
 
+            # Rehearsal replay tras cada época (solo si el buffer tiene datos de folds previos)
+            if self.rehearsal_buffer is not None and self.rehearsal_buffer.is_ready:
+                n_replay = self.config.sections.training.rehearsal.rehearsal_epochs
+                for _ in range(n_replay):
+                    self._rehearsal_step(components)
+
             # Evaluar en validación para early stopping; si no hay val_loader, usar train_loss
             if components.val_loader is not None:
                 monitor_loss = self._eval_epoch(components.model, components.val_loader)
@@ -783,6 +835,10 @@ class WalkForwardTrainer:
                 components.scaler,
                 str(best_ckpt_path),
             )
+
+        # Poblar buffer con ventanas del fold recién entrenado (para replay en folds futuros)
+        if self.rehearsal_buffer is not None:
+            self._populate_buffer_from_loader(components.train_loader)
 
         fold_preds, fold_gt, fold_samples = self._evaluate_model(
             components.model, components.test_loader
