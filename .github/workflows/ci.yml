@@ -36,8 +36,37 @@ jobs:
       - name: CLI smoke check
         run: python main.py --help
 
-      - name: Run fast test suite
-        run: pytest -q -m "not slow" --maxfail=1 --disable-warnings
+      - name: Run core fast test shard
+        run: |
+          pytest -q \
+            tests/test_dataset.py \
+            tests/test_encoder_decoder.py \
+            tests/test_fedformer_basic.py \
+            tests/test_flows.py \
+            tests/test_forecast_output.py \
+            tests/test_reproducibility.py \
+            tests/test_trainer_scheduling.py \
+            tests/test_trainer_integration.py \
+            --maxfail=1 --disable-warnings
+
+      - name: Run data and pipeline fast shard
+        run: |
+          pytest -q \
+            tests/test_architecture_and_leakage.py \
+            tests/test_financial_dataset_builder.py \
+            tests/test_finetune.py \
+            tests/test_model_registry.py \
+            tests/test_preprocessing_pipeline.py \
+            tests/test_rehearsal_buffer.py \
+            tests/test_tune_hyperparams.py \
+            --maxfail=1 --disable-warnings
+
+      - name: Run simulations and utils fast shard
+        run: |
+          pytest -q \
+            tests/test_simulations.py \
+            tests/test_utils.py \
+            --maxfail=1 --disable-warnings
 
       - name: Run feature branch regression slice
         run: |
