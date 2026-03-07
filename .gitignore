@@ -81,8 +81,10 @@ docs/plans/
 # === Runtime & CLI outputs ===
 logs/
 outputs/
+results/
 run*/
 github_log/
+=3.6.0
 
 # === IDE & editor settings ===
 .vscode/
