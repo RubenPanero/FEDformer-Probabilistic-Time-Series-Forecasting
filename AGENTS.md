@@ -1,13 +1,14 @@
 # Repository Guidelines
 
-This repository contains advanced time‑series forecasting with FEDformer and probabilistic evaluation. Use this guide to contribute efficiently and consistently.
+This repository contains advanced time-series forecasting with FEDformer, probabilistic evaluation, and Optuna-based hyperparameter search. Use this guide to contribute efficiently and consistently.
 
 ## Project Structure & Modules
 - `main.py`: entry point for training/eval and CLI args.
 - `config.py`: configuration defaults and helpers.
 - `models/`: FEDformer and related model components.
-- `training/`: training loops, schedulers, checkpoints.
+- `training/`: training loops, schedulers, checkpoints, and forecast containers.
 - `utils/`: common utilities (metrics, I/O, seeds).
+- `tune_hyperparams.py`: Optuna search runner that launches isolated `main.py` subprocess trials and can persist studies to SQLite.
 - `data/` and `reports/`: datasets and generated outputs (git‑ignored as appropriate).
 - `tests/`: pytest suite; see fixtures in `tests/conftest.py`.
 
@@ -44,13 +45,25 @@ loss = -distribution.log_prob(y_true).mean()
 - `use_gradient_checkpointing` is read from `model.config.use_gradient_checkpointing`; direct reads of `model.use_gradient_checkpointing` will fail.
 - Custom config overrides can continue using attribute syntax, but nested edits should prefer the grouped sections to stay Pylint-compliant (e.g., `config.sections.training.runtime.compile_mode = "reduce-overhead"`).
 
+## Evaluation & Runtime Updates (Mar 2026)
+- `ForecastOutput` now carries explicit quantiles through `quantiles_scaled`, `quantiles_real`, and `quantile_levels`, while `preds_*` remains the p50 path for backward compatibility (`training/forecast_output.py`).
+- `WalkForwardTrainer._evaluate_model()` still samples on GPU via `mc_dropout_inference()`, but aggregates p10/p50/p90 on CPU to avoid nondeterministic CUDA median failures when tests enable deterministic algorithms (`training/trainer.py`).
+- Trainer runtime now exposes `pin_memory` and `num_workers` in `config.sections.training.runtime`; `pin_memory` defaults to `False`, `num_workers=None` keeps the auto heuristic, and worker-backed `DataLoader`s use `multiprocessing_context="spawn"` instead of the Linux default `fork` (`config.py`, `training/trainer.py`).
+- Slow trainer integration tests force `num_workers=0` and `compile_mode=""` to keep the test path deterministic and warning-light (`tests/test_trainer_integration.py`).
+
+## Hyperparameter Search Updates (Mar 2026)
+- `tune_hyperparams.py` supports persistent Optuna studies, optional final retraining with `--best-save-canonical`, and auxiliary ticker downloads through `data/financial_dataset_builder.py`.
+- Result parsing accepts both the legacy `portfolio_metrics_*_{ticker}.csv` / `risk_metrics_*_{ticker}.csv` pattern and the current `main.py` output format without ticker suffixes.
+- Trial evaluation records auxiliary metrics (`sortino`, `var_95`, `max_drawdown`) and now isolates its wall-clock helper through `_current_time()` so tests can patch timing safely without breaking `pandas`.
+
 ## Build, Test, Run
 - `pip install -r requirements.txt`: install dependencies.
+- `source .venv/bin/activate`: activate the local virtualenv before running repo commands.
 - `pytest -q`: run unit tests; honors `pytest.ini`.
 - `pytest -q --cov`: run tests with coverage (requires `pytest-cov`).
 - `python main.py --help`: inspect available commands/flags.
-- Windows helpers: `.\n+verify_local.ps1` and `.
-verify_and_smoke.ps1` create a venv, install deps, and run pytest/smoke tests.
+- `python tune_hyperparams.py --help`: inspect Optuna search flags.
+- Windows helpers: `.\verify_local.ps1` and `.\verify_and_smoke.ps1` create a venv, install deps, and run pytest/smoke tests.
 
 ## Coding Style & Naming
 - Python 3.10+; follow PEP8 (4‑space indent, 88–120 col soft limit).
@@ -63,6 +76,8 @@ verify_and_smoke.ps1` create a venv, install deps, and run pytest/smoke tests.
 - Place tests in `tests/`, name `test_*.py`, functions `test_*`.
 - GPU tests are conditionally skipped if CUDA is unavailable; keep them fast and guarded.
 - Aim for coverage on core logic (models/, training/, utils/). Use small tensors and seeds for determinism.
+- Trainer/runtime changes should be validated with at least `tests/test_trainer_scheduling.py`, `tests/test_trainer_integration.py`, and any affected `ForecastOutput` or simulation tests.
+- Quantile-aware evaluation changes must preserve both explicit quantiles and the legacy `preds_* == p50` contract.
 
 ## Commit & Pull Requests
 - Commits: concise imperative subject (<=72 chars), body explaining what/why. Example: `train: fix LR scheduler warmup edge case`.
@@ -74,6 +89,7 @@ verify_and_smoke.ps1` create a venv, install deps, and run pytest/smoke tests.
 - Speed tips: mark long GPU tests with `@pytest.mark.slow` and guard with CUDA checks; provide CPU fallbacks where possible.
 - Artifacts: upload concise logs only (avoid datasets/models). Ensure tests are deterministic with fixed seeds.
 - Adding jobs: prefer matrix over duplication (e.g., `os: [ubuntu-latest, windows-latest]`, `python: [3.10, 3.11]`). Keep runtime < 10 min.
+- Dependency guardrail: keep `pandas<3.0` and `pandas-ta-classic<0.4` unless you also verify the preprocessing and dataset-builder paths against the newer APIs/warnings.
 
 ## CUDA Local Dev
 - Requirements: latest NVIDIA driver, CUDA toolkit matching your PyTorch build, and `torch.cuda.is_available()` should be true.
@@ -84,3 +100,8 @@ verify_and_smoke.ps1` create a venv, install deps, and run pytest/smoke tests.
 ## Security & Configuration
 - Do not commit secrets or large datasets; prefer env vars and `.gitignore`d paths under `data/`.
 - Document any new flags in `main.py --help` and update `README.md` when adding user‑facing features.
+- When changing training runtime flags, keep the grouped config surface (`config.sections.training.runtime.*`) and the legacy property proxies in sync.
+
+## Session Notes Policy
+- Keep `AGENTS.md` as stable repository guidance.
+- Store session logs and handoff plans in `archivos auxiliares/` as dated files, e.g. `session_log_YYYYMMDD.txt`.

@@ -61,6 +61,7 @@ wandb/
 lightning_logs/
 tensorboard/
 artifacts/
+artifacts_archive/
 *.ckpt
 *.pt
 *.pth
@@ -119,4 +120,3 @@ tests/validate_fixes.py
 
 # === Archivos auxiliares (locales) ===
 archivos auxiliares/
-

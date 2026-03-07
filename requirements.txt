@@ -5,7 +5,7 @@ torch>=2.0.0
 
 # Procesamiento de datos
 numpy>=1.21.0
-pandas>=1.4.0
+pandas>=1.4.0,<3.0
 scikit-learn>=1.2.0
 scipy>=1.9.0
 
@@ -19,6 +19,7 @@ wandb>=0.15.0
 # Utilidades
 tqdm>=4.64.0
 PyYAML>=6.0
+optuna>=3.6.0
 
 # Testing (opcional para desarrollo)
 pytest>=7.0.0
@@ -27,7 +28,7 @@ pytest-cov>=4.0.0
 # Paquetes Financieros
 alpha_vantage>=2.3.1
 yfinance>=0.2.18
-pandas-ta-classic>=0.3.14b
+pandas-ta-classic>=0.3.14b,<0.4
 
 # Gestión de variables de entorno
 python-dotenv>=1.0.0

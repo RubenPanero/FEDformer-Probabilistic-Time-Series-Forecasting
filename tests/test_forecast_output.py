@@ -16,10 +16,13 @@ def _make_forecast(
     preds_scaled = rng.normal(0, 1, (n_windows, pred_len, n_targets))
     gt_scaled = rng.normal(0, 1, (n_windows, pred_len, n_targets))
     samples_scaled = rng.normal(0, 1, (n_samples, n_windows, pred_len, n_targets))
+    quantile_levels = np.array([0.1, 0.5, 0.9], dtype=np.float32)
+    quantiles_scaled = np.quantile(samples_scaled, quantile_levels, axis=0)
     # Espacio real: versión escalada x 100 (simulando inverse_transform)
     preds_real = preds_scaled * 100
     gt_real = gt_scaled * 100
     samples_real = samples_scaled * 100
+    quantiles_real = quantiles_scaled * 100
     return ForecastOutput(
         preds_scaled=preds_scaled,
         gt_scaled=gt_scaled,
@@ -27,6 +30,9 @@ def _make_forecast(
         preds_real=preds_real,
         gt_real=gt_real,
         samples_real=samples_real,
+        quantiles_scaled=quantiles_scaled,
+        quantiles_real=quantiles_real,
+        quantile_levels=quantile_levels,
         metric_space=metric_space,
         return_transform=return_transform,
         target_names=["Close"],
@@ -55,6 +61,16 @@ def test_forecast_output_prices_space():
     assert np.array_equal(fo.preds_for_metrics, fo.preds_real)
     assert np.array_equal(fo.gt_for_metrics, fo.gt_real)
     assert np.array_equal(fo.samples_for_metrics, fo.samples_real)
+
+
+def test_forecast_output_exposes_explicit_quantiles():
+    """quantiles_for_metrics debe apuntar a quantiles_real con niveles explícitos."""
+    fo = _make_forecast(metric_space="returns")
+    assert fo.quantiles_for_metrics is not None
+    assert fo.quantile_levels is not None
+    assert np.array_equal(fo.quantiles_for_metrics, fo.quantiles_real)
+    assert fo.quantiles_for_metrics.shape[0] == 3
+    assert np.allclose(fo.quantile_levels, np.array([0.1, 0.5, 0.9], dtype=np.float32))
 
 
 def test_risk_simulator_backward_compat():

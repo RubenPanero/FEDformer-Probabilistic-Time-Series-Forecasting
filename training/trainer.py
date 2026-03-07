@@ -38,6 +38,7 @@ from utils import MetricsTracker, get_device
 
 logger = logging.getLogger(__name__)
 device = get_device()
+DEFAULT_QUANTILE_LEVELS = np.array([0.1, 0.5, 0.9], dtype=np.float32)
 
 
 def _cumulative_returns_to_prices(
@@ -183,7 +184,8 @@ class WalkForwardTrainer:
         self, train_subset: Subset, test_subset: Subset
     ) -> tuple[DataLoader, DataLoader]:
         """Prepara y devuelve los cargadores en memoria DataLoaders purificados."""
-        num_workers = min(4, os.cpu_count() // 2) if os.cpu_count() else 0
+        num_workers = self._num_workers()
+        pin_memory = self._pin_memory_enabled()
         generator = torch.Generator()
         generator.manual_seed(self.config.seed)
 
@@ -192,6 +194,12 @@ class WalkForwardTrainer:
             np.random.seed(base_seed + worker_id)
             torch.manual_seed(base_seed + worker_id)
 
+        worker_kwargs = (
+            {"prefetch_factor": 2, "multiprocessing_context": "spawn"}
+            if num_workers > 0
+            else {}
+        )
+
         # Evitando memory leaks sobre workers persistentes reseteando la sesión adecuadamente
         train_loader = DataLoader(
             train_subset,
@@ -199,28 +207,28 @@ class WalkForwardTrainer:
             shuffle=True,
             drop_last=False,  # False evita 0 batches cuando n_ventanas < batch_size (ej. fold 1 con seq_len grande)
             num_workers=num_workers,
-            pin_memory=torch.cuda.is_available(),
+            pin_memory=pin_memory,
             persistent_workers=False,  # Explicitely false per safe memory policy between folds
             worker_init_fn=_worker_init_fn,
             generator=generator,
-            **({"prefetch_factor": 2} if num_workers > 0 else {}),
+            **worker_kwargs,
         )
         test_loader = DataLoader(
             test_subset,
             batch_size=self.config.batch_size,
             shuffle=False,
             num_workers=num_workers,
-            pin_memory=torch.cuda.is_available(),
+            pin_memory=pin_memory,
             persistent_workers=False,  # Safe parallel evaluation
             worker_init_fn=_worker_init_fn,
             generator=generator,
-            **({"prefetch_factor": 2} if num_workers > 0 else {}),
+            **worker_kwargs,
         )
         return train_loader, test_loader
 
     def _make_loader(self, subset: Subset, shuffle: bool = False) -> DataLoader:
         """Crea un DataLoader con la configuración estándar del trainer."""
-        num_workers = min(4, os.cpu_count() // 2) if os.cpu_count() else 0
+        num_workers = self._num_workers()
         generator = torch.Generator()
         generator.manual_seed(self.config.seed)
         return DataLoader(
@@ -228,10 +236,24 @@ class WalkForwardTrainer:
             batch_size=self.config.batch_size,
             shuffle=shuffle,
             num_workers=num_workers,
-            pin_memory=torch.cuda.is_available(),
+            pin_memory=self._pin_memory_enabled(),
             persistent_workers=False,
-            **({"prefetch_factor": 2} if num_workers > 0 else {}),
+            **(
+                {"prefetch_factor": 2, "multiprocessing_context": "spawn"}
+                if num_workers > 0
+                else {}
+            ),
         )
+
+    def _pin_memory_enabled(self) -> bool:
+        """Activa pin_memory solo si está habilitado explícitamente y hay CUDA."""
+        return bool(self.config.pin_memory and torch.cuda.is_available())
+
+    def _num_workers(self) -> int:
+        """Resuelve num_workers de runtime; por defecto mantiene auto-escalado."""
+        if self.config.num_workers is not None:
+            return self.config.num_workers
+        return min(4, os.cpu_count() // 2) if os.cpu_count() else 0
 
     def _prepare_batch(self, batch: dict[str, torch.Tensor]) -> BatchTensors:
         """Transborda el bloque de tensores al dispositivo hardware principal."""
@@ -626,12 +648,13 @@ class WalkForwardTrainer:
 
     def _evaluate_model(
         self, model: Flow_FEDformer, test_loader: DataLoader
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Gestiona el pase lógico de evaluación probabilística sin contaminación cruzada."""
         model.eval()
         fold_preds: list[np.ndarray] = []
         fold_gt: list[np.ndarray] = []
         fold_samples: list[np.ndarray] = []
+        fold_quantiles: list[np.ndarray] = []
 
         with torch.inference_mode():
             for batch in test_loader:
@@ -639,8 +662,18 @@ class WalkForwardTrainer:
                     samples = mc_dropout_inference(
                         model, batch, n_samples=50, use_flow_sampling=True
                     )
-                    fold_samples.append(samples.cpu().numpy())
-                    fold_preds.append(torch.median(samples, dim=0)[0].cpu().numpy())
+                    # Agregar cuantiles en CPU evita la ruta no determinista de
+                    # torch.median(..., dim=0) en CUDA cuando los tests fuerzan
+                    # torch.use_deterministic_algorithms(True).
+                    samples_cpu = samples.detach().to("cpu", dtype=torch.float32)
+                    quantiles_cpu = torch.quantile(
+                        samples_cpu,
+                        q=torch.tensor(DEFAULT_QUANTILE_LEVELS.tolist(), dtype=torch.float32),
+                        dim=0,
+                    )
+                    fold_samples.append(samples_cpu.numpy())
+                    fold_quantiles.append(quantiles_cpu.numpy())
+                    fold_preds.append(quantiles_cpu[1].numpy())  # p50
                     fold_gt.append(batch["y_true"].cpu().numpy())
                 except (RuntimeError, ValueError) as exc:
                     logger.warning(
@@ -648,17 +681,18 @@ class WalkForwardTrainer:
                     )
                     continue
 
-        if fold_preds and fold_gt and fold_samples:
+        if fold_preds and fold_gt and fold_samples and fold_quantiles:
             return (
                 np.concatenate(fold_preds, axis=0),
                 np.concatenate(fold_gt, axis=0),
                 np.concatenate(fold_samples, axis=1),
+                np.concatenate(fold_quantiles, axis=1),
             )
 
         logger.warning(
             "No se validaron proyecciones aptas en el subsistema post-evaluador."
         )
-        return np.array([]), np.array([]), np.array([])
+        return np.array([]), np.array([]), np.array([]), np.array([])
 
     def _populate_buffer_from_loader(self, loader: DataLoader) -> None:
         """Alimenta el buffer con las ventanas del fold recién entrenado."""
@@ -705,7 +739,7 @@ class WalkForwardTrainer:
         split_size: int,
         total_size: int,
         total_folds: int,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
         """Ciclo acoplado de Entrenamiento/Validación sobre un salto iterativo delimitado (Leak Tolerant)."""
         train_end_idx = fold_idx * split_size
         test_end_idx = min((fold_idx + 1) * split_size, total_size)
@@ -840,7 +874,7 @@ class WalkForwardTrainer:
         if self.rehearsal_buffer is not None:
             self._populate_buffer_from_loader(components.train_loader)
 
-        fold_preds, fold_gt, fold_samples = self._evaluate_model(
+        fold_preds, fold_gt, fold_samples, fold_quantiles = self._evaluate_model(
             components.model, components.test_loader
         )
 
@@ -859,7 +893,7 @@ class WalkForwardTrainer:
             torch.cuda.empty_cache()
         gc.collect()
 
-        return fold_preds, fold_gt, fold_samples
+        return fold_preds, fold_gt, fold_samples, fold_quantiles
 
     def _build_fold_indices(
         self, train_end_idx: int, test_end_idx: int
@@ -889,51 +923,41 @@ class WalkForwardTrainer:
         test_indices = list(range(test_start, test_limit))
         return train_indices, test_indices
 
-    def _inverse_transform_all(
-        self,
-        preds_scaled: np.ndarray,
-        gt_scaled: np.ndarray,
-        samples_scaled: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Aplica inverse_transform_targets y, si aplica, inverse_transform_returns."""
+    def _inverse_transform_array(self, values_scaled: np.ndarray) -> np.ndarray:
+        """Invierte el escalado de cualquier tensor con targets en el último eje."""
         pipeline = self.full_dataset.preprocessor
 
-        # Invertir scaler para predicciones y ground truth
-        preds_unscaled = pipeline.inverse_transform_targets(
-            preds_scaled, self.config.target_features
-        )
-        gt_unscaled = pipeline.inverse_transform_targets(
-            gt_scaled, self.config.target_features
-        )
-
-        # Para samples: reshape a 2D, invertir scaler, reshape de vuelta
-        orig_shape = samples_scaled.shape
-        samples_flat = samples_scaled.reshape(-1, orig_shape[-1])
-        samples_unscaled = pipeline.inverse_transform_targets(
-            samples_flat, self.config.target_features
-        )
-        samples_unscaled = samples_unscaled.reshape(orig_shape)
+        orig_shape = values_scaled.shape
+        values_flat = values_scaled.reshape(-1, orig_shape[-1])
+        values_unscaled = pipeline.inverse_transform_targets(
+            values_flat, self.config.target_features
+        ).reshape(orig_shape)
 
         # Si return_transform != "none" y metric_space == "prices", reconstruir precios
         if pipeline.return_transform != "none" and self.config.metric_space == "prices":
             last_prices = np.array(
                 [pipeline.last_prices.get(t, 1.0) for t in self.config.target_features]
             )
-            preds_real = _cumulative_returns_to_prices(
-                preds_unscaled, last_prices, pipeline.return_transform
+            return _cumulative_returns_to_prices(
+                values_unscaled, last_prices, pipeline.return_transform
             )
-            gt_real = _cumulative_returns_to_prices(
-                gt_unscaled, last_prices, pipeline.return_transform
-            )
-            samples_real = _cumulative_returns_to_prices(
-                samples_unscaled, last_prices, pipeline.return_transform
-            )
-        else:
-            preds_real = preds_unscaled
-            gt_real = gt_unscaled
-            samples_real = samples_unscaled
 
-        return preds_real, gt_real, samples_real
+        return values_unscaled
+
+    def _inverse_transform_all(
+        self,
+        preds_scaled: np.ndarray,
+        gt_scaled: np.ndarray,
+        samples_scaled: np.ndarray,
+        quantiles_scaled: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Aplica inverse_transform_targets y, si aplica, reconstrucción a precios."""
+        return (
+            self._inverse_transform_array(preds_scaled),
+            self._inverse_transform_array(gt_scaled),
+            self._inverse_transform_array(samples_scaled),
+            self._inverse_transform_array(quantiles_scaled),
+        )
 
     def run_backtest(self, n_splits: int = 5) -> ForecastOutput:
         """Despliegue operativo automatizado del algoritmo sobre cortes asincrónos."""
@@ -950,11 +974,13 @@ class WalkForwardTrainer:
         all_preds: list[np.ndarray] = []
         all_gt: list[np.ndarray] = []
         all_samples: list[np.ndarray] = []
+        all_quantiles: list[np.ndarray] = []
         all_fold_ids: list[np.ndarray] = []
         # Resultados en espacio real, invertidos con el scaler propio de cada fold
         all_preds_real: list[np.ndarray] = []
         all_gt_real: list[np.ndarray] = []
         all_samples_real: list[np.ndarray] = []
+        all_quantiles_real: list[np.ndarray] = []
 
         try:
             for fold_idx in range(1, n_splits):
@@ -964,20 +990,22 @@ class WalkForwardTrainer:
                 if not fold_outputs:
                     continue
 
-                preds, gt, samples = fold_outputs
+                preds, gt, samples, quantiles = fold_outputs
                 all_preds.append(preds)
                 all_gt.append(gt)
                 all_samples.append(samples)
+                all_quantiles.append(quantiles)
                 all_fold_ids.append(np.full(len(preds), fold_idx, dtype=np.int32))
 
                 # Invertir con el scaler activo en ESTE fold, antes de que el siguiente
                 # fold llame a refit_for_cutoff y lo sobreescriba.
-                preds_r, gt_r, samples_r = self._inverse_transform_all(
-                    preds, gt, samples
+                preds_r, gt_r, samples_r, quantiles_r = self._inverse_transform_all(
+                    preds, gt, samples, quantiles
                 )
                 all_preds_real.append(preds_r)
                 all_gt_real.append(gt_r)
                 all_samples_real.append(samples_r)
+                all_quantiles_real.append(quantiles_r)
 
         except (RuntimeError, ValueError):
             logger.exception(
@@ -993,6 +1021,15 @@ class WalkForwardTrainer:
                 "No existió ni un sólo bloque precalculado de inferencias. Colapso."
             )
             empty = np.array([])
+            empty_quantiles = np.empty(
+                (
+                    len(DEFAULT_QUANTILE_LEVELS),
+                    0,
+                    self.config.pred_len,
+                    len(self.config.target_features),
+                ),
+                dtype=np.float32,
+            )
             return ForecastOutput(
                 preds_scaled=empty,
                 gt_scaled=empty,
@@ -1000,6 +1037,9 @@ class WalkForwardTrainer:
                 preds_real=empty,
                 gt_real=empty,
                 samples_real=empty,
+                quantiles_scaled=empty_quantiles,
+                quantiles_real=empty_quantiles.copy(),
+                quantile_levels=DEFAULT_QUANTILE_LEVELS.copy(),
                 metric_space=self.config.metric_space,
                 return_transform=self.config.sections.preprocessing.return_transform,
                 target_names=list(self.config.target_features),
@@ -1009,11 +1049,13 @@ class WalkForwardTrainer:
         preds_scaled = np.concatenate(all_preds, axis=0)
         gt_scaled = np.concatenate(all_gt, axis=0)
         samples_scaled = np.concatenate(all_samples, axis=1)
+        quantiles_scaled = np.concatenate(all_quantiles, axis=1)
         window_fold_ids = np.concatenate(all_fold_ids, axis=0)
 
         preds_real = np.concatenate(all_preds_real, axis=0)
         gt_real = np.concatenate(all_gt_real, axis=0)
         samples_real = np.concatenate(all_samples_real, axis=1)
+        quantiles_real = np.concatenate(all_quantiles_real, axis=1)
 
         return ForecastOutput(
             preds_scaled=preds_scaled,
@@ -1022,6 +1064,9 @@ class WalkForwardTrainer:
             preds_real=preds_real,
             gt_real=gt_real,
             samples_real=samples_real,
+            quantiles_scaled=quantiles_scaled,
+            quantiles_real=quantiles_real,
+            quantile_levels=DEFAULT_QUANTILE_LEVELS.copy(),
             metric_space=self.config.metric_space,
             return_transform=self.config.sections.preprocessing.return_transform,
             target_names=list(self.config.target_features),

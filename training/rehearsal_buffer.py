@@ -7,6 +7,7 @@ durante el entrenamiento del fold actual, mitigando el olvido catastrófico.
 """
 
 import random
+from collections import deque
 
 import torch
 
@@ -21,7 +22,7 @@ class RehearsalBuffer:
     def __init__(self, capacity: int, strategy: str = "uniform") -> None:
         self._capacity = capacity
         self._strategy = strategy  # "uniform" (única estrategia implementada)
-        self._storage: list[dict[str, torch.Tensor]] = []
+        self._storage: deque[dict[str, torch.Tensor]] = deque(maxlen=capacity)
 
     def add_batch(self, batch: dict[str, torch.Tensor]) -> None:
         """Descompone el batch en muestras individuales y las añade al buffer (FIFO).
@@ -31,9 +32,7 @@ class RehearsalBuffer:
         batch_size = next(iter(batch.values())).shape[0]
         for i in range(batch_size):
             sample = {k: v[i].detach().cpu() for k, v in batch.items()}
-            if len(self._storage) >= self._capacity:
-                self._storage.pop(0)  # evict oldest (FIFO)
-            self._storage.append(sample)
+            self._storage.append(sample)  # deque(maxlen) hace FIFO automáticamente
 
     def sample(self, k: int) -> dict[str, torch.Tensor] | None:
         """Retorna k muestras aleatorias como batch o None si el buffer está vacío.
@@ -43,8 +42,8 @@ class RehearsalBuffer:
         if not self._storage:
             return None
         k = min(k, len(self._storage))
-        indices = random.sample(range(len(self._storage)), k)
-        sampled = [self._storage[i] for i in indices]
+        pool = list(self._storage)  # O(n) una vez; evita O(n) por índice en deque
+        sampled = random.sample(pool, k)
         return {key: torch.stack([s[key] for s in sampled]) for key in sampled[0]}
 
     def update(self, batch: dict[str, torch.Tensor]) -> None:

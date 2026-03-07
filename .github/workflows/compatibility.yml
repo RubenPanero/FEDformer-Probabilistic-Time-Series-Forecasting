@@ -2,9 +2,10 @@ name: Compatibility Tests
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, feature/optuna]
   pull_request:
-    branches: [main, master, develop]
+    branches: [main, master, develop, feature/optuna]
+  workflow_dispatch:
 
 jobs:
   api-and-runtime-compatibility:
@@ -112,5 +113,9 @@ jobs:
             tests/test_fedformer_basic.py \
             tests/test_architecture_and_leakage.py \
             tests/test_flows.py \
+            tests/test_forecast_output.py \
+            tests/test_model_registry.py \
+            tests/test_trainer_scheduling.py \
+            tests/test_tune_hyperparams.py \
             tests/test_reproducibility.py \
             -m "not slow" --maxfail=1

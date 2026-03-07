@@ -5,6 +5,7 @@ Tests unitarios para utils/model_registry.py:
 """
 
 from pathlib import Path
+from unittest.mock import patch
 
 from utils.model_registry import (
     get_specialist,
@@ -289,3 +290,131 @@ def test_list_specialists_empty_when_registry_missing(tmp_path: Path) -> None:
     registry_path = tmp_path / "nonexistent_registry.json"
     result = list_specialists(registry_path)
     assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Grupo 4: guardias de _save_canonical_specialist en main.py
+# ---------------------------------------------------------------------------
+
+
+def _make_save_canonical_args(tmp_path: Path, splits: int = 4) -> object:
+    """Construye argparse.Namespace mínimo para _save_canonical_specialist."""
+    import argparse
+
+    return argparse.Namespace(
+        splits=splits,
+        targets=["Close"],
+        seq_len=96,
+        pred_len=20,
+        batch_size=64,
+        return_transform="log_return",
+        metric_space="returns",
+        gradient_clip_norm=0.5,
+    )
+
+
+def _make_save_canonical_deps(tmp_path: Path):
+    """Crea checkpoint falso y mocks de config/dataset para _save_canonical_specialist."""
+    from unittest.mock import MagicMock
+
+    # Checkpoint del último fold (fold 3 para splits=4) relativo a tmp_path
+    ckpt = tmp_path / "checkpoints" / "best_model_fold_3.pt"
+    ckpt.parent.mkdir(parents=True, exist_ok=True)
+    ckpt.write_bytes(b"fake_weights")
+
+    # Config completamente mockeado para no depender de CSVs reales
+    cfg = MagicMock()
+    cfg.seq_len = 96
+    cfg.pred_len = 20
+    cfg.return_transform = "log_return"
+    cfg.metric_space = "returns"
+    cfg.gradient_clip_norm = 0.5
+    cfg.batch_size = 64
+
+    dataset = MagicMock()
+    dataset.full_data_scaled = MagicMock()
+    dataset.full_data_scaled.__len__ = MagicMock(return_value=1725)
+    dataset.full_data_scaled.shape = (1725, 11)
+
+    return cfg, dataset
+
+
+def test_save_canonical_omits_below_min_sharpe(tmp_path: Path, monkeypatch) -> None:
+    """_save_canonical_specialist omite el registro si Sharpe < 0.5."""
+    import main as main_module
+
+    monkeypatch.chdir(tmp_path)
+    args = _make_save_canonical_args(tmp_path)
+    cfg, dataset = _make_save_canonical_deps(tmp_path)
+
+    registry_path = tmp_path / "checkpoints" / "model_registry.json"
+    monkeypatch.setattr(
+        main_module, "DEFAULT_REGISTRY_PATH", registry_path, raising=False
+    )
+
+    # Sharpe = 0.3 → bajo el umbral mínimo de 0.5
+    metrics = {
+        "sharpe_ratio": 0.3,
+        "sortino_ratio": 0.5,
+        "max_drawdown": -0.4,
+        "volatility": 0.2,
+    }
+
+    with patch("main.register_specialist") as mock_reg:
+        main_module._save_canonical_specialist(
+            "data/MSFT_features.csv", args, cfg, dataset, metrics
+        )
+        mock_reg.assert_not_called()
+
+
+def test_save_canonical_omits_when_existing_sharpe_is_better(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """_save_canonical_specialist no sobreescribe si el registry tiene mejor Sharpe."""
+    import main as main_module
+
+    monkeypatch.chdir(tmp_path)
+    args = _make_save_canonical_args(tmp_path)
+    cfg, dataset = _make_save_canonical_deps(tmp_path)
+
+    # Pre-poblar registry con NVDA Sharpe=0.8 (mejor que el nuevo 0.65)
+    registry_path = tmp_path / "checkpoints" / "model_registry.json"
+    save_registry(
+        {
+            "version": "1.0",
+            "specialists": {
+                "NVDA": {
+                    "checkpoint": "checkpoints/nvda_canonical.pt",
+                    "trained_at": "2026-03-05",
+                    "config": DUMMY_CONFIG,
+                    "metrics": {
+                        "sharpe": 0.8,
+                        "sortino": 1.2,
+                        "max_drawdown": -0.5,
+                        "volatility": 0.2,
+                    },
+                    "data": DUMMY_DATA_INFO,
+                    "training_command": "",
+                    "notes": "",
+                }
+            },
+        },
+        registry_path,
+    )
+
+    # Nuevo run con Sharpe=0.65 (peor que 0.8)
+    metrics = {
+        "sharpe_ratio": 0.65,
+        "sortino_ratio": 1.0,
+        "max_drawdown": -0.6,
+        "volatility": 0.25,
+    }
+
+    with (
+        patch("main.register_specialist") as mock_reg,
+        patch("main.get_specialist", return_value={"metrics": {"sharpe": 0.8}}),
+    ):
+        main_module._save_canonical_specialist(
+            "data/NVDA_features.csv", args, cfg, dataset, metrics
+        )
+        mock_reg.assert_not_called()

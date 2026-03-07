@@ -23,13 +23,20 @@ class ForecastOutput:
     preds_real: np.ndarray
     gt_real: np.ndarray
     samples_real: np.ndarray
+    quantiles_scaled: np.ndarray | None = None  # (n_quantiles, n_windows, pred_len, n_targets)
+    quantiles_real: np.ndarray | None = None
+    quantile_levels: np.ndarray | None = None  # (n_quantiles,)
 
     # Metadatos
-    metric_space: str  # "returns" | "prices"
-    return_transform: str  # "none" | "log_return" | "simple_return"
-    target_names: list[str]
+    metric_space: str = "returns"  # "returns" | "prices"
+    return_transform: str = "none"  # "none" | "log_return" | "simple_return"
+    target_names: list[str] | None = None
     # Índice de fold por ventana — shape (n_windows,), dtype int32; None si no disponible
     window_fold_ids: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        if self.target_names is None:
+            self.target_names = []
 
     @property
     def preds_for_metrics(self) -> np.ndarray:
@@ -50,3 +57,8 @@ class ForecastOutput:
     def samples_for_metrics(self) -> np.ndarray:
         """Muestras desescaladas para métricas financieras."""
         return self.samples_real
+
+    @property
+    def quantiles_for_metrics(self) -> np.ndarray | None:
+        """Cuantiles desescalados para métricas financieras, si están disponibles."""
+        return self.quantiles_real

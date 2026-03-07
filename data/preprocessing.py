@@ -116,7 +116,7 @@ class PreprocessingPipeline:
             if self.return_transform == "log_return":
                 out[col] = np.log(series / series.shift(1))
             elif self.return_transform == "simple_return":
-                out[col] = series.pct_change()
+                out[col] = series.pct_change(fill_method=None)
         # Eliminar primera fila que contiene NaN por el shift
         return out.iloc[1:].reset_index(drop=True)
 

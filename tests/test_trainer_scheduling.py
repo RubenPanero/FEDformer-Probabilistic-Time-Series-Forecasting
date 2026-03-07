@@ -236,6 +236,32 @@ def test_train_loader_drop_last_false_produces_batches_when_subset_smaller_than_
     )
 
 
+def test_pin_memory_disabled_by_default(config) -> None:
+    """pin_memory debe permanecer apagado salvo activación explícita."""
+    from training.trainer import WalkForwardTrainer
+
+    trainer = WalkForwardTrainer(config, MagicMock())
+    assert trainer._pin_memory_enabled() is False
+
+
+def test_pin_memory_respects_runtime_flag(config) -> None:
+    """pin_memory solo debe activarse con flag explícito y CUDA disponible."""
+    from training.trainer import WalkForwardTrainer
+
+    config.pin_memory = True
+    trainer = WalkForwardTrainer(config, MagicMock())
+    assert trainer._pin_memory_enabled() is torch.cuda.is_available()
+
+
+def test_num_workers_uses_runtime_override(config) -> None:
+    """num_workers debe respetar el override explícito del runtime."""
+    from training.trainer import WalkForwardTrainer
+
+    config.num_workers = 0
+    trainer = WalkForwardTrainer(config, MagicMock())
+    assert trainer._num_workers() == 0
+
+
 # ---------------------------------------------------------------------------
 # Tests para los nuevos defaults de LoopSettings
 # ---------------------------------------------------------------------------

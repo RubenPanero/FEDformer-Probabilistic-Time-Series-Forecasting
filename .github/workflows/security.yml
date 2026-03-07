@@ -2,11 +2,12 @@ name: Security & Code Quality
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, feature/optuna]
   pull_request:
-    branches: [main, master, develop]
+    branches: [main, master, develop, feature/optuna]
   schedule:
     - cron: "0 0 * * 0"
+  workflow_dispatch:
 
 jobs:
   quality-and-security:

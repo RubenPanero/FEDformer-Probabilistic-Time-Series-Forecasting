@@ -76,7 +76,9 @@ def _crear_config_minima(csv_path: str):
         batch_size=4,
         # Sin AMP ni compilación (evitar problemas en CPU)
         use_amp=False,
-        compile_mode="default",
+        compile_mode="",
+        pin_memory=False,
+        num_workers=0,
         # Sin early stopping
         patience=0,
         # Sin W&B
@@ -130,6 +132,12 @@ def test_run_backtest_returns_forecast_output(tmp_path: Path) -> None:
     assert resultado.preds_scaled.size > 0, (
         "preds_scaled no debe estar vacío tras un fold exitoso"
     )
+    assert resultado.quantiles_scaled is not None
+    assert resultado.quantiles_real is not None
+    assert resultado.quantile_levels is not None
+    assert resultado.quantiles_scaled.shape[0] == 3
+    assert np.allclose(resultado.quantile_levels, np.array([0.1, 0.5, 0.9], dtype=np.float32))
+    assert np.allclose(resultado.preds_scaled, resultado.quantiles_scaled[1])
 
     # Verificar dimensión de targets en el eje -1
     assert resultado.preds_scaled.shape[-1] == n_targets, (

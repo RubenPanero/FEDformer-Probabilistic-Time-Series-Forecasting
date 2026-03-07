@@ -2,9 +2,10 @@ name: Regression Guards
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, feature/optuna]
   pull_request:
-    branches: [main, master, develop]
+    branches: [main, master, develop, feature/optuna]
+  workflow_dispatch:
 
 jobs:
   regression-guards:
@@ -41,4 +42,13 @@ jobs:
           pytest -q \
             tests/test_flows.py \
             tests/test_finetune.py \
+            --maxfail=1
+
+      - name: Run trainer and Optuna guards
+        run: |
+          pytest -q \
+            tests/test_forecast_output.py \
+            tests/test_trainer_scheduling.py \
+            tests/test_trainer_integration.py \
+            tests/test_tune_hyperparams.py \
             --maxfail=1

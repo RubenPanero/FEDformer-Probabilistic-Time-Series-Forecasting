@@ -45,7 +45,7 @@ from training import WalkForwardTrainer
 from training.forecast_output import ForecastOutput
 from utils import get_device, setup_cuda_optimizations
 from utils.helpers import set_seed
-from utils.model_registry import register_specialist
+from utils.model_registry import get_specialist, register_specialist
 
 # Consolidación inicial de determinismo e inicializaciones del clúster físico
 set_seed(42, deterministic=False)
@@ -799,6 +799,31 @@ def _save_canonical_specialist(
         f"--gradient-clip-norm {args.gradient_clip_norm} "
         "--save-results --no-show --save-canonical"
     )
+
+    # Guardia 1: Sharpe mínimo absoluto
+    min_sharpe = 0.5
+    new_sharpe = metrics_dict["sharpe"]
+    if new_sharpe < min_sharpe:
+        logger.warning(
+            "Especialista '%s' omitido: Sharpe %.3f < umbral mínimo %.1f.",
+            ticker,
+            new_sharpe,
+            min_sharpe,
+        )
+        return
+
+    # Guardia 2: no sobreescribir si el registry ya tiene un modelo mejor
+    existing = get_specialist(ticker)
+    if existing is not None:
+        existing_sharpe = existing.get("metrics", {}).get("sharpe", float("-inf"))
+        if new_sharpe <= existing_sharpe:
+            logger.info(
+                "Especialista '%s' no actualizado: Sharpe nuevo %.3f ≤ existente %.3f.",
+                ticker,
+                new_sharpe,
+                existing_sharpe,
+            )
+            return
 
     try:
         canonical_path = register_specialist(

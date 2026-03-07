@@ -109,6 +109,8 @@ class RuntimeSettings:
 
     use_amp: bool = True
     use_gradient_checkpointing: bool = False
+    pin_memory: bool = False
+    num_workers: Optional[int] = None
     compile_mode: str = "max-autotune"
     finetune_from: Optional[str] = None
     freeze_backbone: bool = False
@@ -234,6 +236,8 @@ class FEDformerConfig:
         "batch_size",
         "use_amp",
         "use_gradient_checkpointing",
+        "pin_memory",
+        "num_workers",
         "gradient_accumulation_steps",
         "gradient_clip_norm",
         "compile_mode",
@@ -386,6 +390,8 @@ class FEDformerConfig:
             )
         if self.batch_size <= 0:
             raise ValueError(f"Batch size must be positive, got {self.batch_size}")
+        if self.num_workers is not None and self.num_workers < 0:
+            raise ValueError(f"num_workers must be >= 0, got {self.num_workers}")
         if self.gradient_accumulation_steps <= 0:
             raise ValueError(
                 "Gradient accumulation steps must be positive, got "
@@ -619,6 +625,22 @@ class FEDformerConfig:
     @use_gradient_checkpointing.setter
     def use_gradient_checkpointing(self, value: bool) -> None:
         self.sections.training.runtime.use_gradient_checkpointing = value
+
+    @property
+    def pin_memory(self) -> bool:
+        return self.sections.training.runtime.pin_memory
+
+    @pin_memory.setter
+    def pin_memory(self, value: bool) -> None:
+        self.sections.training.runtime.pin_memory = value
+
+    @property
+    def num_workers(self) -> Optional[int]:
+        return self.sections.training.runtime.num_workers
+
+    @num_workers.setter
+    def num_workers(self, value: Optional[int]) -> None:
+        self.sections.training.runtime.num_workers = value
 
     @property
     def gradient_accumulation_steps(self) -> int:
