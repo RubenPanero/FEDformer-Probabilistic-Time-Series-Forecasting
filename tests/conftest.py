@@ -15,8 +15,8 @@ if TYPE_CHECKING:
     from config import FEDformerConfig
     from models.fedformer import Flow_FEDformer
 
-# Path al dataset permanente NVDA incluido en el repo; FEDformer config lee headers para inferir dims
-DATA_CSV = str(ROOT / "data" / "NVDA_features.csv")
+# Fixture estable versionada para tests; no depende de datasets locales bajo data/
+DATA_CSV = str(ROOT / "tests" / "fixtures" / "NVDA_features.csv")
 
 
 @pytest.fixture(scope="session", autouse=True)

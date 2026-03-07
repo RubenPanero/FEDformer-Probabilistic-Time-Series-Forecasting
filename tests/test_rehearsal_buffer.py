@@ -8,6 +8,8 @@ from data import TimeSeriesDataset
 from training.rehearsal_buffer import RehearsalBuffer
 from training.trainer import WalkForwardTrainer
 
+FIXTURE_CSV = "tests/fixtures/NVDA_features.csv"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,7 +29,7 @@ def _make_batch(batch_size: int = 4) -> dict[str, torch.Tensor]:
 def _base_config(**kwargs: object) -> FEDformerConfig:
     return FEDformerConfig(
         target_features=["Close"],
-        file_path="data/NVDA_features.csv",
+        file_path=FIXTURE_CSV,
         **kwargs,
     )
 

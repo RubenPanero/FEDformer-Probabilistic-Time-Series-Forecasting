@@ -15,11 +15,13 @@ from training.forecast_output import ForecastOutput
 from training.sequential_finetuner import _load_symbols_from_file, finetune_sequence
 from training.trainer import WalkForwardTrainer
 
+FIXTURE_CSV = "tests/fixtures/NVDA_features.csv"
+
 
 def _base_config(**kwargs: object) -> FEDformerConfig:
     return FEDformerConfig(
         target_features=["Close"],
-        file_path="data/NVDA_features.csv",
+        file_path=FIXTURE_CSV,
         **kwargs,
     )
 

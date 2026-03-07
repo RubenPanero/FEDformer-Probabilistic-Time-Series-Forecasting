@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from pathlib import Path
 
 from config import FEDformerConfig
 from data import TimeSeriesDataset
@@ -8,11 +9,13 @@ from models.layers import AttentionConfig, AttentionLayer
 from training import WalkForwardTrainer
 from utils import apply_conformal_interval, conformal_quantile
 
+FIXTURE_CSV = str(Path("tests/fixtures/NVDA_features.csv"))
+
 
 def test_model_uses_configured_depth() -> None:
     cfg = FEDformerConfig(
         target_features=["Close"],
-        file_path="data/NVDA_features.csv",
+        file_path=FIXTURE_CSV,
         e_layers=3,
         d_layers=2,
     )
@@ -36,7 +39,7 @@ def test_attention_output_depends_on_values() -> None:
 def test_fold_indices_avoid_label_leakage() -> None:
     cfg = FEDformerConfig(
         target_features=["Close"],
-        file_path="data/NVDA_features.csv",
+        file_path=FIXTURE_CSV,
         seq_len=32,
         label_len=16,
         pred_len=8,
@@ -61,7 +64,7 @@ def test_fold_indices_avoid_label_leakage() -> None:
 def test_fold_refit_changes_scaler_distribution() -> None:
     cfg = FEDformerConfig(
         target_features=["Close"],
-        file_path="data/NVDA_features.csv",
+        file_path=FIXTURE_CSV,
     )
     ds = TimeSeriesDataset(cfg, flag="all")
     if hasattr(ds.scaler, "center_"):
