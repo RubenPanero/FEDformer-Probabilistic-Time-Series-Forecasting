@@ -295,7 +295,7 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
     cfg = main_module._create_config(
         args,
         targets=["Close"],
-        csv_path="data/NVDA_features.csv",
+        csv_path=FIXTURE_CSV,
     )
 
     assert cfg.return_transform == "log_return"
