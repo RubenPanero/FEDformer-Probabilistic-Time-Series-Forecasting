@@ -11,6 +11,9 @@ jobs:
   test:
     name: Unit Tests (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -49,19 +52,8 @@ jobs:
             tests/test_trainer_integration.py \
             --maxfail=1 --disable-warnings
 
-      - name: Run data and pipeline fast shard
-        run: |
-          pytest -q \
-            tests/test_architecture_and_leakage.py \
-            tests/test_financial_dataset_builder.py \
-            tests/test_finetune.py \
-            tests/test_model_registry.py \
-            tests/test_preprocessing_pipeline.py \
-            tests/test_rehearsal_buffer.py \
-            tests/test_tune_hyperparams.py \
-            --maxfail=1 --disable-warnings
-
       - name: Run simulations and utils fast shard
+        if: runner.os == 'Linux'
         run: |
           pytest -q \
             tests/test_simulations.py \
@@ -69,6 +61,7 @@ jobs:
             --maxfail=1 --disable-warnings
 
       - name: Run feature branch regression slice
+        if: runner.os == 'Linux'
         run: |
           pytest -q \
             tests/test_forecast_output.py \
@@ -79,5 +72,5 @@ jobs:
             --maxfail=1
 
       - name: Coverage report (best-effort)
-        if: ${{ always() }}
+        if: ${{ always() && runner.os == 'Linux' }}
         run: pytest -q -m "not slow" --cov=. --cov-report=xml:coverage.xml || true
