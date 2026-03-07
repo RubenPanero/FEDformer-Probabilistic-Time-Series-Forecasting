@@ -56,6 +56,12 @@ loss = -distribution.log_prob(y_true).mean()
 - Result parsing accepts both the legacy `portfolio_metrics_*_{ticker}.csv` / `risk_metrics_*_{ticker}.csv` pattern and the current `main.py` output format without ticker suffixes.
 - Trial evaluation records auxiliary metrics (`sortino`, `var_95`, `max_drawdown`) and now isolates its wall-clock helper through `_current_time()` so tests can patch timing safely without breaking `pandas`.
 
+## Test Fixture & CI Notes (Mar 2026)
+- Tests that require a committed market CSV should use `tests/fixtures/NVDA_features.csv` via `tests/conftest.py` or local fixture constants, not developer-local files under `data/`.
+- Keep `data/NVDA_features.csv` available for local experiments if needed, but do not make CI or unit tests depend on untracked files in `data/`.
+- Cross-platform CI in `.github/workflows/ci.yml` is intentionally scoped to stable shards; broader Linux-only regression and compatibility coverage lives in `.github/workflows/critical-fixes.yml` and `.github/workflows/compatibility.yml`.
+- Local generated outputs remain ignored via `.gitignore`, including `results/` and the accidental `=3.6.0` artifact.
+
 ## Build, Test, Run
 - `pip install -r requirements.txt`: install dependencies.
 - `source .venv/bin/activate`: activate the local virtualenv before running repo commands.
@@ -90,6 +96,7 @@ loss = -distribution.log_prob(y_true).mean()
 - Artifacts: upload concise logs only (avoid datasets/models). Ensure tests are deterministic with fixed seeds.
 - Adding jobs: prefer matrix over duplication (e.g., `os: [ubuntu-latest, windows-latest]`, `python: [3.10, 3.11]`). Keep runtime < 10 min.
 - Dependency guardrail: keep `pandas<3.0` and `pandas-ta-classic<0.4` unless you also verify the preprocessing and dataset-builder paths against the newer APIs/warnings.
+- Keep cross-platform jobs focused on stable shards; add Linux-only jobs for broader regression coverage rather than overloading the matrix job with environment-sensitive tests.
 
 ## CUDA Local Dev
 - Requirements: latest NVIDIA driver, CUDA toolkit matching your PyTorch build, and `torch.cuda.is_available()` should be true.
