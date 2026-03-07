@@ -668,7 +668,9 @@ class WalkForwardTrainer:
                     samples_cpu = samples.detach().to("cpu", dtype=torch.float32)
                     quantiles_cpu = torch.quantile(
                         samples_cpu,
-                        q=torch.tensor(DEFAULT_QUANTILE_LEVELS.tolist(), dtype=torch.float32),
+                        q=torch.tensor(
+                            DEFAULT_QUANTILE_LEVELS.tolist(), dtype=torch.float32
+                        ),
                         dim=0,
                     )
                     fold_samples.append(samples_cpu.numpy())

@@ -136,7 +136,9 @@ def test_run_backtest_returns_forecast_output(tmp_path: Path) -> None:
     assert resultado.quantiles_real is not None
     assert resultado.quantile_levels is not None
     assert resultado.quantiles_scaled.shape[0] == 3
-    assert np.allclose(resultado.quantile_levels, np.array([0.1, 0.5, 0.9], dtype=np.float32))
+    assert np.allclose(
+        resultado.quantile_levels, np.array([0.1, 0.5, 0.9], dtype=np.float32)
+    )
     assert np.allclose(resultado.preds_scaled, resultado.quantiles_scaled[1])
 
     # Verificar dimensión de targets en el eje -1

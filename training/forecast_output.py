@@ -23,7 +23,9 @@ class ForecastOutput:
     preds_real: np.ndarray
     gt_real: np.ndarray
     samples_real: np.ndarray
-    quantiles_scaled: np.ndarray | None = None  # (n_quantiles, n_windows, pred_len, n_targets)
+    quantiles_scaled: np.ndarray | None = (
+        None  # (n_quantiles, n_windows, pred_len, n_targets)
+    )
     quantiles_real: np.ndarray | None = None
     quantile_levels: np.ndarray | None = None  # (n_quantiles,)
 

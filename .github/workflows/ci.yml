@@ -33,6 +33,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Create synthetic CI datasets
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          import numpy as np
+          import pandas as pd
+
+          data_dir = Path("data")
+          data_dir.mkdir(exist_ok=True)
+          specs = {"NVDA": 320, "MSFT": 320}
+
+          for idx, (ticker, rows) in enumerate(specs.items()):
+              rng = np.random.default_rng(42 + idx)
+              close = 100.0 + np.cumsum(rng.normal(0.1, 1.0, rows))
+              volume = rng.integers(500_000, 2_000_000, size=rows)
+              df = pd.DataFrame(
+                  {
+                      "date": pd.date_range("2024-01-01", periods=rows, freq="D"),
+                      "Close": close,
+                      "Volume": volume,
+                  }
+              )
+              df.to_csv(data_dir / f"{ticker}_features.csv", index=False)
+          PY
+
       - name: CLI smoke check
         run: python main.py --help
 

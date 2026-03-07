@@ -304,9 +304,7 @@ def download_extra_tickers() -> None:
         )
         if proc.returncode == 0:
             if not dest.exists():
-                logger.error(
-                    "%-6s finalizó sin generar %s", ticker, dest.as_posix()
-                )
+                logger.error("%-6s finalizó sin generar %s", ticker, dest.as_posix())
                 continue
             df = pd.read_csv(dest)
             logger.info("%-6s → %d filas × %d cols", ticker, len(df), df.shape[1])

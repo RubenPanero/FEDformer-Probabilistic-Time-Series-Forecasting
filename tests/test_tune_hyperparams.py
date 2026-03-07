@@ -282,7 +282,9 @@ def test_download_extra_tickers_skips_existing(tmp_path: Path, monkeypatch) -> N
                 called_for.append(ticker)
                 break
         if ticker is not None:
-            (data_dir / f"{ticker}_features.csv").write_text("date,Close\n2024-01-01,1\n")
+            (data_dir / f"{ticker}_features.csv").write_text(
+                "date,Close\n2024-01-01,1\n"
+            )
         m = MagicMock()
         m.returncode = 0
         return m
