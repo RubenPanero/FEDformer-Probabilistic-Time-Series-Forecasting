@@ -803,7 +803,10 @@ class WalkForwardTrainer:
             train_subset, test_subset, fold_idx, val_subset=val_subset
         )
 
-        best_loss = float("inf")
+        loop_cfg = self.config.sections.training.loop
+        # Para monitor_mode="max", negamos el valor: early stopping siempre minimiza
+        monitor_sign = -1.0 if loop_cfg.monitor_mode == "max" else 1.0
+        best_effective = float("inf")
         early_stopper = _EarlyStopping(
             patience=self.config.patience,
             min_delta=self.config.min_delta,
@@ -818,22 +821,28 @@ class WalkForwardTrainer:
                     self._rehearsal_step(components)
 
             # Evaluar en validación para early stopping; si no hay val_loader, usar train_loss
+            train_m: dict[str, float] = {"loss": avg_loss}
+            val_m: dict[str, float] | None = None
             if components.val_loader is not None:
-                monitor_loss = self._eval_epoch(components.model, components.val_loader)
+                val_loss_raw = self._eval_epoch(components.model, components.val_loader)
+                val_m = {"loss": val_loss_raw}
                 logger.info(
                     "  Val Loss época %s/%s: %.4f",
                     epoch + 1,
                     self.config.n_epochs_per_fold,
-                    monitor_loss,
+                    val_loss_raw,
                 )
                 self.metrics_tracker.log_metrics(
-                    {"val_loss": monitor_loss}, epoch, fold=fold_idx
+                    {"val_loss": val_loss_raw}, epoch, fold=fold_idx
                 )
-            else:
-                monitor_loss = avg_loss
 
-            if monitor_loss < best_loss:
-                best_loss = monitor_loss
+            monitor_loss = self._select_monitor_value(
+                train_m, val_m, loop_cfg.monitor_metric
+            )
+            effective_val = monitor_sign * monitor_loss
+
+            if effective_val < best_effective:
+                best_effective = effective_val
                 self.save_checkpoint(components, epoch, monitor_loss, best=True)
 
             if (epoch + 1) % 5 == 0:
@@ -845,12 +854,12 @@ class WalkForwardTrainer:
 
             if self.wandb_run:
                 log_data = {"train_loss": avg_loss, "epoch": epoch, "fold": fold_idx}
-                if components.val_loader is not None:
-                    log_data["val_loss"] = monitor_loss
+                if val_m is not None:
+                    log_data["val_loss"] = val_m["loss"]
                 self.wandb_run.log(log_data)
 
-            # Verificar parada anticipada sobre val_loss (o train_loss si no hay val)
-            if early_stopper.step(monitor_loss):
+            # Verificar parada anticipada usando el valor efectivo (normalizado por mode)
+            if early_stopper.step(effective_val):
                 logger.warning(
                     "Parada anticipada activada en época %s/%s para fold %s (patience=%s).",
                     epoch + 1,
@@ -968,6 +977,47 @@ class WalkForwardTrainer:
             self._inverse_transform_array(samples_scaled),
             self._inverse_transform_array(quantiles_scaled),
         )
+
+    @staticmethod
+    def _select_monitor_value(
+        train_metrics: dict[str, float],
+        val_metrics: dict[str, float] | None,
+        monitor_metric: str,
+    ) -> float:
+        """Selecciona el valor escalar a monitorear para early stopping y checkpoint.
+
+        Args:
+            train_metrics: Métricas de entrenamiento de la época actual (clave "loss").
+            val_metrics: Métricas de validación de la época actual (clave "loss", etc.)
+                o None si no hay split de validación.
+            monitor_metric: Nombre de la métrica a monitorear.
+
+        Returns:
+            Valor escalar a optimizar (sin aplicar el signo de monitor_mode).
+        """
+        val = val_metrics or {}
+        if monitor_metric == "val_loss":
+            return val.get("loss", train_metrics["loss"])
+        if monitor_metric == "val_pinball_p50":
+            if "pinball_p50" in val:
+                return val["pinball_p50"]
+            logger.warning(
+                "val_pinball_p50 no disponible en val_metrics, usando val_loss como fallback"
+            )
+            return val.get("loss", train_metrics["loss"])
+        if monitor_metric == "val_coverage_80":
+            if "coverage_80" in val:
+                return val["coverage_80"]
+            logger.warning(
+                "val_coverage_80 no disponible en val_metrics, usando val_loss como fallback"
+            )
+            return val.get("loss", train_metrics["loss"])
+        if monitor_metric == "composite":
+            val_loss = val.get("loss", train_metrics["loss"])
+            pinball = val.get("pinball_p50", val_loss)
+            return 0.5 * val_loss + 0.5 * pinball
+        # Fallback seguro (no debería llegar aquí tras validación en config)
+        return val.get("loss", train_metrics["loss"])
 
     def _compute_fold_probabilistic_metrics(
         self,

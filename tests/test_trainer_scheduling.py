@@ -340,3 +340,31 @@ def test_patience_min_delta_ignores_small_noise() -> None:
     assert stopper.counter == 0, (
         f"Tras mejora real (Δ=0.01 > min_delta=5e-3), counter debe ser 0, got {stopper.counter}"
     )
+
+
+def test_early_stopping_uses_configured_monitor_metric() -> None:
+    """_select_monitor_value + _EarlyStopping integran correctamente la métrica configurada.
+
+    Cuando monitor_metric='val_pinball_p50', el valor de pinball_p50 debe alimentar
+    al early stopper en lugar de val_loss.
+    """
+    train_m = {"loss": 1.5}
+    val_m_good = {"loss": 1.2, "pinball_p50": 0.05}  # pinball mejorando
+    val_m_bad = {"loss": 1.2, "pinball_p50": 0.20}  # pinball empeorando
+
+    stopper = _EarlyStopping(patience=2, min_delta=1e-4)
+
+    # Primera llamada establece best con pinball=0.05
+    v1 = WalkForwardTrainer._select_monitor_value(
+        train_m, val_m_good, "val_pinball_p50"
+    )
+    assert abs(v1 - 0.05) < 1e-9
+    stopper.step(v1)
+
+    # Segunda llamada con pinball=0.20 debe incrementar el contador
+    v2 = WalkForwardTrainer._select_monitor_value(train_m, val_m_bad, "val_pinball_p50")
+    assert abs(v2 - 0.20) < 1e-9
+    stopper.step(v2)
+    assert stopper.counter == 1, (
+        f"Counter debe ser 1 tras empeoramiento, got {stopper.counter}"
+    )
