@@ -243,3 +243,59 @@ def test_run_backtest_no_crash_with_wandb_disabled(tmp_path: Path) -> None:
             os.environ.pop("WANDB_MODE", None)
         else:
             os.environ["WANDB_MODE"] = env_original
+
+
+@pytest.mark.slow
+def test_preds_real_equals_p50_real(tmp_path: Path) -> None:
+    """Verifica invariante: preds_real == p50_real en ForecastOutput."""
+    from training import WalkForwardTrainer
+
+    csv_path = tmp_path / "data_sintetico.csv"
+    _crear_csv_sintetico(csv_path, n_filas=120)
+    config = _crear_config_minima(str(csv_path))
+    dataset = _crear_dataset(config)
+
+    trainer = WalkForwardTrainer(config=config, full_dataset=dataset)
+    resultado = trainer.run_backtest(n_splits=2)
+
+    assert resultado.quantiles_real is not None
+    assert resultado.quantile_levels is not None
+    # preds_real debe ser igual al cuantil p50 en espacio real
+    np.testing.assert_array_almost_equal(
+        resultado.preds_real,
+        resultado.p50_real,
+        decimal=6,
+        err_msg="preds_real debe coincidir con p50_real",
+    )
+
+
+@pytest.mark.slow
+def test_fold_probabilistic_metrics_populated(tmp_path: Path) -> None:
+    """Verifica que trainer.fold_probabilistic_metrics tiene n_folds entradas con claves correctas."""
+    from training import WalkForwardTrainer
+
+    csv_path = tmp_path / "data_sintetico.csv"
+    _crear_csv_sintetico(csv_path, n_filas=120)
+    config = _crear_config_minima(str(csv_path))
+    dataset = _crear_dataset(config)
+
+    n_splits = 3  # genera 2 folds efectivos (range(1, 3))
+    trainer = WalkForwardTrainer(config=config, full_dataset=dataset)
+    trainer.run_backtest(n_splits=n_splits)
+
+    expected_keys = {
+        "pinball_p10",
+        "pinball_p50",
+        "pinball_p90",
+        "coverage_80",
+        "interval_width_80",
+        "crps",
+    }
+    assert len(trainer.fold_probabilistic_metrics) == n_splits - 1, (
+        f"Esperado {n_splits - 1} folds, obtenido {len(trainer.fold_probabilistic_metrics)}"
+    )
+    for i, fold_metrics in enumerate(trainer.fold_probabilistic_metrics):
+        for key in expected_keys:
+            assert key in fold_metrics, (
+                f"Fold {i}: clave '{key}' faltante. Claves: {set(fold_metrics.keys())}"
+            )

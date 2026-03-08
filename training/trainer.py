@@ -35,6 +35,13 @@ from data import TimeSeriesDataset
 from models import Flow_FEDformer
 from training.utils import mc_dropout_inference
 from utils import MetricsTracker, get_device
+from utils.probabilistic_metrics import (
+    calibration_gap,
+    coverage_by_quantile_pair,
+    crps_from_samples,
+    interval_width,
+    multi_quantile_pinball_loss,
+)
 
 logger = logging.getLogger(__name__)
 device = get_device()
@@ -110,6 +117,7 @@ class WalkForwardTrainer:
         self.full_dataset = full_dataset
         self.wandb_run = None
         self.metrics_tracker = MetricsTracker()
+        self.fold_probabilistic_metrics: list[dict[str, float]] = []
         self.checkpoint_dir = Path("checkpoints")
         self.checkpoint_dir.mkdir(exist_ok=True)
         rehearsal_cfg = config.sections.training.rehearsal
@@ -961,9 +969,64 @@ class WalkForwardTrainer:
             self._inverse_transform_array(quantiles_scaled),
         )
 
+    def _compute_fold_probabilistic_metrics(
+        self,
+        gt_real: np.ndarray,
+        quantiles_real: np.ndarray,
+        samples_real: np.ndarray,
+    ) -> dict[str, float]:
+        """Calcula métricas probabilísticas para un fold tras la inversión de escala.
+
+        Args:
+            gt_real: Ground truth en espacio real, shape (n_windows, pred_len, n_targets).
+            quantiles_real: Cuantiles en espacio real, shape (n_q, n_windows, pred_len, n_targets).
+            samples_real: Muestras en espacio real, shape (n_samples, n_windows, pred_len, n_targets).
+
+        Returns:
+            Dict con claves: pinball_p10, pinball_p50, pinball_p90,
+            coverage_80, interval_width_80, crps.
+        """
+        levels = DEFAULT_QUANTILE_LEVELS  # [0.1, 0.5, 0.9]
+        metrics: dict[str, float] = {}
+
+        # Pinball loss por cuantil
+        metrics.update(multi_quantile_pinball_loss(gt_real, quantiles_real, levels))
+
+        # Cobertura del intervalo 80% (p10 a p90)
+        try:
+            metrics["coverage_80"] = coverage_by_quantile_pair(
+                gt_real, quantiles_real, levels, 0.1, 0.9
+            )
+        except ValueError:
+            logger.warning(
+                "No se pudo calcular coverage_80: niveles p10/p90 no disponibles"
+            )
+            metrics["coverage_80"] = float("nan")
+
+        # Anchura del intervalo 80%
+        try:
+            idx_10 = int(np.argmin(np.abs(levels.astype(float) - 0.1)))
+            idx_90 = int(np.argmin(np.abs(levels.astype(float) - 0.9)))
+            metrics["interval_width_80"] = interval_width(
+                quantiles_real[idx_10], quantiles_real[idx_90]
+            )
+        except (IndexError, ValueError):
+            metrics["interval_width_80"] = float("nan")
+
+        # CRPS
+        metrics["crps"] = crps_from_samples(gt_real, samples_real)
+
+        # También coverage_gap vía calibration_gap (no renombrado para evitar redundancia)
+        for key, val in calibration_gap(gt_real, quantiles_real, levels).items():
+            metrics[key] = val
+
+        return metrics
+
     def run_backtest(self, n_splits: int = 5) -> ForecastOutput:
         """Despliegue operativo automatizado del algoritmo sobre cortes asincrónos."""
         self._initialize_wandb()
+        # Reiniciar métricas probabilísticas por fold para evitar acumulación entre runs
+        self.fold_probabilistic_metrics = []
 
         # Usar filas crudas (no ventanas) para que train_end_idx sea un índice
         # de fila consistente con _build_fold_indices y refit_for_cutoff.
@@ -1008,6 +1071,15 @@ class WalkForwardTrainer:
                 all_gt_real.append(gt_r)
                 all_samples_real.append(samples_r)
                 all_quantiles_real.append(quantiles_r)
+
+                # Métricas probabilísticas del fold actual (en espacio real)
+                fold_prob_metrics = self._compute_fold_probabilistic_metrics(
+                    gt_r, quantiles_r, samples_r
+                )
+                self.fold_probabilistic_metrics.append(fold_prob_metrics)
+                self.metrics_tracker.log_metrics(
+                    fold_prob_metrics, step=fold_idx, fold=fold_idx
+                )
 
         except (RuntimeError, ValueError):
             logger.exception(
