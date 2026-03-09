@@ -2,6 +2,7 @@
 """Tests para ForecastOutput: dual-space predictions y backward compat."""
 
 import numpy as np
+import pytest
 from training.forecast_output import ForecastOutput
 from simulations import RiskSimulator, PortfolioSimulator
 
@@ -158,3 +159,51 @@ def test_inverse_transform_log_return_produces_positive_prices():
     assert np.all(fo.samples_for_metrics > 0), (
         "Los precios reconstruidos deben ser positivos"
     )
+
+
+def test_forecast_output_quantile_helpers():
+    """p10/p50/p90_real devuelven el cuantil correcto; get_quantile es consistente."""
+    fo = _make_forecast(metric_space="returns")
+
+    # Shapes correctos
+    assert fo.p10_real.shape == fo.preds_real.shape
+    assert fo.p50_real.shape == fo.preds_real.shape
+    assert fo.p90_real.shape == fo.preds_real.shape
+
+    # Invariante: p50_real corresponde al cuantil 0.5 en quantiles_real
+    assert fo.quantile_levels is not None
+    assert fo.quantiles_real is not None
+    levels_list = [float(lev) for lev in fo.quantile_levels]
+    idx_50 = min(range(len(levels_list)), key=lambda i: abs(levels_list[i] - 0.5))
+    np.testing.assert_array_equal(fo.p50_real, fo.quantiles_real[idx_50])
+
+    # get_quantile es consistente con las properties
+    np.testing.assert_array_equal(fo.get_quantile(0.1), fo.p10_real)
+    np.testing.assert_array_equal(fo.get_quantile(0.5), fo.p50_real)
+    np.testing.assert_array_equal(fo.get_quantile(0.9), fo.p90_real)
+
+    # scaled también funciona
+    np.testing.assert_array_equal(fo.get_quantile(0.1, real=False), fo.p10_scaled)
+
+
+def test_get_quantile_raises_when_missing():
+    """get_quantile lanza ValueError si el nivel no está o quantiles es None."""
+    fo = _make_forecast()
+
+    # Nivel no disponible (0.25 no está en [0.1, 0.5, 0.9])
+    with pytest.raises(ValueError, match="no disponible"):
+        fo.get_quantile(0.25)
+
+    # ForecastOutput con quantile_levels pero sin quantiles_real
+    fo_no_q = ForecastOutput(
+        preds_scaled=fo.preds_scaled,
+        gt_scaled=fo.gt_scaled,
+        samples_scaled=fo.samples_scaled,
+        preds_real=fo.preds_real,
+        gt_real=fo.gt_real,
+        samples_real=fo.samples_real,
+        quantile_levels=np.array([0.1, 0.5, 0.9], dtype=np.float32),
+        # quantiles_real=None por defecto
+    )
+    with pytest.raises(ValueError, match="no está disponible"):
+        fo_no_q.get_quantile(0.5)

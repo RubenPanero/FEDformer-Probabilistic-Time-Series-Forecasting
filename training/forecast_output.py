@@ -64,3 +64,80 @@ class ForecastOutput:
     def quantiles_for_metrics(self) -> np.ndarray | None:
         """Cuantiles desescalados para métricas financieras, si están disponibles."""
         return self.quantiles_real
+
+    # ------------------------------------------------------------------
+    # Helpers de cuantil por nivel
+    # ------------------------------------------------------------------
+
+    def _get_quantile_index(self, level: float) -> int:
+        """Índice del nivel de cuantil en quantile_levels.
+
+        Args:
+            level: Nivel del cuantil (p.ej. 0.1, 0.5, 0.9).
+
+        Raises:
+            ValueError: Si quantile_levels es None o el nivel no está disponible.
+        """
+        if self.quantile_levels is None:
+            raise ValueError(
+                "quantile_levels no está disponible en este ForecastOutput."
+            )
+        idx = int(np.argmin(np.abs(self.quantile_levels.astype(float) - level)))
+        if abs(float(self.quantile_levels[idx]) - level) > 1e-6:
+            raise ValueError(
+                f"Nivel de cuantil {level} no disponible. "
+                f"Niveles: {list(self.quantile_levels)}"
+            )
+        return idx
+
+    def get_quantile(self, level: float, real: bool = True) -> np.ndarray:
+        """Devuelve el cuantil para el nivel especificado.
+
+        Args:
+            level: Nivel del cuantil (p.ej. 0.1, 0.5, 0.9).
+            real: Si True devuelve del espacio real; si False del espacio escalado.
+
+        Returns:
+            Array de cuantiles, shape (n_windows, pred_len, n_targets).
+
+        Raises:
+            ValueError: Si quantiles_real/scaled es None o level no está disponible.
+        """
+        idx = self._get_quantile_index(level)
+        arr = self.quantiles_real if real else self.quantiles_scaled
+        if arr is None:
+            space = "real" if real else "scaled"
+            raise ValueError(
+                f"quantiles_{space} no está disponible en este ForecastOutput."
+            )
+        return arr[idx]
+
+    @property
+    def p10_real(self) -> np.ndarray:
+        """Cuantil p10 en espacio real."""
+        return self.get_quantile(0.1, real=True)
+
+    @property
+    def p50_real(self) -> np.ndarray:
+        """Cuantil p50 en espacio real (equivalente a preds_real)."""
+        return self.get_quantile(0.5, real=True)
+
+    @property
+    def p90_real(self) -> np.ndarray:
+        """Cuantil p90 en espacio real."""
+        return self.get_quantile(0.9, real=True)
+
+    @property
+    def p10_scaled(self) -> np.ndarray:
+        """Cuantil p10 en espacio escalado."""
+        return self.get_quantile(0.1, real=False)
+
+    @property
+    def p50_scaled(self) -> np.ndarray:
+        """Cuantil p50 en espacio escalado."""
+        return self.get_quantile(0.5, real=False)
+
+    @property
+    def p90_scaled(self) -> np.ndarray:
+        """Cuantil p90 en espacio escalado."""
+        return self.get_quantile(0.9, real=False)

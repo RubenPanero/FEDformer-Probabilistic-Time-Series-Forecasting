@@ -35,6 +35,13 @@ from data import TimeSeriesDataset
 from models import Flow_FEDformer
 from training.utils import mc_dropout_inference
 from utils import MetricsTracker, get_device
+from utils.probabilistic_metrics import (
+    calibration_gap,
+    coverage_by_quantile_pair,
+    crps_from_samples,
+    interval_width,
+    multi_quantile_pinball_loss,
+)
 
 logger = logging.getLogger(__name__)
 device = get_device()
@@ -110,6 +117,7 @@ class WalkForwardTrainer:
         self.full_dataset = full_dataset
         self.wandb_run = None
         self.metrics_tracker = MetricsTracker()
+        self.fold_probabilistic_metrics: list[dict[str, float]] = []
         self.checkpoint_dir = Path("checkpoints")
         self.checkpoint_dir.mkdir(exist_ok=True)
         rehearsal_cfg = config.sections.training.rehearsal
@@ -795,7 +803,10 @@ class WalkForwardTrainer:
             train_subset, test_subset, fold_idx, val_subset=val_subset
         )
 
-        best_loss = float("inf")
+        loop_cfg = self.config.sections.training.loop
+        # Para monitor_mode="max", negamos el valor: early stopping siempre minimiza
+        monitor_sign = -1.0 if loop_cfg.monitor_mode == "max" else 1.0
+        best_effective = float("inf")
         early_stopper = _EarlyStopping(
             patience=self.config.patience,
             min_delta=self.config.min_delta,
@@ -810,22 +821,28 @@ class WalkForwardTrainer:
                     self._rehearsal_step(components)
 
             # Evaluar en validación para early stopping; si no hay val_loader, usar train_loss
+            train_m: dict[str, float] = {"loss": avg_loss}
+            val_m: dict[str, float] | None = None
             if components.val_loader is not None:
-                monitor_loss = self._eval_epoch(components.model, components.val_loader)
+                val_loss_raw = self._eval_epoch(components.model, components.val_loader)
+                val_m = {"loss": val_loss_raw}
                 logger.info(
                     "  Val Loss época %s/%s: %.4f",
                     epoch + 1,
                     self.config.n_epochs_per_fold,
-                    monitor_loss,
+                    val_loss_raw,
                 )
                 self.metrics_tracker.log_metrics(
-                    {"val_loss": monitor_loss}, epoch, fold=fold_idx
+                    {"val_loss": val_loss_raw}, epoch, fold=fold_idx
                 )
-            else:
-                monitor_loss = avg_loss
 
-            if monitor_loss < best_loss:
-                best_loss = monitor_loss
+            monitor_loss = self._select_monitor_value(
+                train_m, val_m, loop_cfg.monitor_metric
+            )
+            effective_val = monitor_sign * monitor_loss
+
+            if effective_val < best_effective:
+                best_effective = effective_val
                 self.save_checkpoint(components, epoch, monitor_loss, best=True)
 
             if (epoch + 1) % 5 == 0:
@@ -837,12 +854,12 @@ class WalkForwardTrainer:
 
             if self.wandb_run:
                 log_data = {"train_loss": avg_loss, "epoch": epoch, "fold": fold_idx}
-                if components.val_loader is not None:
-                    log_data["val_loss"] = monitor_loss
+                if val_m is not None:
+                    log_data["val_loss"] = val_m["loss"]
                 self.wandb_run.log(log_data)
 
-            # Verificar parada anticipada sobre val_loss (o train_loss si no hay val)
-            if early_stopper.step(monitor_loss):
+            # Verificar parada anticipada usando el valor efectivo (normalizado por mode)
+            if early_stopper.step(effective_val):
                 logger.warning(
                     "Parada anticipada activada en época %s/%s para fold %s (patience=%s).",
                     epoch + 1,
@@ -961,9 +978,105 @@ class WalkForwardTrainer:
             self._inverse_transform_array(quantiles_scaled),
         )
 
+    @staticmethod
+    def _select_monitor_value(
+        train_metrics: dict[str, float],
+        val_metrics: dict[str, float] | None,
+        monitor_metric: str,
+    ) -> float:
+        """Selecciona el valor escalar a monitorear para early stopping y checkpoint.
+
+        Args:
+            train_metrics: Métricas de entrenamiento de la época actual (clave "loss").
+            val_metrics: Métricas de validación de la época actual (clave "loss", etc.)
+                o None si no hay split de validación.
+            monitor_metric: Nombre de la métrica a monitorear.
+
+        Returns:
+            Valor escalar a optimizar (sin aplicar el signo de monitor_mode).
+        """
+        val = val_metrics or {}
+        if monitor_metric == "val_loss":
+            return val.get("loss", train_metrics["loss"])
+        if monitor_metric == "val_pinball_p50":
+            if "pinball_p50" in val:
+                return val["pinball_p50"]
+            logger.warning(
+                "val_pinball_p50 no disponible en val_metrics, usando val_loss como fallback"
+            )
+            return val.get("loss", train_metrics["loss"])
+        if monitor_metric == "val_coverage_80":
+            if "coverage_80" in val:
+                return val["coverage_80"]
+            logger.warning(
+                "val_coverage_80 no disponible en val_metrics, usando val_loss como fallback"
+            )
+            return val.get("loss", train_metrics["loss"])
+        if monitor_metric == "composite":
+            val_loss = val.get("loss", train_metrics["loss"])
+            pinball = val.get("pinball_p50", val_loss)
+            return 0.5 * val_loss + 0.5 * pinball
+        # Fallback seguro (no debería llegar aquí tras validación en config)
+        return val.get("loss", train_metrics["loss"])
+
+    def _compute_fold_probabilistic_metrics(
+        self,
+        gt_real: np.ndarray,
+        quantiles_real: np.ndarray,
+        samples_real: np.ndarray,
+    ) -> dict[str, float]:
+        """Calcula métricas probabilísticas para un fold tras la inversión de escala.
+
+        Args:
+            gt_real: Ground truth en espacio real, shape (n_windows, pred_len, n_targets).
+            quantiles_real: Cuantiles en espacio real, shape (n_q, n_windows, pred_len, n_targets).
+            samples_real: Muestras en espacio real, shape (n_samples, n_windows, pred_len, n_targets).
+
+        Returns:
+            Dict con claves: pinball_p10, pinball_p50, pinball_p90,
+            coverage_80, interval_width_80, crps.
+        """
+        levels = DEFAULT_QUANTILE_LEVELS  # [0.1, 0.5, 0.9]
+        metrics: dict[str, float] = {}
+
+        # Pinball loss por cuantil
+        metrics.update(multi_quantile_pinball_loss(gt_real, quantiles_real, levels))
+
+        # Cobertura del intervalo 80% (p10 a p90)
+        try:
+            metrics["coverage_80"] = coverage_by_quantile_pair(
+                gt_real, quantiles_real, levels, 0.1, 0.9
+            )
+        except ValueError:
+            logger.warning(
+                "No se pudo calcular coverage_80: niveles p10/p90 no disponibles"
+            )
+            metrics["coverage_80"] = float("nan")
+
+        # Anchura del intervalo 80%
+        try:
+            idx_10 = int(np.argmin(np.abs(levels.astype(float) - 0.1)))
+            idx_90 = int(np.argmin(np.abs(levels.astype(float) - 0.9)))
+            metrics["interval_width_80"] = interval_width(
+                quantiles_real[idx_10], quantiles_real[idx_90]
+            )
+        except (IndexError, ValueError):
+            metrics["interval_width_80"] = float("nan")
+
+        # CRPS
+        metrics["crps"] = crps_from_samples(gt_real, samples_real)
+
+        # También coverage_gap vía calibration_gap (no renombrado para evitar redundancia)
+        for key, val in calibration_gap(gt_real, quantiles_real, levels).items():
+            metrics[key] = val
+
+        return metrics
+
     def run_backtest(self, n_splits: int = 5) -> ForecastOutput:
         """Despliegue operativo automatizado del algoritmo sobre cortes asincrónos."""
         self._initialize_wandb()
+        # Reiniciar métricas probabilísticas por fold para evitar acumulación entre runs
+        self.fold_probabilistic_metrics = []
 
         # Usar filas crudas (no ventanas) para que train_end_idx sea un índice
         # de fila consistente con _build_fold_indices y refit_for_cutoff.
@@ -1008,6 +1121,15 @@ class WalkForwardTrainer:
                 all_gt_real.append(gt_r)
                 all_samples_real.append(samples_r)
                 all_quantiles_real.append(quantiles_r)
+
+                # Métricas probabilísticas del fold actual (en espacio real)
+                fold_prob_metrics = self._compute_fold_probabilistic_metrics(
+                    gt_r, quantiles_r, samples_r
+                )
+                self.fold_probabilistic_metrics.append(fold_prob_metrics)
+                self.metrics_tracker.log_metrics(
+                    fold_prob_metrics, step=fold_idx, fold=fold_idx
+                )
 
         except (RuntimeError, ValueError):
             logger.exception(

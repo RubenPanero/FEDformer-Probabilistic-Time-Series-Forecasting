@@ -88,6 +88,12 @@ class OptimizationSettings:
     scheduler_type: str = "none"  # opciones: "none", "cosine", "cosine_warmup"
 
 
+_ALLOWED_MONITOR_METRICS: frozenset[str] = frozenset(
+    {"val_loss", "val_pinball_p50", "val_coverage_80", "composite"}
+)
+_ALLOWED_MONITOR_MODES: frozenset[str] = frozenset({"min", "max"})
+
+
 @dataclass
 class LoopSettings:
     """Training loop batch/epoch controls."""
@@ -101,6 +107,22 @@ class LoopSettings:
     val_fraction: float = (
         0.15  # fracción del bloque train reservada para validación intra-fold
     )
+    monitor_metric: str = (
+        "val_loss"  # val_loss | val_pinball_p50 | val_coverage_80 | composite
+    )
+    monitor_mode: str = "min"  # min | max
+
+    def __post_init__(self) -> None:
+        if self.monitor_metric not in _ALLOWED_MONITOR_METRICS:
+            raise ValueError(
+                f"monitor_metric='{self.monitor_metric}' inválido. "
+                f"Valores permitidos: {sorted(_ALLOWED_MONITOR_METRICS)}"
+            )
+        if self.monitor_mode not in _ALLOWED_MONITOR_MODES:
+            raise ValueError(
+                f"monitor_mode='{self.monitor_mode}' inválido. "
+                f"Valores permitidos: {sorted(_ALLOWED_MONITOR_MODES)}"
+            )
 
 
 @dataclass
@@ -268,6 +290,8 @@ class FEDformerConfig:
         "scheduler_type",
         "patience",
         "min_delta",
+        "monitor_metric",
+        "monitor_mode",
         "rehearsal_enabled",
         "rehearsal_buffer_size",
         "rehearsal_lr_mult",
@@ -737,6 +761,32 @@ class FEDformerConfig:
     @gradient_clip_norm.setter
     def gradient_clip_norm(self, value: float) -> None:
         self.sections.training.loop.gradient_clip_norm = value
+
+    @property
+    def monitor_metric(self) -> str:
+        return self.sections.training.loop.monitor_metric
+
+    @monitor_metric.setter
+    def monitor_metric(self, value: str) -> None:
+        if value not in _ALLOWED_MONITOR_METRICS:
+            raise ValueError(
+                f"monitor_metric='{value}' inválido. "
+                f"Valores permitidos: {sorted(_ALLOWED_MONITOR_METRICS)}"
+            )
+        self.sections.training.loop.monitor_metric = value
+
+    @property
+    def monitor_mode(self) -> str:
+        return self.sections.training.loop.monitor_mode
+
+    @monitor_mode.setter
+    def monitor_mode(self, value: str) -> None:
+        if value not in _ALLOWED_MONITOR_MODES:
+            raise ValueError(
+                f"monitor_mode='{value}' inválido. "
+                f"Valores permitidos: {sorted(_ALLOWED_MONITOR_MODES)}"
+            )
+        self.sections.training.loop.monitor_mode = value
 
     # -- Preprocessing settings proxies ---------------------------------------
     @property
