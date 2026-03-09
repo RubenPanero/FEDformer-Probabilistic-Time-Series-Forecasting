@@ -223,3 +223,134 @@ def rank_runs(
         )
 
     return df.sort_values(score_column, ascending=ascending).reset_index(drop=True)
+
+
+# Columnas estándar que extrae aggregate_seed_metrics de cada manifiesto
+_SEED_METRIC_COLUMNS = [
+    "seed",
+    "sharpe",
+    "sortino",
+    "var_95",
+    "coverage_80",
+    "pinball_p50",
+    "crps",
+]
+
+
+def aggregate_seed_metrics(run_paths: list[Path]) -> pd.DataFrame:
+    """Agrega métricas de múltiples corridas (una por seed) en un DataFrame.
+
+    Cada run_path es el directorio de resultados de una corrida.
+    Lee los run_manifest_*.json de cada directorio.
+
+    Retorna DataFrame con columnas:
+        seed, sharpe, sortino, var_95, coverage_80, pinball_p50, crps
+    Una fila por corrida. Rellena con NaN las métricas ausentes.
+
+    Si run_paths está vacío, retorna DataFrame vacío con esas columnas.
+
+    Args:
+        run_paths: Lista de directorios, cada uno con manifiestos de una corrida.
+
+    Returns:
+        DataFrame con una fila por corrida y las columnas estándar de métricas.
+    """
+    if not run_paths:
+        return pd.DataFrame(columns=_SEED_METRIC_COLUMNS)
+
+    rows: list[dict] = []
+    for run_dir in run_paths:
+        manifests = load_run_manifests(run_dir)
+        if not manifests:
+            logger.warning("Sin manifiestos en %s — fila con NaN incluida", run_dir)
+            rows.append({col: float("nan") for col in _SEED_METRIC_COLUMNS})
+            continue
+
+        # Usar el primer manifiesto del directorio
+        manifest = manifests[0]
+        seed = manifest.get("seed")
+        metrics = manifest.get("metrics", {})
+
+        row: dict = {
+            "seed": seed,
+            "sharpe": metrics.get("sharpe_ratio", metrics.get("sharpe", float("nan"))),
+            "sortino": metrics.get(
+                "sortino_ratio", metrics.get("sortino", float("nan"))
+            ),
+            "var_95": metrics.get("var_95", float("nan")),
+            "coverage_80": metrics.get("coverage_80", float("nan")),
+            "pinball_p50": metrics.get("pinball_p50", float("nan")),
+            "crps": metrics.get("crps", float("nan")),
+        }
+        rows.append(row)
+
+    return pd.DataFrame(rows, columns=_SEED_METRIC_COLUMNS)
+
+
+# Columnas del DataFrame de resumen de estabilidad
+_STABILITY_COLUMNS = ["metric", "mean", "std", "min", "max", "best", "worst"]
+
+
+def summarize_seed_stability(df: pd.DataFrame) -> pd.DataFrame:
+    """Resume la estabilidad de una configuración a través de múltiples seeds.
+
+    Input: DataFrame retornado por aggregate_seed_metrics.
+
+    Output: DataFrame con una fila por métrica numérica y columnas:
+        metric, mean, std, min, max, best, worst
+
+    Solo incluye columnas numéricas (excluye "seed" si es string).
+    Si df está vacío, retorna DataFrame vacío con esas columnas.
+
+    Args:
+        df: DataFrame con una fila por seed y columnas de métricas numéricas.
+
+    Returns:
+        DataFrame de resumen con estadísticas de estabilidad por métrica.
+
+    Raises:
+        ValueError: si df no tiene columnas numéricas (excepto "seed").
+    """
+    if df.empty:
+        return pd.DataFrame(columns=_STABILITY_COLUMNS)
+
+    # Seleccionar columnas numéricas, excluyendo "seed" del resumen estadístico
+    # (seed es un identificador, no una métrica de rendimiento)
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    numeric_cols = [c for c in numeric_cols if c != "seed"]
+
+    if not numeric_cols:
+        raise ValueError(
+            "El DataFrame no contiene columnas numéricas (excepto 'seed'). "
+            f"Columnas disponibles: {list(df.columns)}"
+        )
+
+    rows: list[dict] = []
+    for col in numeric_cols:
+        series = df[col].dropna()
+        if series.empty:
+            rows.append(
+                {
+                    "metric": col,
+                    "mean": float("nan"),
+                    "std": float("nan"),
+                    "min": float("nan"),
+                    "max": float("nan"),
+                    "best": float("nan"),
+                    "worst": float("nan"),
+                }
+            )
+        else:
+            rows.append(
+                {
+                    "metric": col,
+                    "mean": float(series.mean()),
+                    "std": float(series.std()),
+                    "min": float(series.min()),
+                    "max": float(series.max()),
+                    "best": float(series.max()),
+                    "worst": float(series.min()),
+                }
+            )
+
+    return pd.DataFrame(rows, columns=_STABILITY_COLUMNS)
