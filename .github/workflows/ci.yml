@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master, develop, feature/optuna]
+    branches: [main, master, develop, feature/optuna, feat/probabilistic-metrics-pipeline]
   pull_request:
     branches: [main, master, develop, feature/optuna]
   workflow_dispatch:
@@ -58,6 +58,8 @@ jobs:
           pytest -q \
             tests/test_simulations.py \
             tests/test_utils.py \
+            tests/test_probabilistic_metrics.py \
+            tests/test_experiment_outputs.py \
             --maxfail=1 --disable-warnings
 
       - name: Run feature branch regression slice
@@ -69,6 +71,7 @@ jobs:
             tests/test_trainer_scheduling.py \
             tests/test_trainer_integration.py \
             tests/test_tune_hyperparams.py \
+            tests/test_checkpoint_selection.py \
             --maxfail=1
 
       - name: Coverage report (best-effort)
