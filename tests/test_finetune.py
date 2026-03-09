@@ -290,6 +290,7 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
         rehearsal_k=None,
         rehearsal_epochs=None,
         rehearsal_lr_mult=None,
+        preset=None,
     )
 
     cfg = main_module._create_config(

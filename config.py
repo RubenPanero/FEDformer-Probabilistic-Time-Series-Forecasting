@@ -992,3 +992,93 @@ class FEDformerConfig:
     @rehearsal_lr_mult.setter
     def rehearsal_lr_mult(self, value: float) -> None:
         self.sections.training.rehearsal.rehearsal_lr_mult = value
+
+
+# ---------------------------------------------------------------------------
+# Presets de entrenamiento
+# ---------------------------------------------------------------------------
+
+# Presets de entrenamiento — definen overrides sobre la config base
+TRAINING_PRESETS: dict[str, dict] = {
+    "debug": {
+        # Modelo pequeño, pocas épocas, sin compilación, sin AMP
+        # Útil para verificar que el pipeline funciona rápidamente
+        "seq_len": 32,
+        "pred_len": 8,
+        "batch_size": 16,
+        "n_epochs_per_fold": 3,
+        "use_amp": False,
+        "compile_mode": "none",
+        "num_workers": 0,
+        "pin_memory": False,
+    },
+    "cpu_safe": {
+        # Sin AMP, sin compilación, num_workers=0, pin_memory=False
+        # Para entornos sin GPU o con GPU limitada
+        "use_amp": False,
+        "compile_mode": "none",
+        "num_workers": 0,
+        "pin_memory": False,
+    },
+    "gpu_research": {
+        # AMP activo, compilación si disponible, batch mayor
+        # Para experimentos con GPU potente
+        "use_amp": True,
+        "compile_mode": "default",
+        "batch_size": 128,
+        "num_workers": 4,
+        "pin_memory": True,
+    },
+    "probabilistic_eval": {
+        # Monitor por pinball_p50, paciencia mayor
+        # Para evaluación probabilística rigurosa
+        "monitor_metric": "val_pinball_p50",
+        "monitor_mode": "min",
+        "patience": 10,
+    },
+}
+
+# Mapeo de claves de preset a atributos de FEDformerConfig
+_PRESET_KEY_SETTERS: dict[str, str] = {
+    "seq_len": "seq_len",
+    "pred_len": "pred_len",
+    "batch_size": "batch_size",
+    "n_epochs_per_fold": "n_epochs_per_fold",
+    "use_amp": "use_amp",
+    "compile_mode": "compile_mode",
+    "num_workers": "num_workers",
+    "pin_memory": "pin_memory",
+    "monitor_metric": "monitor_metric",
+    "monitor_mode": "monitor_mode",
+    "patience": "patience",
+}
+
+
+def apply_preset(config: "FEDformerConfig", preset_name: str) -> "FEDformerConfig":
+    """Aplica un preset de entrenamiento sobre la config base.
+
+    Prioridad: defaults < preset < overrides CLI explícitos.
+    Los overrides CLI se aplican DESPUÉS de apply_preset, por lo que
+    los flags explícitos siempre tienen precedencia sobre el preset.
+
+    Args:
+        config: FEDformerConfig ya inicializado con defaults.
+        preset_name: nombre del preset
+            (debug, cpu_safe, gpu_research, probabilistic_eval).
+
+    Returns:
+        Misma instancia config mutada con los valores del preset.
+
+    Raises:
+        ValueError: si preset_name no está en TRAINING_PRESETS.
+    """
+    if preset_name not in TRAINING_PRESETS:
+        raise ValueError(
+            f"Preset '{preset_name}' no reconocido. "
+            f"Valores permitidos: {sorted(TRAINING_PRESETS)}"
+        )
+    overrides = TRAINING_PRESETS[preset_name]
+    for key, value in overrides.items():
+        attr = _PRESET_KEY_SETTERS.get(key, key)
+        setattr(config, attr, value)
+    return config

@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 else:
     Figure = Any
 
-from config import FEDformerConfig
+from config import TRAINING_PRESETS, FEDformerConfig, apply_preset
 from data import TimeSeriesDataset
 from simulations import PortfolioSimulator, RiskSimulator
 from training import WalkForwardTrainer
@@ -264,6 +264,16 @@ def _parse_arguments() -> argparse.Namespace:
         default=None,
         help="Multiplicador de LR para pasos de rehearsal (default: config 0.1).",
     )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        default=None,
+        choices=list(TRAINING_PRESETS.keys()),
+        help=(
+            "Preset de entrenamiento: debug, cpu_safe, gpu_research, "
+            "probabilistic_eval. Los flags CLI explícitos tienen precedencia."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -332,6 +342,10 @@ def _create_config(
         config.sections.training.rehearsal.rehearsal_epochs = args.rehearsal_epochs
     if args.rehearsal_lr_mult is not None:
         config.rehearsal_lr_mult = args.rehearsal_lr_mult
+
+    # Aplicar preset si se especificó (prioridad: defaults < preset < CLI)
+    if args.preset is not None:
+        apply_preset(config, args.preset)
 
     logger.info("Transmisión paramétrica asimilada de manera segura")
     logger.info(

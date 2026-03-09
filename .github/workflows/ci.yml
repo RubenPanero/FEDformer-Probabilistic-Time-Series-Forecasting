@@ -60,6 +60,7 @@ jobs:
             tests/test_utils.py \
             tests/test_probabilistic_metrics.py \
             tests/test_experiment_outputs.py \
+            tests/test_config_presets.py \
             --maxfail=1 --disable-warnings
 
       - name: Run feature branch regression slice
