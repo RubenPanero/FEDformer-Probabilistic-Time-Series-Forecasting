@@ -103,7 +103,7 @@ desktop.ini
 $RECYCLE.BIN/
 
 # === Claude Code (local AI context — no compartir en el repositorio) ===
-CLAUDE.md
+# CLAUDE.md re-indexado para control de versiones (2026-03-09)
 
 # === Documentation (personal/internal) ===
 CRITICAL_FIXES.md
