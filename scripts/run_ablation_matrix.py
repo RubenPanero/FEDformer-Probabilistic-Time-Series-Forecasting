@@ -355,14 +355,19 @@ def main() -> None:
     with open(variants_path, encoding="utf-8") as fh:
         variants: list[dict[str, Any]] = json.load(fh)
 
-    # Cargar base_args si se proveyeron
+    # Cargar base_args si se proveyeron (soporta JSON inline o ruta a archivo)
     base_args: dict[str, Any] | None = None
     if args.base_args_json is not None:
-        base_path = Path(args.base_args_json)
-        if not base_path.exists():
-            raise FileNotFoundError(f"Archivo base-args no encontrado: {base_path}")
-        with open(base_path, encoding="utf-8") as fh:
-            base_args = json.load(fh)
+        raw = args.base_args_json.strip()
+        if raw.startswith("{"):
+            # Interpretar como JSON inline
+            base_args = json.loads(raw)
+        else:
+            base_path = Path(raw)
+            if not base_path.exists():
+                raise FileNotFoundError(f"Archivo base-args no encontrado: {base_path}")
+            with open(base_path, encoding="utf-8") as fh:
+                base_args = json.load(fh)
 
     # Construir jobs
     jobs = build_ablation_jobs(
