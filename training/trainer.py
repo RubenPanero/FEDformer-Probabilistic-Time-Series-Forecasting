@@ -4,6 +4,7 @@ Sistema de entrenamiento walk-forward para el modelo FEDformer.
 Refactorizado a Python 3.10+ para garantizar typing nativo purificado, tolerancia a fallos, y eficiencia PEP 8.
 """
 
+import functools
 import gc
 import logging
 import os
@@ -46,6 +47,16 @@ from utils.probabilistic_metrics import (
 logger = logging.getLogger(__name__)
 device = get_device()
 DEFAULT_QUANTILE_LEVELS = np.array([0.1, 0.5, 0.9], dtype=np.float32)
+
+
+def _seed_worker(worker_id: int, base_seed: int) -> None:
+    """Inicializa la semilla de cada worker de DataLoader.
+
+    Función de nivel de módulo (picklable) para compatibilidad con
+    multiprocessing_context='spawn' en Python 3.12+.
+    """
+    np.random.seed(base_seed + worker_id)
+    torch.manual_seed(base_seed + worker_id)
 
 
 def _cumulative_returns_to_prices(
@@ -197,10 +208,9 @@ class WalkForwardTrainer:
         generator = torch.Generator()
         generator.manual_seed(self.config.seed)
 
-        def _worker_init_fn(worker_id: int) -> None:
-            base_seed = self.config.seed
-            np.random.seed(base_seed + worker_id)
-            torch.manual_seed(base_seed + worker_id)
+        # functools.partial produce un callable picklable (a diferencia de closure local)
+        # necesario para multiprocessing_context="spawn" en Python 3.12+
+        worker_init_fn = functools.partial(_seed_worker, base_seed=self.config.seed)
 
         worker_kwargs = (
             {"prefetch_factor": 2, "multiprocessing_context": "spawn"}
@@ -217,7 +227,7 @@ class WalkForwardTrainer:
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=False,  # Explicitely false per safe memory policy between folds
-            worker_init_fn=_worker_init_fn,
+            worker_init_fn=worker_init_fn,
             generator=generator,
             **worker_kwargs,
         )
@@ -228,7 +238,7 @@ class WalkForwardTrainer:
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=False,  # Safe parallel evaluation
-            worker_init_fn=_worker_init_fn,
+            worker_init_fn=worker_init_fn,
             generator=generator,
             **worker_kwargs,
         )
