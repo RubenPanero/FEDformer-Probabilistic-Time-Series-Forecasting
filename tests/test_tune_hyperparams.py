@@ -6,8 +6,11 @@ Tests unitarios para tune_hyperparams.py:
   - Que --save-canonical no se incluye en el cmd de trials
   - Parsing de CSV de portafolio y riesgo
   - download_extra_tickers omite los que ya existen
+  - _parse_probabilistic_csv: lectura y fallback
+  - _compose_trial_score: modos sharpe, composite, fallback y sin NaN
 """
 
+import math
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -66,6 +69,41 @@ def _write_risk_csv(
             "cvar_95": [var_95 * 1.3, var_95 * 1.3],
         }
     ).to_csv(p, index=False)
+    return p
+
+
+def _write_probabilistic_csv(
+    tmp_path: Path,
+    ticker_stem: str,
+    pinball_p50: float = 0.02,
+    coverage_80: float = 0.78,
+    interval_width_80: float = 0.05,
+    crps: float = 0.03,
+) -> Path:
+    """Escribe un CSV probabilístico en formato largo (igual que io_experiment.py)."""
+    results_dir = tmp_path / "results"
+    results_dir.mkdir(exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    # Formato: fold, metric, value, space, aggregation — dos folds sintéticos
+    rows = []
+    for fold in range(2):
+        for metric, val in [
+            ("pinball_p50", pinball_p50),
+            ("coverage_80", coverage_80),
+            ("interval_width_80", interval_width_80),
+            ("crps", crps),
+        ]:
+            rows.append(
+                {
+                    "fold": fold,
+                    "metric": metric,
+                    "value": val,
+                    "space": "real",
+                    "aggregation": "mean",
+                }
+            )
+    p = results_dir / f"probabilistic_metrics_{ts}_{ticker_stem}.csv"
+    pd.DataFrame(rows).to_csv(p, index=False)
     return p
 
 
@@ -312,3 +350,168 @@ def test_download_extra_tickers_continues_when_csv_is_not_generated(
 
     with patch("subprocess.run", return_value=mock_proc):
         th.download_extra_tickers()
+
+
+# ---------------------------------------------------------------------------
+# Tests de _parse_probabilistic_csv (Épica 6)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_probabilistic_csv_returns_empty_when_no_file(tmp_path: Path) -> None:
+    """_parse_probabilistic_csv retorna {} cuando no existe ningún CSV probabilístico."""
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    after_ts = time.strftime("%Y%m%d_%H%M%S")
+
+    result = th._parse_probabilistic_csv(results_dir, "NVDA_features", after_ts)
+
+    assert result == {}
+
+
+def test_parse_probabilistic_csv_reads_matching_file(tmp_path: Path) -> None:
+    """_parse_probabilistic_csv lee correctamente un CSV probabilístico sintético."""
+    # Crear CSV antes de registrar el timestamp de inicio
+    after_ts_float = time.time() - 1
+    after_ts = time.strftime("%Y%m%d_%H%M%S", time.localtime(after_ts_float))
+
+    _write_probabilistic_csv(
+        tmp_path,
+        "NVDA_features",
+        pinball_p50=0.025,
+        coverage_80=0.81,
+        interval_width_80=0.06,
+        crps=0.035,
+    )
+
+    result = th._parse_probabilistic_csv(
+        tmp_path / "results", "NVDA_features", after_ts
+    )
+
+    assert "pinball_p50" in result
+    assert "coverage_80" in result
+    assert "interval_width_80" in result
+    assert "crps" in result
+    assert abs(result["pinball_p50"] - 0.025) < 1e-6
+    assert abs(result["coverage_80"] - 0.81) < 1e-6
+    assert abs(result["interval_width_80"] - 0.06) < 1e-6
+    assert abs(result["crps"] - 0.035) < 1e-6
+
+
+def test_parse_probabilistic_csv_returns_empty_for_invalid_timestamp(
+    tmp_path: Path,
+) -> None:
+    """_parse_probabilistic_csv retorna {} si el formato de after_ts es inválido."""
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+
+    result = th._parse_probabilistic_csv(results_dir, "NVDA_features", "INVALID_TS")
+
+    assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Tests de _compose_trial_score (Épica 6)
+# ---------------------------------------------------------------------------
+
+
+def _make_portfolio(sharpe: float = 0.7, sortino: float = 1.0) -> dict:
+    """Construye un dict de métricas de portafolio mínimo para tests."""
+    return {
+        "sharpe": sharpe,
+        "sortino": sortino,
+        "max_drawdown": -0.3,
+        "volatility": 0.02,
+    }
+
+
+def _make_prob_metrics(
+    pinball_p50: float = 0.02,
+    coverage_80: float = 0.80,
+) -> dict:
+    """Construye un dict de métricas probabilísticas mínimo para tests."""
+    return {
+        "pinball_p50": pinball_p50,
+        "coverage_80": coverage_80,
+        "interval_width_80": 0.05,
+        "crps": 0.03,
+    }
+
+
+def test_compose_trial_score_sharpe_mode() -> None:
+    """mode='sharpe' retorna directamente el Sharpe, ignorando prob_metrics."""
+    portfolio = _make_portfolio(sharpe=0.75)
+    risk = {"var_95": 0.05}
+    prob = _make_prob_metrics(pinball_p50=0.1, coverage_80=0.50)
+
+    score = th._compose_trial_score(portfolio, risk, prob, mode="sharpe")
+
+    # En modo sharpe, ignora completamente las métricas probabilísticas
+    assert abs(score - 0.75) < 1e-6
+
+
+def test_compose_trial_score_composite_mode_returns_finite(tmp_path: Path) -> None:
+    """mode='composite' con métricas válidas retorna un score finito."""
+    portfolio = _make_portfolio(sharpe=0.65, sortino=1.1)
+    risk = {"var_95": 0.05}
+    prob = _make_prob_metrics(pinball_p50=0.02, coverage_80=0.80)
+
+    score = th._compose_trial_score(portfolio, risk, prob, mode="composite")
+
+    # El score debe ser finito y mayor que -1 (no es el centinela de fallo)
+    assert math.isfinite(score)
+    assert score > -1.0
+
+
+def test_compose_trial_score_empty_prob_metrics_falls_back_to_sharpe() -> None:
+    """mode='composite' con prob_metrics={} hace fallback a Sharpe puro sin NaN."""
+    portfolio = _make_portfolio(sharpe=0.55)
+    risk = {"var_95": 0.05}
+
+    score = th._compose_trial_score(portfolio, risk, prob_metrics={}, mode="composite")
+
+    # Fallback: debe ser igual al Sharpe puro
+    assert abs(score - 0.55) < 1e-6
+    assert math.isfinite(score)
+
+
+def test_compose_trial_score_no_nan() -> None:
+    """_compose_trial_score nunca retorna NaN con cualquier combinación de inputs."""
+    inputs = [
+        # (portfolio, risk, prob, mode)
+        (_make_portfolio(sharpe=float("nan")), {}, {}, "sharpe"),
+        (_make_portfolio(sharpe=0.0), {}, {}, "sharpe"),
+        (_make_portfolio(sharpe=-1.0), {}, {}, "composite"),
+        (_make_portfolio(sharpe=0.5), {}, _make_prob_metrics(), "composite"),
+        (
+            _make_portfolio(sharpe=float("nan")),
+            {},
+            _make_prob_metrics(pinball_p50=float("nan")),
+            "composite",
+        ),
+        (_make_portfolio(sharpe=0.3), {}, _make_prob_metrics(), "multi-objective"),
+    ]
+
+    for portfolio, risk, prob, mode in inputs:
+        score = th._compose_trial_score(portfolio, risk, prob, mode=mode)
+        assert math.isfinite(score), (
+            f"Score NaN/inf para mode={mode}, portfolio={portfolio}, prob={prob}"
+        )
+
+
+def test_compose_trial_score_coverage_penalty() -> None:
+    """mode='composite' penaliza coverage alejado del 80% nominal."""
+    portfolio = _make_portfolio(sharpe=0.65)
+    risk = {"var_95": 0.05}
+
+    # Coverage perfecto (0.80)
+    prob_perfect = _make_prob_metrics(coverage_80=0.80)
+    score_perfect = th._compose_trial_score(
+        portfolio, risk, prob_perfect, mode="composite"
+    )
+
+    # Coverage muy malo (0.20)
+    prob_bad = _make_prob_metrics(coverage_80=0.20)
+    score_bad = th._compose_trial_score(portfolio, risk, prob_bad, mode="composite")
+
+    # Coverage perfecto debe dar score más alto
+    assert score_perfect > score_bad

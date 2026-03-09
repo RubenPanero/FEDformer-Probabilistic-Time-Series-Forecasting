@@ -21,12 +21,17 @@ Uso:
     python3 tune_hyperparams.py --csv data/NVDA_features.csv \\
         --n-trials 16 --best-save-canonical
 
+    # Score compuesto (Sharpe + métricas probabilísticas)
+    python3 tune_hyperparams.py --csv data/NVDA_features.csv \\
+        --n-trials 20 --study-objective composite
+
     # Descargar 8 tickers adicionales y lanzar búsqueda para los 12
     python3 tune_hyperparams.py --download-extra-tickers
 """
 
 import argparse
 import logging
+import math
 import os
 import subprocess
 import sys
@@ -146,6 +151,151 @@ def _parse_risk_csv(results_dir: Path, ticker_stem: str, after_ts: float) -> flo
     return float(df["var_95"].mean()) if "var_95" in df.columns else 1.0
 
 
+def _parse_probabilistic_csv(
+    results_dir: Path,
+    ticker_stem: str,
+    after_ts: str,
+) -> dict[str, float]:
+    """Lee el archivo probabilistic_metrics más reciente para el ticker dado.
+
+    Busca archivos con nombre probabilistic_metrics_{ts}_{ticker}.csv generados
+    después de after_ts. Hace pivot del formato largo (fold, metric, value,
+    space, aggregation) para extraer las métricas clave promediadas por fold.
+
+    Args:
+        results_dir: Directorio donde buscar los CSVs.
+        ticker_stem: Nombre del ticker sin extensión (ej. "NVDA_features").
+        after_ts: Timestamp mínimo en formato "%Y%m%d_%H%M%S".
+
+    Returns:
+        Dict con métricas clave: pinball_p50, coverage_80, interval_width_80, crps.
+        Si no encuentra el archivo o faltan columnas, retorna dict vacío.
+    """
+    # Convertir string de timestamp a float Unix para comparar con st_mtime
+    try:
+        ts_struct = time.strptime(after_ts, "%Y%m%d_%H%M%S")
+        after_ts_float = time.mktime(ts_struct)
+    except (ValueError, OverflowError):
+        logger.warning(
+            "Formato de after_ts inválido: '%s'. Se esperaba %%Y%%m%%d_%%H%%M%%S.",
+            after_ts,
+        )
+        return {}
+
+    recent = _find_recent_result_file(
+        results_dir,
+        prefix="probabilistic_metrics",
+        ticker_stem=ticker_stem,
+        after_ts=after_ts_float,
+    )
+    if recent is None:
+        return {}
+
+    try:
+        df = pd.read_csv(recent)
+    except (OSError, pd.errors.ParserError) as exc:
+        logger.warning("Error al leer CSV probabilístico %s: %s", recent, exc)
+        return {}
+
+    # Verificar columnas requeridas del formato largo
+    required_cols = {"metric", "value"}
+    if not required_cols.issubset(df.columns):
+        logger.warning(
+            "CSV probabilístico %s no tiene columnas esperadas. Encontradas: %s",
+            recent,
+            list(df.columns),
+        )
+        return {}
+
+    # Agregar por métrica (media sobre folds) — columna aggregation="mean" por diseño
+    agg = df.groupby("metric")["value"].mean()
+    metricas_clave = ["pinball_p50", "coverage_80", "interval_width_80", "crps"]
+    result: dict[str, float] = {}
+    for clave in metricas_clave:
+        if clave in agg.index:
+            val = float(agg[clave])
+            # Nunca propagar NaN hacia el score compuesto
+            result[clave] = val if math.isfinite(val) else 0.0
+
+    return result
+
+
+def _compose_trial_score(
+    portfolio_metrics: dict,
+    risk_metrics: dict,
+    prob_metrics: dict,
+    mode: str = "sharpe",
+) -> float:
+    """Compone el score final de un trial de Optuna.
+
+    Modos disponibles:
+    - "sharpe": usa solo Sharpe ratio (compatibilidad hacia atrás).
+    - "composite": 0.5 * sharpe + 0.3 * (1 - pinball_p50_norm) + 0.2 * coverage_score
+      donde pinball_p50_norm = pinball_p50 / (|mean_return| + 1e-8)  [normalizado]
+      y coverage_score = max(0, 1 - |coverage_80 - 0.80| / 0.80)    [penaliza desviación]
+    - "multi-objective": alias de "composite" por ahora (Optuna multi-objetivo requiere
+      refactor mayor de create_study y del retorno de la función objetivo).
+      TODO: implementar con optuna.create_study(directions=[...]) en una épica futura.
+
+    Si prob_metrics está vacío y mode != "sharpe", emite warning y usa solo Sharpe.
+    Nunca retorna NaN — usa 0.0 como fallback para métricas ausentes.
+
+    Args:
+        portfolio_metrics: Dict con sharpe, sortino, max_drawdown, volatility.
+        risk_metrics: Dict con var_95 (float) u otras métricas de riesgo.
+        prob_metrics: Dict con pinball_p50, coverage_80, interval_width_80, crps.
+        mode: Modo de composición del score.
+
+    Returns:
+        Score escalar para Optuna (maximize).
+    """
+    sharpe = float(portfolio_metrics.get("sharpe", 0.0))
+    if not math.isfinite(sharpe):
+        sharpe = 0.0
+
+    if mode == "sharpe":
+        return sharpe
+
+    # Modos composite y multi-objective — requieren métricas probabilísticas
+    if mode == "multi-objective":
+        # TODO: implementar con optuna multi-objetivo (directions=['maximize','maximize'])
+        # cuando se refactorice create_study. Por ahora usa la misma fórmula que composite.
+        pass
+
+    if not prob_metrics:
+        logger.warning(
+            "mode='%s' requiere métricas probabilísticas, pero prob_metrics está vacío. "
+            "Usando Sharpe puro como fallback.",
+            mode,
+        )
+        return sharpe
+
+    # Componente 1: Sharpe (peso 0.5)
+    sharpe_component = sharpe
+
+    # Componente 2: Pinball P50 normalizado (peso 0.3)
+    # Menor pinball = mejor calibración puntual → (1 - norm) maximizable
+    pinball_p50 = float(prob_metrics.get("pinball_p50", 0.0))
+    if not math.isfinite(pinball_p50):
+        pinball_p50 = 0.0
+    # Normalizar por magnitud del retorno medio para escalar adecuadamente
+    mean_return_proxy = (
+        abs(sharpe) * float(portfolio_metrics.get("volatility", 0.01)) + 1e-8
+    )
+    pinball_norm = min(pinball_p50 / mean_return_proxy, 1.0)
+    calibration_component = 1.0 - pinball_norm
+
+    # Componente 3: Coverage score (peso 0.2)
+    # Penaliza la desviación respecto al 80% de cobertura nominal
+    coverage_80 = float(prob_metrics.get("coverage_80", 0.0))
+    if not math.isfinite(coverage_80):
+        coverage_80 = 0.0
+    coverage_score = max(0.0, 1.0 - abs(coverage_80 - 0.80) / 0.80)
+
+    score = 0.5 * sharpe_component + 0.3 * calibration_component + 0.2 * coverage_score
+    return score if math.isfinite(score) else 0.0
+
+
 # ---------------------------------------------------------------------------
 # Función objetivo
 # ---------------------------------------------------------------------------
@@ -156,21 +306,23 @@ def objective(
     csv_path: str,
     n_splits: int,
     results_dir: Path,
+    study_objective: str = "sharpe",
 ) -> float:
-    """Entrena Flow_FEDformer con los hiperparámetros sugeridos y retorna Sharpe.
+    """Entrena Flow_FEDformer con los hiperparámetros sugeridos y retorna el score.
 
-    Penalización compuesta:
-        - Si VaR_95 > 0.08: Sharpe × 0.5 (riesgo excesivo)
-        - Si Sortino < 0: Sharpe − 0.3 (sin señal asimétrica útil)
+    Penalizaciones sobre el score final:
+        - Si VaR_95 > 0.08: score × 0.5 (riesgo excesivo)
+        - Si Sortino < 0: score − 0.3 (sin señal asimétrica útil)
 
     Args:
         trial: Trial de Optuna.
         csv_path: Ruta al CSV del ticker.
         n_splits: Número de folds walk-forward.
         results_dir: Directorio de resultados para parsear CSVs.
+        study_objective: Modo de score ("sharpe", "composite", "multi-objective").
 
     Returns:
-        Sharpe penalizado, o -1.0 si el trial falló.
+        Score penalizado, o -1.0 si el trial falló.
     """
     seq_len = trial.suggest_categorical("seq_len", SEQ_LENS)
     pred_len = trial.suggest_categorical("pred_len", PRED_LENS)
@@ -213,14 +365,17 @@ def objective(
     env = os.environ.copy()
     env["MPLBACKEND"] = "Agg"
 
+    # Registrar timestamp de inicio como string para parsear CSVs probabilísticos
     ts_before = _current_time()
+    ts_before_str = time.strftime("%Y%m%d_%H%M%S", time.localtime(ts_before))
     logger.info(
-        "Trial %d | seq=%d pred=%d batch=%d clip=%.1f",
+        "Trial %d | seq=%d pred=%d batch=%d clip=%.1f | objective=%s",
         trial.number,
         seq_len,
         pred_len,
         batch_size,
         clip_norm,
+        study_objective,
     )
 
     try:
@@ -246,29 +401,53 @@ def objective(
     portfolio = _parse_portfolio_csv(results_dir, ticker_stem, ts_before)
     var_95 = _parse_risk_csv(results_dir, ticker_stem, ts_before)
 
+    # Parsear métricas probabilísticas si están disponibles (--save-results activo en cmd)
+    prob_metrics = _parse_probabilistic_csv(results_dir, ticker_stem, ts_before_str)
+
     sharpe = portfolio["sharpe"]
     sortino = portfolio["sortino"]
 
     logger.info(
-        "Trial %d → Sharpe=%.4f Sortino=%.4f VaR=%.4f",
+        "Trial %d → Sharpe=%.4f Sortino=%.4f VaR=%.4f pinball_p50=%s coverage_80=%s",
         trial.number,
         sharpe,
         sortino,
         var_95,
+        f"{prob_metrics.get('pinball_p50', float('nan')):.4f}"
+        if prob_metrics
+        else "n/a",
+        f"{prob_metrics.get('coverage_80', float('nan')):.4f}"
+        if prob_metrics
+        else "n/a",
     )
 
     # Registrar métricas auxiliares para análisis post-hoc en el dashboard
     trial.set_user_attr("sortino", sortino)
     trial.set_user_attr("var_95", var_95)
     trial.set_user_attr("max_drawdown", portfolio["max_drawdown"])
+    trial.set_user_attr("pinball_p50", prob_metrics.get("pinball_p50", float("nan")))
+    trial.set_user_attr("coverage_80", prob_metrics.get("coverage_80", float("nan")))
+    trial.set_user_attr(
+        "interval_width_80",
+        prob_metrics.get("interval_width_80", float("nan")),
+    )
 
-    # Penalizaciones
+    # Componer score según el objetivo seleccionado
+    score = _compose_trial_score(
+        portfolio_metrics=portfolio,
+        risk_metrics={"var_95": var_95},
+        prob_metrics=prob_metrics,
+        mode=study_objective,
+    )
+    trial.set_user_attr("composite_score", score)
+
+    # Penalizaciones de riesgo (aplicadas al score final)
     if var_95 > 0.08:
-        sharpe *= 0.5
+        score *= 0.5
     if sortino < 0:
-        sharpe -= 0.3
+        score -= 0.3
 
-    return sharpe
+    return score
 
 
 # ---------------------------------------------------------------------------
@@ -424,6 +603,20 @@ def main() -> None:
         action="store_true",
         help=f"Descarga los 8 tickers adicionales: {', '.join(EXTRA_TICKERS)}.",
     )
+    parser.add_argument(
+        "--study-objective",
+        type=str,
+        default="sharpe",
+        choices=["sharpe", "composite", "multi-objective"],
+        help="Objetivo de optimización del trial (default: sharpe).",
+    )
+    parser.add_argument(
+        "--composite-score-profile",
+        type=str,
+        default="balanced",
+        choices=["balanced"],
+        help="Perfil de pesos para score compuesto (default: balanced).",
+    )
     args = parser.parse_args()
 
     # Modo descarga
@@ -461,14 +654,22 @@ def main() -> None:
     )
 
     logger.info(
-        "Iniciando búsqueda para %s — %d trials, espacio: %d combinaciones posibles.",
+        "Iniciando búsqueda para %s — %d trials, espacio: %d combinaciones posibles, "
+        "objetivo: %s.",
         ticker_stem,
         args.n_trials,
         len(SEQ_LENS) * len(PRED_LENS) * len(BATCH_SIZES) * len(CLIP_NORMS),
+        args.study_objective,
     )
 
     study.optimize(
-        lambda trial: objective(trial, csv_path, args.n_splits, results_dir),
+        lambda trial: objective(
+            trial,
+            csv_path,
+            args.n_splits,
+            results_dir,
+            study_objective=args.study_objective,
+        ),
         n_trials=args.n_trials,
         show_progress_bar=False,  # interfiere con el logging estándar
     )
@@ -488,15 +689,35 @@ def main() -> None:
     logger.info("=" * 60)
     logger.info("RESULTADOS — %s", ticker_stem.upper())
     logger.info("  Trials completados: %d | Podados: %d", len(completed), len(pruned))
-    logger.info("  Mejor Sharpe:       %.4f", best.value)
+    logger.info("  Mejor score (%s):  %.4f", args.study_objective, best.value)
     logger.info("  Mejores parámetros:")
     for k, v in best.params.items():
         logger.info("    %-25s %s", k + ":", v)
     logger.info("  Métricas auxiliares del mejor trial:")
-    logger.info("    Sortino:   %.4f", best.user_attrs.get("sortino", float("nan")))
-    logger.info("    VaR_95:    %.4f", best.user_attrs.get("var_95", float("nan")))
     logger.info(
-        "    MaxDD:     %.4f", best.user_attrs.get("max_drawdown", float("nan"))
+        "    Sortino:          %.4f", best.user_attrs.get("sortino", float("nan"))
+    )
+    logger.info(
+        "    VaR_95:           %.4f", best.user_attrs.get("var_95", float("nan"))
+    )
+    logger.info(
+        "    MaxDD:            %.4f", best.user_attrs.get("max_drawdown", float("nan"))
+    )
+    logger.info(
+        "    Pinball P50:      %s",
+        f"{best.user_attrs['pinball_p50']:.4f}"
+        if not math.isnan(best.user_attrs.get("pinball_p50", float("nan")))
+        else "n/a",
+    )
+    logger.info(
+        "    Coverage 80%%:    %s",
+        f"{best.user_attrs['coverage_80']:.4f}"
+        if not math.isnan(best.user_attrs.get("coverage_80", float("nan")))
+        else "n/a",
+    )
+    logger.info(
+        "    Composite score:  %.4f",
+        best.user_attrs.get("composite_score", float("nan")),
     )
     logger.info("=" * 60)
 
