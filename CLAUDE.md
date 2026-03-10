@@ -66,9 +66,16 @@ data/
   AMZN_features.csv            # Dataset AMZN  (mismo formato, 11 features)
   META_features.csv            # Dataset META  (mismo formato, 11 features)
   TSLA_features.csv            # Dataset TSLA  (mismo formato, 11 features)
+variants.json                  # Variantes de ablación: dropout {0.05,0.1,0.2} × {log_return,none}
+docs/
+  plans/
+    2026-03-09-validacion-corto-plazo.md  # Plan ablaciones + multi-seed + Optuna composite
+  roadmap_multiticker.md       # Roadmap Fase 1–2 arquitectura multi-ticker
 archivos auxiliares/
   backlog_pipeline_investigacion_probabilistica.md  # Backlog épicas 1–9 (COMPLETADO 2026-03-09)
   plan_ejecucion_pipeline_probabilistico.md         # Plan Épicas 1–9 (COMPLETADO 2026-03-09)
+  session_log_20260309.txt     # Log sesión Épicas 5–9
+  session_log_20260310.txt     # Log sesión validación corto plazo (ablaciones + multi-seed)
 ```
 
 ## Comandos
@@ -293,7 +300,11 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Épicas 1–9 COMPLETADAS** (2026-03-09) — commits `9810be1`→`623c5b1` en `main`.
 - Plan histórico: `archivos auxiliares/plan_ejecucion_pipeline_probabilistico.md`
 - Backlog fuente: `archivos auxiliares/backlog_pipeline_investigacion_probabilistica.md`
-- **Próximos pasos sugeridos**: experimentos reales con presets canónicos, ablaciones sistemáticas vía `scripts/run_ablation_matrix.py`, validación de robustez multi-seed con `scripts/run_multi_seed.py`.
+- **Próximos pasos inmediatos** (sesión 2026-03-10 — pendientes):
+  1. Re-establecer baseline canónico NVDA post-fix `00f119c`: ejecutar comando canónico con seed=42, actualizar MEMORY.md y model_registry.json con el nuevo Sharpe de referencia.
+  2. Tarea C: Optuna con `--study-objective composite` (30 trials) — comparar vs sharpe puro.
+  3. Tarea D: Actualizar CLAUDE.md con benchmarks post-fix y comparativa Optuna.
+- **Plan de validación corto plazo**: `docs/plans/2026-03-09-validacion-corto-plazo.md`
 
 ## Entrenamiento headless
 
@@ -306,6 +317,9 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Benchmarks NVDA canónicos** (configuración validada `log_return + n_splits=4 + clip=0.5`):
   - vs precio+n_splits=5 (2026-03-03): Sharpe −0.26→**+0.61** · Sortino −0.41→**+0.99** · val loss uniforme 1.29–1.62 · VaR 5.3% / CVaR 7.0%
   - vs clip=1.0 (2026-03-04): Sharpe +0.61→**+0.653** · Sortino +0.99→**+1.050** · fold-2 ratio 1.279→**1.115** (reducción overfitting)
+  - ⚠️ **DISCONTINUIDAD post-`00f119c` (2026-03-10)**: el fix de pickling DataLoader cambió el seeding de workers. El baseline +0.653 (seed=42) fue obtenido con workers **sin semilla** (closure no-picklable fallaba silenciosamente con `spawn`). Post-fix, workers se siembran con `base_seed + worker_id` → trayectoria de entrenamiento diferente. **El baseline +0.653 no es comparable con resultados post-`00f119c`**. Pendiente: re-establecer baseline canónico post-fix con el comando canónico antes de usar +0.653 como referencia.
+  - Ablación dropout × return_transform (2026-03-10, cpu_safe): `log_return` supera `none` en promedio +0.701 Sharpe. Ranking de dropout ruidoso en run único (alta varianza NF). `dropout_020_logret` mejor en este run (0.792) pero contradice serie B2/C1/C2 — se necesita multi-run para confirmar.
+  - Multi-seed NVDA post-fix (seeds 42,123,7,456, 2026-03-10): mean=+0.369 · std=0.546 · rango [−0.348, +0.892]. Solo 2/4 seeds con Sharpe > 0.5. **Alta varianza inter-seed confirmada** — resultados contaminados por la discontinuidad del fix. Pendiente: re-correr tras establecer nuevo baseline.
 - `metric_space="returns"` con `return_transform="log_return"`: VaR/CVaR en unidades de retorno (5–7%). Con `metric_space="prices"` se reconstruyen precios vía `_cumulative_returns_to_prices(last_prices, log_return)`.
 
 ## Bugs resueltos (fix/last-prices-leakage, 2026-03-03)
@@ -340,7 +354,9 @@ recargado al agotar épocas. Ver `git log --oneline -10` para detalles por commi
 - **Subagentes para experimentos de entrenamiento**: requieren permiso Bash explícito. Sin él devuelven "necesito acceso Bash" sin ejecutar nada. Lanzar entrenamientos directamente con `Bash(run_in_background=true)` desde el contexto principal.
 - **`last_prices` boundary en `preprocessing.py`**: `df.iloc[cutoff]` es el precio correcto en la frontera train/test — no es leakage. Está implícito en el último retorno de entrenamiento `log(P[cutoff]/P[cutoff-1])`. Test de regresión: `test_last_prices_is_boundary_anchor`.
 - **`gh` CLI no está instalado**: crear PRs manualmente desde la URL que imprime `git push` (`https://github.com/.../pull/new/BRANCH`).
-- **Smoke test en bash falla** con `AttributeError: Can't pickle local object '_worker_init_fn'` — bug pre-existente de pickling con `multiprocessing_context="spawn"`. No es regresión; verificar nuevas funcionalidades vía tests unitarios en su lugar (ej. `pytest tests/test_experiment_outputs.py -v`).
+- **Smoke test en bash / pickling DataLoader RESUELTO** (`00f119c`, 2026-03-10): `_worker_init_fn` era closure no-picklable con `multiprocessing_context="spawn"`. Reemplazado por `_seed_worker(worker_id, base_seed)` a nivel de módulo + `functools.partial`. Tests y subprocesos ahora funcionan sin `--preset cpu_safe`. ⚠️ Este fix introduce **discontinuidad de reproducibilidad** (ver Benchmarks NVDA arriba).
+- **`_make_loader` sin fix de pickling** (follow-up pendiente): el método `_make_loader` en `trainer.py` (usado en paths de rehearsal y fine-tuning) no recibió el `worker_init_fn` de `_seed_worker`. Si `num_workers > 0` en esos paths, los workers no tienen semilla determinista. Bajo carga normal (sin rehearsal activo), esto no afecta. Ticket pendiente para sesión futura.
+- **`--base-args-json` acepta JSON inline** (desde `4733160`, 2026-03-10): `run_ablation_matrix.py` detecta si el argumento comienza con `{` para parsear JSON inline vs ruta de archivo. Ejemplo: `--base-args-json '{"seq_len": 96, "preset": "cpu_safe"}'`.
 - **Worktrees no tienen `data/`**: usar rutas absolutas al dataset en smoke tests lanzados desde un worktree (`/home/tmp/PROYECTOS PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/data/NVDA_features.csv`).
 - **`ci.yml` push trigger**: añadir manualmente cada rama nueva a `on: push: branches` en `.github/workflows/ci.yml`, y los nuevos archivos de test a los shards correspondientes (`Run simulations and utils fast shard` / `Run feature branch regression slice`).
 - **`scripts/__init__.py` es obligatorio**: sin él, `from scripts.run_ablation_matrix import ...` en tests lanza `ModuleNotFoundError`. Siempre crear `scripts/__init__.py` vacío al añadir módulos en `scripts/`.
