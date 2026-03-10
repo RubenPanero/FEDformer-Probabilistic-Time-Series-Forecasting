@@ -122,3 +122,6 @@ tests/validate_fixes.py
 
 # === Archivos auxiliares (locales) ===
 archivos auxiliares/
+
+# === Self-improvement learnings (locales) ===
+.learnings/

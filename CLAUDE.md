@@ -300,10 +300,10 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Épicas 1–9 COMPLETADAS** (2026-03-09) — commits `9810be1`→`623c5b1` en `main`.
 - Plan histórico: `archivos auxiliares/plan_ejecucion_pipeline_probabilistico.md`
 - Backlog fuente: `archivos auxiliares/backlog_pipeline_investigacion_probabilistica.md`
-- **Próximos pasos inmediatos** (sesión 2026-03-10 — pendientes):
-  1. Re-establecer baseline canónico NVDA post-fix `00f119c`: ejecutar comando canónico con seed=42, actualizar MEMORY.md y model_registry.json con el nuevo Sharpe de referencia.
+- **Próximos pasos inmediatos** (sesión 2026-03-10):
+  1. ✅ Re-establecer baseline canónico NVDA post-fix `00f119c`: Sharpe **+0.609** (seed=42, 2026-03-10). MEMORY.md + model_registry.json + CLAUDE.md actualizados.
   2. Tarea C: Optuna con `--study-objective composite` (30 trials) — comparar vs sharpe puro.
-  3. Tarea D: Actualizar CLAUDE.md con benchmarks post-fix y comparativa Optuna.
+  3. Tarea D: Comparativa Optuna composite vs sharpe puro en CLAUDE.md (pendiente tras Tarea C).
 - **Plan de validación corto plazo**: `docs/plans/2026-03-09-validacion-corto-plazo.md`
 
 ## Entrenamiento headless
@@ -317,9 +317,12 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Benchmarks NVDA canónicos** (configuración validada `log_return + n_splits=4 + clip=0.5`):
   - vs precio+n_splits=5 (2026-03-03): Sharpe −0.26→**+0.61** · Sortino −0.41→**+0.99** · val loss uniforme 1.29–1.62 · VaR 5.3% / CVaR 7.0%
   - vs clip=1.0 (2026-03-04): Sharpe +0.61→**+0.653** · Sortino +0.99→**+1.050** · fold-2 ratio 1.279→**1.115** (reducción overfitting)
-  - ⚠️ **DISCONTINUIDAD post-`00f119c` (2026-03-10)**: el fix de pickling DataLoader cambió el seeding de workers. El baseline +0.653 (seed=42) fue obtenido con workers **sin semilla** (closure no-picklable fallaba silenciosamente con `spawn`). Post-fix, workers se siembran con `base_seed + worker_id` → trayectoria de entrenamiento diferente. **El baseline +0.653 no es comparable con resultados post-`00f119c`**. Pendiente: re-establecer baseline canónico post-fix con el comando canónico antes de usar +0.653 como referencia.
+  - ~~⚠️ DISCONTINUIDAD post-`00f119c`~~ **RESUELTA (2026-03-10)**: baseline post-fix re-establecido con seed=42.
+    **Nuevo baseline canónico post-`00f119c`**: Sharpe **+0.609** · Sortino **+0.993** · VaR 5.35% · CVaR 7.07% · MaxDD −72.69% · Vol 2.47%
+    El +0.653 (pre-fix) ya no es la referencia válida — usar **+0.609** para todas las comparaciones futuras.
+    model_registry.json actualizado manualmente con este valor (2026-03-10).
   - Ablación dropout × return_transform (2026-03-10, cpu_safe): `log_return` supera `none` en promedio +0.701 Sharpe. Ranking de dropout ruidoso en run único (alta varianza NF). `dropout_020_logret` mejor en este run (0.792) pero contradice serie B2/C1/C2 — se necesita multi-run para confirmar.
-  - Multi-seed NVDA post-fix (seeds 42,123,7,456, 2026-03-10): mean=+0.369 · std=0.546 · rango [−0.348, +0.892]. Solo 2/4 seeds con Sharpe > 0.5. **Alta varianza inter-seed confirmada** — resultados contaminados por la discontinuidad del fix. Pendiente: re-correr tras establecer nuevo baseline.
+  - Multi-seed NVDA post-fix (seeds 42,123,7,456, 2026-03-10): mean=+0.369 · std=0.546 · rango [−0.348, +0.892]. Solo 2/4 seeds con Sharpe > 0.5. **Alta varianza inter-seed confirmada**. Baseline seed=42 re-establecido: **+0.609**.
 - `metric_space="returns"` con `return_transform="log_return"`: VaR/CVaR en unidades de retorno (5–7%). Con `metric_space="prices"` se reconstruyen precios vía `_cumulative_returns_to_prices(last_prices, log_return)`.
 
 ## Bugs resueltos (fix/last-prices-leakage, 2026-03-03)
