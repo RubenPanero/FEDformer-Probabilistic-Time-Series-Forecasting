@@ -121,12 +121,17 @@ pytest --cov=. --cov-report=html
 ruff check . --fix && ruff format . && pylint --errors-only models/ training/ data/ utils/ && pytest -q -m "not slow"
 
 # Búsqueda de hiperparámetros con Optuna (score simple)
-python3 tune_hyperparams.py --csv data/NVDA_features.csv --targets "Close" \
-  --n-trials 50 --study-name nvda_study
+# NOTA: tune_hyperparams.py NO tiene --targets ni --study-name (no existen)
+python3 tune_hyperparams.py --csv data/NVDA_features.csv --n-trials 30
 
 # Optuna con score compuesto probabilístico
-python3 tune_hyperparams.py --csv data/NVDA_features.csv --targets "Close" \
-  --n-trials 50 --study-name nvda_study --study-objective composite
+python3 tune_hyperparams.py --csv data/NVDA_features.csv \
+  --n-trials 30 --study-objective composite
+
+# Con persistencia SQLite (permite reanudar)
+python3 tune_hyperparams.py --csv data/NVDA_features.csv \
+  --n-trials 30 --study-objective composite \
+  --storage-path optuna_studies/nvda_composite.db
 
 # Preset de entrenamiento (debug/cpu_safe/gpu_research/probabilistic_eval)
 MPLBACKEND=Agg python3 main.py --csv data/NVDA_features.csv --targets "Close" \
@@ -302,8 +307,8 @@ CSV → TimeSeriesDataset (scale + regimes)
 - Backlog fuente: `archivos auxiliares/backlog_pipeline_investigacion_probabilistica.md`
 - **Próximos pasos inmediatos** (sesión 2026-03-10):
   1. ✅ Re-establecer baseline canónico NVDA post-fix `00f119c`: Sharpe **+0.609** (seed=42, 2026-03-10). MEMORY.md + model_registry.json + CLAUDE.md actualizados.
-  2. Tarea C: Optuna con `--study-objective composite` (30 trials) — comparar vs sharpe puro.
-  3. Tarea D: Comparativa Optuna composite vs sharpe puro en CLAUDE.md (pendiente tras Tarea C).
+  2. ✅ Tarea C: Optuna composite vs sharpe puro — 5 trials completados (de 10), resultados parciales registrados en Benchmarks. Estudios persistidos en `optuna_studies/nvda_composite_v1.db` y `optuna_studies/nvda_sharpe_v1.db` (reanudables). Notebook Kaggle: `kaggle_optuna_nvda.ipynb`.
+  3. ✅ Tarea D: Hallazgos Optuna documentados en CLAUDE.md (ver Benchmarks y Gotchas). Pendiente: completar los 10 trials restantes para confirmar tendencias.
 - **Plan de validación corto plazo**: `docs/plans/2026-03-09-validacion-corto-plazo.md`
 
 ## Entrenamiento headless
@@ -323,6 +328,7 @@ CSV → TimeSeriesDataset (scale + regimes)
     model_registry.json actualizado manualmente con este valor (2026-03-10).
   - Ablación dropout × return_transform (2026-03-10, cpu_safe): `log_return` supera `none` en promedio +0.701 Sharpe. Ranking de dropout ruidoso en run único (alta varianza NF). `dropout_020_logret` mejor en este run (0.792) pero contradice serie B2/C1/C2 — se necesita multi-run para confirmar.
   - Multi-seed NVDA post-fix (seeds 42,123,7,456, 2026-03-10): mean=+0.369 · std=0.546 · rango [−0.348, +0.892]. Solo 2/4 seeds con Sharpe > 0.5. **Alta varianza inter-seed confirmada**. Baseline seed=42 re-establecido: **+0.609**.
+  - **Optuna NVDA — resultados parciales** (5/10 trials, 2026-03-10): mejor config encontrada = `seq=96, pred=20, batch=32, clip=0.5`. Sharpe **+0.750** · Sortino +1.024 · VaR 5.20% · pinball_p50 0.0195 · coverage_80 **0.626** (bajo objetivo ≥0.75). Ambos objetivos (composite y sharpe) convergieron al mismo trial. Trade-off observado: trials con mejor coverage (0.779) tienen Sharpe negativo. Pendiente: 10 trials adicionales con TPE guiado para explorar si existe zona de Pareto con coverage≥0.75 y Sharpe positivo.
 - `metric_space="returns"` con `return_transform="log_return"`: VaR/CVaR en unidades de retorno (5–7%). Con `metric_space="prices"` se reconstruyen precios vía `_cumulative_returns_to_prices(last_prices, log_return)`.
 
 ## Bugs resueltos (fix/last-prices-leakage, 2026-03-03)
@@ -367,4 +373,10 @@ recargado al agotar épocas. Ver `git log --oneline -10` para detalles por commi
 - **`monitor_metric` NO está en CLI**: solo acceso programático vía `config.sections.loop.monitor_metric`. Decisión de diseño intencional — no exponer como flag CLI de momento.
 - **Bash heredoc `python3 - << 'PYEOF'` para scripts con backslashes**: usar este patrón al manipular archivos con backslashes de continuación de línea (ej. `ci.yml`). `sed` y `awk` tienen escaping problemático con `\` en heredocs.
 - **Agentes paralelos en worktrees siempre tocan `ci.yml`**: cuando ≥2 agentes modifican el mismo bloque de `ci.yml`, el segundo merge genera conflicto. Resolver con `python3 - << 'PYEOF'` reemplazando el bloque conflictivo con ambas adiciones.
+- **`cpu_safe` preset NO fuerza CPU**: solo deshabilita AMP (`use_amp=False`), torch.compile (`compile_mode="none"`) y workers (`num_workers=0`, `pin_memory=False`). `get_device()` siempre retorna CUDA si está disponible. El entrenamiento sigue en GPU. El nombre es confuso — significa "seguro para entornos sin GPU", no "forzar CPU".
+- **`torch.quantile()` se mueve a CPU solo para determinismo**: en `_evaluate_model` de `trainer.py`, las muestras se pasan a CPU antes de `torch.quantile()` porque CUDA no garantiza determinismo con `torch.use_deterministic_algorithms(True)`. No es una limitación del modelo probabilístico — el forward/backward completo (incluido MC Dropout sampling) se ejecuta en GPU.
+- **`tune_hyperparams.py` user_attrs**: el campo `sharpe` NO existe en `user_attrs`. En modo `sharpe`, el Sharpe ratio ES el `best_trial.value` directamente (también guardado como `composite_score`). En modo `composite`, `composite_score = 0.5·sharpe + 0.3·(1-pinball_norm) + 0.2·coverage_score`. Otros user_attrs disponibles: `sortino`, `var_95`, `pinball_p50`, `coverage_80`, `interval_width_80`, `max_drawdown`.
+- **`tune_hyperparams.py` nombre del estudio**: auto-generado como `tune_{ticker_stem}` donde `ticker_stem` es el stem del CSV (ej. `NVDA_features` → `tune_NVDA_features`). Usar este nombre al cargar con `optuna.load_study()`.
+- **`tune_hyperparams.py` NO tiene `--targets` ni `--study-name`**: flags que no existen. Los flags reales son `--csv`, `--n-trials`, `--n-splits`, `--storage-path`, `--study-objective`, `--composite-score-profile`, `--best-save-canonical`.
+- **Kaggle para runs largos de Optuna**: notebook `kaggle_optuna_nvda.ipynb` en la raíz del proyecto. T4 GPU (40 SMs exactos) → `torch.compile` puede activarse; si aparecen NaN añadir `"--preset", "cpu_safe"` al subprocess. Estudios SQLite se descargan desde Output del notebook.
 - **Worktrees de agentes pueden partir de base antigua**: si el agente se despacha inmediatamente después de un cherry-pick o merge complejo, el worktree puede arrancar desde un HEAD desactualizado. Síntoma: archivos existentes en `main` aparecen como "nuevos" en el worktree → conflicto `add/add` al cherry-pick. Solución: `git cherry-pick --abort`, copiar manualmente las funciones nuevas del worktree y hacer commit directo en `main`.
