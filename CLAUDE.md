@@ -48,15 +48,15 @@ utils/
   probabilistic_metrics.py     # métricas puras: pinball_loss, crps_from_samples, empirical_coverage
   io_experiment.py             # serialize_config, build_run_manifest, save_probabilistic_metrics
   experiment_registry.py       # load_run_manifests, rank_runs, aggregate_seed_metrics, summarize_seed_stability
-tune_hyperparams.py            # CLI Optuna: búsqueda de hiperparámetros con walk-forward
-                               # CLI: --csv, --targets, --n-trials, --timeout, --study-name
-                               #      --study-objective {sharpe,composite,multi-objective}
-                               #      --composite-score-profile {balanced}
+tune_hyperparams.py            # CLI Optuna: --csv, --n-trials, --n-splits, --storage-path,
+                               #   --study-objective {sharpe,composite,multi-objective}
+                               #   --composite-score-profile {balanced}, --best-save-canonical
+                               #   (NO tiene --targets ni --study-name)
 scripts/
   __init__.py                  # módulo vacío — necesario para importar scripts en tests
   run_ablation_matrix.py       # AblationJob, build_ablation_jobs, job_to_argv, run_ablation_job
   run_multi_seed.py            # run_single_seed, run_multi_seed_experiment — CLI: --seeds, --dry-run
-tests/                         # pytest (conftest.py, 22 archivos de test — 277 fast + 7 @slow)
+tests/                         # pytest (conftest.py, 23 archivos de test — 283 fast + 7 @slow)
 results/                       # CSVs exportados por --save-results (gitignored)
 data/
   NVDA_features.csv            # Dataset permanente (1725 filas × 11 features, 2019–2026)
@@ -204,53 +204,20 @@ python3 scripts/run_multi_seed.py --csv data/NVDA_features.csv \
 **Seguridad:**
 - `security.yml` ejecuta bandit; no usar `eval()`, `pickle` sin validación, ni `shell=True`
 
-## Flujo de trabajo (Agile/Scrum)
+## Flujo de trabajo
 
-**Antes de escribir código:**
-- Identificar el caso de uso concreto (user story) y su Definition of Done
-- Escribir o actualizar el test unitario primero (TDD), luego implementar
-
-**Antes de cada commit:**
-- Ejecutar verificación pre-commit completa (ver comando arriba)
-- Commit atómico: un cambio lógico por commit, mensaje en inglés con prefijo convencional
-
-**Definition of Done por tarea:**
-1. Tests pasan (`pytest -q -m "not slow"`)
-2. Linting verde (`ruff check . && pylint --errors-only ...`)
-3. Sin regresiones en tests existentes
-4. CLAUDE.md actualizado si se añaden archivos, APIs o convenciones nuevas
-
-**Ramas y PRs:**
-- Features en rama corta → PR pequeño y enfocado → merge a `main`
-- Sin commits directos a `main`; PRs revisados antes de merge
-- Una rama = una feature o fix; no acumular cambios no relacionados
+**Definition of Done:** tests pasan · linting verde · sin regresiones · CLAUDE.md actualizado si hay nuevos archivos/APIs.
+- TDD: test primero, luego implementar.
+- Commits atómicos con prefijo convencional en inglés.
+- Features en rama corta → PR → merge a `main`. Sin commits directos a `main`.
 
 ## MLOps
 
-**Reproducibilidad:**
-- Toda ejecución usa `config.seed` (propagado a PyTorch, NumPy y DataLoader workers)
-- `FEDformerConfig` es serializable; guardar config junto al checkpoint para reproducir experimentos
-- Checkpoints: `checkpoints/best_model_fold_N.pt` — diccionario con `model_state_dict` + `config`
-
-**Experiment tracking (W&B):**
-- W&B se inicializa automáticamente en `WalkForwardTrainer` si está instalado (falla silenciosamente si no)
-- Loguear siempre: hiperparámetros del config, pérdida por época, métricas por fold
-- No loguear tensores crudos ni artefactos sin comprimir (coste de almacenamiento)
-
-**Versionado de modelos:**
-- Un checkpoint por fold: `best_model_fold_0.pt`, `best_model_fold_1.pt`, ...
-- Fine-tuning siempre parte de un checkpoint base explícito (`--finetune-from`)
-- Usar `weights_only=True` en `torch.load()` (seguridad — ya implementado en trainer)
-
-**Validación temporal (anti-leakage):**
-- Walk-forward es la única estrategia válida para datos financieros; no usar K-fold aleatorio
-- El scaler se ajusta solo en el split de entrenamiento de cada fold (ver `PreprocessingPipeline`)
-
-**Monitoreo:**
-- `utils/metrics.py → MetricsTracker`: seguimiento in-memory con contexto de fold. `log_metrics(metrics, step, fold=0)` almacena `(fold, step, value)`; `to_dataframe()` exporta columnas `fold, epoch, metric, value`.
-- `--save-results` exporta 7 artefactos con timestamp compartido: `predictions_*.csv`, `risk_metrics_*.csv`, `portfolio_metrics_*.csv`, `training_history_*.csv`, `run_manifest_*.json`, `probabilistic_metrics_*.csv`, `fold_metrics_*.csv`.
-- `utils/calibration.py → conformal_quantile`: calibración post-hoc de intervalos de predicción
-- `utils/experiment_registry.py → load_run_manifests / rank_runs / aggregate_seed_metrics / summarize_seed_stability`: consolidar y comparar corridas a partir de los manifiestos JSON.
+- **Reproducibilidad**: `config.seed` propagado a PyTorch, NumPy y DataLoader workers. `FEDformerConfig` serializable junto al checkpoint.
+- **Checkpoints**: `checkpoints/best_model_fold_N.pt` (`model_state_dict` + `config`). `weights_only=True` en `torch.load()`. Fine-tuning siempre desde checkpoint explícito (`--finetune-from`).
+- **Anti-leakage**: walk-forward obligatorio; scaler ajustado solo en train de cada fold.
+- **`--save-results`** exporta 7 artefactos: `predictions_*.csv`, `risk_metrics_*.csv`, `portfolio_metrics_*.csv`, `training_history_*.csv`, `run_manifest_*.json`, `probabilistic_metrics_*.csv`, `fold_metrics_*.csv`.
+- **Experiment tracking**: W&B opcional (falla silenciosamente si no instalado). Tracking local completo vía `results/` + `utils/experiment_registry.py` (`load_run_manifests`, `rank_runs`, `aggregate_seed_metrics`).
 
 ## Arquitectura (flujo de datos)
 
@@ -265,40 +232,17 @@ CSV → TimeSeriesDataset (scale + regimes)
 
 ## Testing
 
-- Después de modificar cualquier archivo Python fuente, ejecutar la suite completa con `pytest` antes de hacer commit.
-- `pyproject.toml`: sección `[tool.pytest.ini_options]` — `-q --ignore=reports`, markers: `slow`
+- Ejecutar `pytest -q -m "not slow"` tras cualquier cambio en Python antes de commit.
+- `pyproject.toml`: `[tool.pytest.ini_options]` — `-q --ignore=reports`, markers: `slow`
 - Fixtures globales en `tests/conftest.py`: `config`, `model_factory`, `synthetic_batch`
-- `test_architecture_and_leakage.py`: verifica que no hay data leakage en splits walk-forward
-- `test_flows.py`: verifica invertibilidad de los normalizing flows
-- `test_forecast_output.py`: verifica API dual-space de `ForecastOutput` + helpers p10/p50/p90
-- `test_preprocessing_pipeline.py`: verifica `PreprocessingPipeline` e `inverse_transform`
-- `test_trainer_scheduling.py`: verifica LR scheduling, early stopping y `_eval_epoch`
-- `test_dataset.py`: carga, escala, inversión, shapes y no-solapamiento de splits 70/20/10
-- `test_encoder_decoder.py`: forward pass, shapes y gradient flow de EncoderLayer/DecoderLayer
-- `test_utils.py`: helpers (set_seed, get_device), calibration y MetricsTracker
-- `test_trainer_integration.py` (`@slow`): run_backtest() end-to-end con ForecastOutput
-- `test_fedformer_basic.py`: forward pass básico de Flow_FEDformer (shapes, distribution output)
-- `test_finetune.py`: freeze-backbone y fine-tuning desde checkpoint
-- `test_reproducibility.py`: determinismo con config.seed fijo
-- `test_simulations.py`: RiskSimulator y PortfolioSimulator (VaR, CVaR, Sharpe)
-- `test_probabilistic_metrics.py`: pinball_loss, crps_from_samples, empirical_coverage, calibration_gap
-- `test_checkpoint_selection.py`: monitor_metric/mode en early stopping y selección de checkpoint
-- `test_experiment_outputs.py`: run_manifest JSON, probabilistic_metrics CSV, fold_metrics CSV
-- `test_experiment_registry.py`: load_run_manifests, rank_runs, build_experiment_table
-- `test_config_presets.py`: apply_preset para los 4 presets, prioridad preset < CLI override
-- `test_ablation_matrix.py`: AblationJob, build_ablation_jobs, job_to_argv (subprocess mockeado)
-- `test_seed_aggregation.py`: aggregate_seed_metrics, summarize_seed_stability
+- Tests no obvios: `test_architecture_and_leakage.py` (data leakage walk-forward), `test_flows.py` (invertibilidad NF), `test_trainer_integration.py` (@slow, run_backtest e2e), `test_calibration.py` (CP conformal), `test_reproducibility.py` (determinismo seed)
+- Al añadir flags a `main.py`: actualizar `argparse.Namespace` en `tests/test_finetune.py` con el nuevo atributo a `None` para evitar `AttributeError` en `_create_config()`.
 
 ## CI/CD (`.github/workflows/`)
 
 - `ci.yml`: Ubuntu + Windows, Python 3.10–3.11 → smoke test + pytest sin `@slow`
-- `pylint.yml`: errores E/F únicamente
-- `ruff.yml`, `security.yml`, `compatibility.yml`
-
-## Ramas
-
-- `main`: rama estable y activa — incluye Optuna, rehearsal buffer, model registry, log-return transform
-- Todas las features anteriores mergeadas: `feat/log-return-transform`, `feature/optuna`, `fix/last-prices-leakage`
+- `pylint.yml`: errores E/F únicamente · `ruff.yml`, `security.yml`, `compatibility.yml`
+- Al añadir rama nueva: actualizar `on: push: branches` en `ci.yml`. Al añadir test: añadirlo al shard correspondiente.
 
 ## Hoja de ruta activa
 
@@ -325,68 +269,39 @@ CSV → TimeSeriesDataset (scale + regimes)
 - Comando NVDA validado: `MPLBACKEND=Agg python3 main.py --csv data/NVDA_features.csv --targets "Close" --seq-len 96 --pred-len 20 --batch-size 64 --save-results --no-show`
 - Sin `--epochs`: usa el default de `LoopSettings` (20 épocas). Pasar `--epochs N` solo para override explícito.
 - Dataset NVDA permanente: `data/NVDA_features.csv` (1725 filas × 11 features, 2019–2026).
-- **Segmentación canónica**: `seq_len=96, n_splits=4` → split_size=431, fold-1 con 4.2 batches. `n_splits=5` descartado (fold-1 = 3.1 batches, margen +1% sobre split_min=342).
-- **Benchmarks NVDA canónicos** (configuración validada `log_return + n_splits=4 + clip=0.5`):
-  - vs precio+n_splits=5 (2026-03-03): Sharpe −0.26→**+0.61** · Sortino −0.41→**+0.99** · val loss uniforme 1.29–1.62 · VaR 5.3% / CVaR 7.0%
-  - vs clip=1.0 (2026-03-04): Sharpe +0.61→**+0.653** · Sortino +0.99→**+1.050** · fold-2 ratio 1.279→**1.115** (reducción overfitting)
-  - ~~⚠️ DISCONTINUIDAD post-`00f119c`~~ **RESUELTA (2026-03-10)**: baseline post-fix re-establecido con seed=42.
-    **Nuevo baseline canónico post-`00f119c`**: Sharpe **+0.609** · Sortino **+0.993** · VaR 5.35% · CVaR 7.07% · MaxDD −72.69% · Vol 2.47%
-    El +0.653 (pre-fix) ya no es la referencia válida — usar **+0.609** para todas las comparaciones futuras.
-    model_registry.json actualizado manualmente con este valor (2026-03-10).
-  - Ablación dropout × return_transform (2026-03-10, cpu_safe): `log_return` supera `none` en promedio +0.701 Sharpe. Ranking de dropout ruidoso en run único (alta varianza NF). `dropout_020_logret` mejor en este run (0.792) pero contradice serie B2/C1/C2 — se necesita multi-run para confirmar.
-  - Multi-seed NVDA post-fix (seeds 42,123,7,456, 2026-03-10): mean=+0.369 · std=0.546 · rango [−0.348, +0.892]. Solo 2/4 seeds con Sharpe > 0.5. **Alta varianza inter-seed confirmada**. Baseline seed=42 re-establecido: **+0.609**.
-  - **Optuna NVDA — resultados parciales** (5/10 trials, 2026-03-10): mejor config encontrada = `seq=96, pred=20, batch=32, clip=0.5`. Sharpe **+0.750** · Sortino +1.024 · VaR 5.20% · pinball_p50 0.0195 · coverage_80 **0.626** (bajo objetivo ≥0.75). Ambos objetivos (composite y sharpe) convergieron al mismo trial. Trade-off observado: trials con mejor coverage (0.779) tienen Sharpe negativo. Pendiente: 10 trials adicionales con TPE guiado para explorar si existe zona de Pareto con coverage≥0.75 y Sharpe positivo.
+- **Segmentación canónica**: `seq_len=96, n_splits=4` → split_size=431. `split_min=342` con defaults; `n_splits = total_filas // split_min` para tickers heterogéneos.
+- **Baseline canónico NVDA** (post-fix `00f119c`, seed=42, 2026-03-10): Sharpe **+0.609** · Sortino **+0.993** · VaR 5.35% · CVaR 7.07% · MaxDD −72.69% · Vol 2.47%. Referencia válida para todas las comparaciones. `model_registry.json` actualizado.
+- **Alta varianza inter-seed NF**: multi-seed (42,123,7,456) → mean=+0.369, std=0.546; 2/4 seeds con Sharpe>0.5. **Causa: sensibilidad inicialización NF, no falta de épocas** (early stopping dispara en 10–16/20).
+- **Optuna NVDA** (14 trials, DBs persistidos en `optuna_studies/`): mejor config `{seq=96, pred=20, batch=32, clip=0.5}` → Sharpe +0.750, coverage_80=0.626. Zona Pareto coverage≥0.75 + Sharpe>0 **NO existe** en datos actuales (trade-off estructural). Candidato más cercano: trial #9 (Sharpe=+0.161, cov=0.739).
 - `metric_space="returns"` con `return_transform="log_return"`: VaR/CVaR en unidades de retorno (5–7%). Con `metric_space="prices"` se reconstruyen precios vía `_cumulative_returns_to_prices(last_prices, log_return)`.
-
-## Bugs resueltos (fix/last-prices-leakage, 2026-03-03)
-
-5 bugs corregidos en `data/preprocessing.py` y `training/trainer.py`: winsorize de targets,
-leakage en `last_prices`/drift-check, scaler incorrecto en inverse_transform, y checkpoint no
-recargado al agotar épocas. Ver `git log --oneline -10` para detalles por commit.
 
 ## Gotchas
 
-- `FEDformerConfig` usa `enc_in`/`dec_in` para dimensiones de entrada (no `num_features`). Config por defecto: `seq_len=10, pred_len=5` (genera warnings); usar `seq_len=96, pred_len=24` para experimentos reales.
-- `pytest -q` no muestra la línea de resumen con el hook actual — usar `pytest -v` para ver `N passed`.
-- `build_financial_dataset(symbol, output_dir, use_mock)` es una **función**, no una clase. Tests deben llamarla directamente; no existe `FinancialDatasetBuilder`.
-- `label_len` default en el código es **5** (no 63 como sugiere `plan_entrenamiento.md`).
-- `len(TimeSeriesDataset)` retorna ventanas, no filas — usar `len(dataset.full_data_scaled)` para splits walk-forward.
-- `torch.fft.rfft` no soporta bfloat16 (AMP en GPUs Ada Lovelace); `_apply_rfft` en `models/layers.py` castea a float32 y `FourierAttention.forward` restaura `orig_dtype` con `.to(orig_dtype)` tras irfft.
-- `torch.compile(mode="max-autotune")` genera NaN en GPUs con <40 SMs (RTX 4050 tiene 20); el trainer degrada automáticamente a modo eager.
-- Config anidado correcto: `config.sections.preprocessing.return_transform` (no `config.preprocessing.*`).
-- `df.index.tz_localize(None)` lanza `TypeError: Already tz-naive` con yfinance moderno (retorna índice tz-naive). Usar siempre `if df.index.tz is not None: df.index = df.index.tz_localize(None)` (patrón de `vix_data.py`).
-- `logging.basicConfig()` a nivel de módulo es anti-patrón pre-existente en `data/vix_data.py` y `data/alpha_vantage_client.py` — si se modifican esos archivos, corregirlo a `logger = logging.getLogger(__name__)` únicamente.
-- **`drop_last=False` en train_loader**: fold 1 con `seq_len=252` tiene 63 ventanas < `batch_size=64`; `drop_last=False` (ya aplicado) evita 0 batches → `train_loss=inf`.
-- **Mínimo de datos en fold-1**: `split_min = seq_len + pred_len + ⌈(3 × batch_size) / (1 − val_frac)⌉`. Con defaults (seq=96, pred=20, batch=64, val=0.15): `split_min=342`. Para `n_splits=5` y 1725 filas: fold-1 = 3.1 batches ✓. Para tickers heterogéneos: `n_splits = total_filas // split_min`.
-- **Tests con `model_factory` que llaman a `_prepare_batch`**: los tensores van a `device` (CUDA si disponible) pero `model_factory()` crea el modelo en CPU. Usar `model_factory().to(get_device())` en esos tests.
-- **`_set_split_view`** es solo para uso standalone/tests con `flag="train/val/test"`. El pipeline walk-forward usa siempre `flag="all"` + `Subset` con índices calculados por `WalkForwardTrainer`; esta vista no interviene en ese flujo.
-- **`lr_lambda` debe usar `math.cos`/`math.pi`** (nunca `np`): `np.cos()` devuelve `numpy.float64` → LambdaLR lo escribe en `param_groups['lr']` → `torch.load(weights_only=True)` falla al deserializar. Usar `math.cos(math.pi * x)` en toda función de scheduling.
-- **Retrocompatibilidad de checkpoints con numpy escalares**: usar `torch.serialization.safe_globals([numpy._core.multiarray.scalar, np.float64, np.float32, np.int64, np.int32])` al cargar checkpoints antiguos con `weights_only=True`. `numpy._core` es privado → añadir `# pylint: disable=no-member` en esa línea.
-- **Al añadir flags a `main.py`**: actualizar el `argparse.Namespace` en `tests/test_finetune.py` (fixture de `test_create_config_wires_return_transform_and_metric_space`) con los nuevos atributos a `None`; si no, `_create_config()` lanza `AttributeError`.
-- **`sequential_finetuner.py` no tiene `--save-results`**: para fine-tuning con CSVs comparables en `results/`, usar `main.py --finetune-from checkpoints/best_model_fold_N.pt --finetune-lr 1e-5`.
-- **Dropout óptimo definitivo (Serie Exp B2/C1/C2 — CERRADO)**: `dropout=0.1` es el óptimo confirmado en este espacio de hiperparámetros. Configuración canónica: `dropout=0.1, weight_decay=1e-5, scheduler=none, epochs=20`. `dropout=0.2` sobre-regulariza (Sharpe NVDA +0.61→+0.22); no probar `0.15` — baseline ya es óptimo. Run de referencia: `results/training_history_20260303_192845_NVDA_features.csv`.
-- **`gradient_clip_norm` expuesto en CLI** (`--gradient-clip-norm`, default config=1.0). Valor óptimo validado: **0.5** (Sharpe +0.61→+0.653, fold-2 ratio 1.279→1.115). Usar `--gradient-clip-norm 0.5` en todos los runs canónicos.
-- **`_optimizer_step` en `trainer.py` es `@staticmethod`**: no tiene `self`; pasar valores de config (ej. `clip_norm`) como parámetros explícitos al call site en `_train_epoch`. No intentar usar `self.config.*` dentro del método.
-- **Subagentes para experimentos de entrenamiento**: requieren permiso Bash explícito. Sin él devuelven "necesito acceso Bash" sin ejecutar nada. Lanzar entrenamientos directamente con `Bash(run_in_background=true)` desde el contexto principal.
-- **`last_prices` boundary en `preprocessing.py`**: `df.iloc[cutoff]` es el precio correcto en la frontera train/test — no es leakage. Está implícito en el último retorno de entrenamiento `log(P[cutoff]/P[cutoff-1])`. Test de regresión: `test_last_prices_is_boundary_anchor`.
-- **`gh` CLI no está instalado**: crear PRs manualmente desde la URL que imprime `git push` (`https://github.com/.../pull/new/BRANCH`).
-- **Smoke test en bash / pickling DataLoader RESUELTO** (`00f119c`, 2026-03-10): `_worker_init_fn` era closure no-picklable con `multiprocessing_context="spawn"`. Reemplazado por `_seed_worker(worker_id, base_seed)` a nivel de módulo + `functools.partial`. Tests y subprocesos ahora funcionan sin `--preset cpu_safe`. ⚠️ Este fix introduce **discontinuidad de reproducibilidad** (ver Benchmarks NVDA arriba).
-- **`_make_loader` fix aplicado** (`e91b66e`, 2026-03-11): `worker_init_fn=functools.partial(_seed_worker, base_seed=seed)` añadido. Fix colateral: `generator` ya se pasa al constructor. Path rehearsal/fine-tuning ahora es determinista.
-- **`--base-args-json` acepta JSON inline** (desde `4733160`, 2026-03-10): `run_ablation_matrix.py` detecta si el argumento comienza con `{` para parsear JSON inline vs ruta de archivo. Ejemplo: `--base-args-json '{"seq_len": 96, "preset": "cpu_safe"}'`.
-- **Worktrees no tienen `data/`**: usar rutas absolutas al dataset en smoke tests lanzados desde un worktree (`/home/tmp/PROYECTOS PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/data/NVDA_features.csv`).
-- **`ci.yml` push trigger**: añadir manualmente cada rama nueva a `on: push: branches` en `.github/workflows/ci.yml`, y los nuevos archivos de test a los shards correspondientes (`Run simulations and utils fast shard` / `Run feature branch regression slice`).
-- **`scripts/__init__.py` es obligatorio**: sin él, `from scripts.run_ablation_matrix import ...` en tests lanza `ModuleNotFoundError`. Siempre crear `scripts/__init__.py` vacío al añadir módulos en `scripts/`.
-- **`apply_preset()` se llama ANTES de overrides CLI**: en `_create_config`, el orden es `crear_config_base → apply_preset(config, args.preset) → aplicar_flags_CLI`. Esto garantiza prioridad: defaults < preset < CLI. No reordenar.
-- **`monitor_metric` NO está en CLI**: solo acceso programático vía `config.sections.loop.monitor_metric`. Decisión de diseño intencional — no exponer como flag CLI de momento.
-- **Bash heredoc `python3 - << 'PYEOF'` para scripts con backslashes**: usar este patrón al manipular archivos con backslashes de continuación de línea (ej. `ci.yml`). `sed` y `awk` tienen escaping problemático con `\` en heredocs.
-- **Agentes paralelos en worktrees siempre tocan `ci.yml`**: cuando ≥2 agentes modifican el mismo bloque de `ci.yml`, el segundo merge genera conflicto. Resolver con `python3 - << 'PYEOF'` reemplazando el bloque conflictivo con ambas adiciones.
-- **`cpu_safe` preset NO fuerza CPU**: solo deshabilita AMP (`use_amp=False`), torch.compile (`compile_mode="none"`) y workers (`num_workers=0`, `pin_memory=False`). `get_device()` siempre retorna CUDA si está disponible. El entrenamiento sigue en GPU. El nombre es confuso — significa "seguro para entornos sin GPU", no "forzar CPU".
-- **`torch.quantile()` se mueve a CPU solo para determinismo**: en `_evaluate_model` de `trainer.py`, las muestras se pasan a CPU antes de `torch.quantile()` porque CUDA no garantiza determinismo con `torch.use_deterministic_algorithms(True)`. No es una limitación del modelo probabilístico — el forward/backward completo (incluido MC Dropout sampling) se ejecuta en GPU.
-- **`tune_hyperparams.py` user_attrs**: el campo `sharpe` NO existe en `user_attrs`. En modo `sharpe`, el Sharpe ratio ES el `best_trial.value` directamente (también guardado como `composite_score`). En modo `composite`, `composite_score = 0.5·sharpe + 0.3·(1-pinball_norm) + 0.2·coverage_score`. Otros user_attrs disponibles: `sortino`, `var_95`, `pinball_p50`, `coverage_80`, `interval_width_80`, `max_drawdown`.
-- **`tune_hyperparams.py` nombre del estudio**: auto-generado como `tune_{ticker_stem}` donde `ticker_stem` es el stem del CSV (ej. `NVDA_features` → `tune_NVDA_features`). Usar este nombre al cargar con `optuna.load_study()`.
-- **`tune_hyperparams.py` NO tiene `--targets` ni `--study-name`**: flags que no existen. Los flags reales son `--csv`, `--n-trials`, `--n-splits`, `--storage-path`, `--study-objective`, `--composite-score-profile`, `--best-save-canonical`.
-- **Kaggle para runs largos de Optuna**: notebook `kaggle_optuna_nvda.ipynb` en la raíz del proyecto.
-- **`--conformal-calibration` flag** (`49592af`, 2026-03-11): activa CP Enfoque 2 post-hoc. Computa `q_hat = conformal_quantile(gt, preds, alpha=0.2)` y reporta `cp_coverage_80` y `cp_q_hat` en métricas (junto a NF coverage, sin reemplazarla). Default: off. Enfoque 1 (walk-forward fold-aware) pendiente de implementar en Fase 1.
-- **fold 0 ausente en training_history** (2026-03-11): con n_splits=4, el CSV de training_history solo muestra folds 1,2,3. Fold 0 no aparece. Hipótesis: indexing en MetricsTracker o trainer. No afecta al entrenamiento. Investigar en Fase 1.
-- **Varianza inter-seed es NF initialization, NO falta de épocas** (2026-03-11): diagnóstico confirma que early stopping dispara en épocas 10–16 (techo=20). Aumentar a 40–60 no reduciría varianza. Causa raíz: sensibilidad de inicialización de los Normalizing Flows. T4 GPU (40 SMs exactos) → `torch.compile` puede activarse; si aparecen NaN añadir `"--preset", "cpu_safe"` al subprocess. Estudios SQLite se descargan desde Output del notebook.
-- **Worktrees de agentes pueden partir de base antigua**: si el agente se despacha inmediatamente después de un cherry-pick o merge complejo, el worktree puede arrancar desde un HEAD desactualizado. Síntoma: archivos existentes en `main` aparecen como "nuevos" en el worktree → conflicto `add/add` al cherry-pick. Solución: `git cherry-pick --abort`, copiar manualmente las funciones nuevas del worktree y hacer commit directo en `main`.
+- `FEDformerConfig` usa `enc_in`/`dec_in` para dimensiones (no `num_features`). Defaults: `seq_len=10, pred_len=5` (genera warnings); usar `seq_len=96, pred_len=24` para experimentos reales. Config anidado: `config.sections.preprocessing.return_transform`.
+- `pytest -q` no muestra línea de resumen — usar `pytest -v`. `build_financial_dataset()` es función, no clase.
+- `label_len` default = **5** (no 63). `len(TimeSeriesDataset)` = ventanas, no filas.
+- `torch.fft.rfft` no soporta bfloat16 (AMP Ada Lovelace) → `_apply_rfft` castea a float32, restaura `orig_dtype` tras irfft. `torch.compile(mode="max-autotune")` genera NaN en GPUs <40 SMs → trainer degrada a eager.
+- `torch.quantile()` se mueve a CPU en `_evaluate_model` (determinismo CUDA). Forward/backward GPU intacto.
+- **`lr_lambda` usa `math.cos`/`math.pi`** (nunca `np`): `np.cos()` → `numpy.float64` → `torch.load(weights_only=True)` falla al deserializar checkpoints.
+- **Retrocompatibilidad checkpoints numpy**: `torch.serialization.safe_globals([numpy._core.multiarray.scalar, np.float64, ...])` para cargar checkpoints antiguos. `numpy._core` es privado → `# pylint: disable=no-member`.
+- **`_optimizer_step` es `@staticmethod`**: pasar `clip_norm` como parámetro explícito; no usar `self.config.*` dentro.
+- **`drop_last=False` en train_loader**: ya aplicado; evita 0 batches en folds pequeños.
+- **Tests `model_factory` + `_prepare_batch`**: usar `model_factory().to(get_device())` — tensores van a CUDA, modelo se crea en CPU por defecto.
+- **`_set_split_view`**: solo para tests standalone. Walk-forward usa `flag="all"` + `Subset`.
+- **`sequential_finetuner.py` no tiene `--save-results`**: usar `main.py --finetune-from ... --finetune-lr 1e-5`.
+- **`apply_preset()` antes de CLI overrides**: orden `config_base → apply_preset → flags_CLI`. No reordenar.
+- **`monitor_metric` no en CLI**: solo programático vía `config.sections.loop.monitor_metric`.
+- **`scripts/__init__.py` obligatorio**: sin él, imports de tests lanzan `ModuleNotFoundError`.
+- **`--base-args-json` acepta JSON inline**: `run_ablation_matrix.py` detecta `{` para distinguir JSON vs ruta.
+- **`gh` CLI no instalado**: crear PRs manualmente desde la URL que imprime `git push`.
+- **Subagentes para entrenamientos**: requieren permiso Bash explícito. Usar `Bash(run_in_background=true)`.
+- **`cpu_safe` NO fuerza CPU**: deshabilita AMP/compile/workers pero modelo sigue en CUDA.
+- **`last_prices` boundary**: `df.iloc[cutoff]` no es leakage — implícito en último retorno de entrenamiento.
+- **`df.index.tz_localize(None)`**: lanza `TypeError` con yfinance moderno. Usar `if df.index.tz is not None: df.index = df.index.tz_localize(None)`.
+- **`logging.basicConfig()` en `vix_data.py`/`alpha_vantage_client.py`**: anti-patrón pre-existente; corregir a `logger = logging.getLogger(__name__)` si se modifican.
+- **Worktrees sin `data/`**: usar rutas absolutas al dataset.
+- **Worktrees desde base antigua**: síntoma `add/add` conflict en cherry-pick. Solución: `--abort`, copiar manualmente, commit directo en `main`.
+- **Bash heredoc `python3 - << 'PYEOF'`**: para scripts con backslashes (`ci.yml`). `sed`/`awk` tienen escaping problemático.
+- **`tune_hyperparams.py`**: `sharpe` NO existe en `user_attrs` — en modo sharpe, `best_trial.value` = Sharpe. `composite_score = 0.5·sharpe + 0.3·(1-pinball_norm) + 0.2·coverage_score`. Nombre estudio auto: `tune_{ticker_stem}`. Kaggle: `kaggle_optuna_nvda.ipynb`; T4 tiene 40 SMs → compile puede activarse, añadir `cpu_safe` si NaN.
+- **`--conformal-calibration`** (`49592af`): CP Enfoque 2 post-hoc; reporta `cp_coverage_80` y `cp_q_hat` junto a métricas NF. Default: off. CP Enfoque 1 (walk-forward) pendiente Fase 1.
+- **fold 0 ausente en training_history**: n_splits=4 → solo folds 1,2,3 en CSV. No afecta entrenamiento. Pendiente investigar en Fase 1 (MetricsTracker indexing).
