@@ -642,7 +642,7 @@ class WalkForwardTrainer:
             avg_loss,
         )
         self.metrics_tracker.log_metrics(
-            {"train_loss": avg_loss}, epoch, fold=components.fold
+            {"train_loss": avg_loss}, epoch, fold=components.fold - 1
         )
         return avg_loss
 
@@ -847,7 +847,7 @@ class WalkForwardTrainer:
                     val_loss_raw,
                 )
                 self.metrics_tracker.log_metrics(
-                    {"val_loss": val_loss_raw}, epoch, fold=fold_idx
+                    {"val_loss": val_loss_raw}, epoch, fold=fold_idx - 1
                 )
 
             monitor_loss = self._select_monitor_value(
@@ -1142,7 +1142,7 @@ class WalkForwardTrainer:
                 )
                 self.fold_probabilistic_metrics.append(fold_prob_metrics)
                 self.metrics_tracker.log_metrics(
-                    fold_prob_metrics, step=fold_idx, fold=fold_idx
+                    fold_prob_metrics, step=fold_idx - 1, fold=fold_idx - 1
                 )
 
         except (RuntimeError, ValueError):

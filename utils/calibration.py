@@ -47,3 +47,48 @@ def apply_conformal_interval(
     lower = y_pred - q_hat
     upper = y_pred + q_hat
     return lower, upper
+
+
+def conformal_calibration_walkforward(
+    residuals_by_fold: dict[int, np.ndarray],
+    alpha: float = 0.2,
+) -> dict[int, float | None]:
+    """Calibración conformal walk-forward fold-aware.
+
+    Para cada fold k, calcula q_hat usando residuos de folds 0..k-1.
+    Fold 0 retorna None (sin datos de calibración previos).
+
+    Args:
+        residuals_by_fold: Diccionario {fold_id: array de residuos del fold}.
+        alpha: Nivel de error (0.2 → cobertura nominal 80%).
+
+    Returns:
+        Diccionario {fold_id: q_hat calculado, o None si no hay datos previos}.
+    """
+    if not 0 < alpha < 1:
+        raise ValueError(f"El parámetro alpha debe estar en (0, 1), recibido {alpha}")
+
+    sorted_folds = sorted(residuals_by_fold.keys())
+    result: dict[int, float | None] = {}
+
+    for idx, fold_k in enumerate(sorted_folds):
+        if idx == 0:
+            result[fold_k] = None
+            continue
+
+        prev_folds = sorted_folds[:idx]
+        calibration_residuals = np.concatenate(
+            [residuals_by_fold[f].reshape(-1) for f in prev_folds]
+        )
+
+        if calibration_residuals.size == 0:
+            result[fold_k] = None
+            continue
+
+        n = calibration_residuals.size
+        q_level = min(1.0, np.ceil((n + 1) * (1 - alpha)) / n)
+        result[fold_k] = float(
+            np.quantile(calibration_residuals, q_level, method="higher")
+        )
+
+    return result

@@ -283,6 +283,15 @@ def _parse_arguments() -> argparse.Namespace:
             "(Enfoque 2: global)."
         ),
     )
+    parser.add_argument(
+        "--cp-walkforward",
+        action="store_true",
+        default=False,
+        help=(
+            "Aplica Conformal Prediction walk-forward fold-aware "
+            "(Enfoque 1: sin data leakage temporal)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -693,6 +702,71 @@ def _apply_cp_calibration(
     }
 
 
+def _apply_cp_walkforward(
+    forecast: ForecastOutput, alpha: float = 0.2
+) -> dict[str, Any]:
+    """Calibración conformal walk-forward fold-aware (Enfoque 1, sin data leakage).
+
+    Para cada fold k calibra usando residuos de folds 0..k-1.
+    Fold 0 se excluye del cálculo de cobertura agregada (sin datos previos).
+
+    Args:
+        forecast: ForecastOutput con preds_for_metrics, gt_for_metrics y window_fold_ids.
+        alpha: Nivel de no-cobertura (default 0.2 → objetivo 80%).
+
+    Returns:
+        Dict con cp_wf_coverage_80, cp_wf_q_hat_by_fold y cp_wf_folds_calibrated.
+    """
+    from utils.calibration import (  # noqa: PLC0415
+        apply_conformal_interval,
+        conformal_calibration_walkforward,
+    )
+
+    preds = forecast.preds_for_metrics
+    gt = forecast.gt_for_metrics
+    fold_ids = forecast.window_fold_ids
+
+    if fold_ids is None:
+        logger.warning(
+            "CP walk-forward: window_fold_ids es None. "
+            "Se requiere ForecastOutput generado por WalkForwardTrainer."
+        )
+        return {
+            "cp_wf_coverage_80": float("nan"),
+            "cp_wf_q_hat_by_fold": {},
+            "cp_wf_folds_calibrated": 0,
+        }
+
+    unique_folds = sorted({int(f) for f in fold_ids})
+    residuals_by_fold: dict[int, np.ndarray] = {}
+    for fold_k in unique_folds:
+        mask = fold_ids == fold_k
+        residuals_by_fold[fold_k] = np.abs(
+            gt[mask].reshape(-1) - preds[mask].reshape(-1)
+        )
+
+    q_hat_by_fold = conformal_calibration_walkforward(residuals_by_fold, alpha=alpha)
+
+    covered_all: list[bool] = []
+    for fold_k, q_hat in q_hat_by_fold.items():
+        if q_hat is None:
+            continue
+        mask = fold_ids == fold_k
+        cp_lower, cp_upper = apply_conformal_interval(preds[mask].reshape(-1), q_hat)
+        covered_all.extend(
+            (gt[mask].reshape(-1) >= cp_lower) & (gt[mask].reshape(-1) <= cp_upper)
+        )
+
+    folds_calibrated = sum(1 for v in q_hat_by_fold.values() if v is not None)
+    cp_wf_coverage_80 = float(np.mean(covered_all)) if covered_all else float("nan")
+
+    return {
+        "cp_wf_coverage_80": cp_wf_coverage_80,
+        "cp_wf_q_hat_by_fold": dict(q_hat_by_fold),
+        "cp_wf_folds_calibrated": folds_calibrated,
+    }
+
+
 def _run_portfolio_simulation(
     data: SimulationData,
     risk_stats: Tuple[np.ndarray, np.ndarray],
@@ -737,6 +811,16 @@ def _run_simulations_and_visualize(
             cp_result["cp_coverage_80"],
         )
 
+    # Calibración conformal walk-forward si se solicitó (Enfoque 1: fold-aware)
+    cp_wf_result: dict[str, Any] = {}
+    if getattr(args, "cp_walkforward", False):
+        cp_wf_result = _apply_cp_walkforward(data.forecast)
+        logger.info(
+            "CP walk-forward: coverage_80=%.4f | folds_calibrados=%d (objetivo ≥ 0.80)",
+            cp_wf_result["cp_wf_coverage_80"],
+            cp_wf_result["cp_wf_folds_calibrated"],
+        )
+
     if data.forecast.gt_for_metrics.shape[1] <= 1:
         logger.info(
             "Omitiendo cálculos de simulación por límite infranqueable predictivo (Paso Ciego de TimeStep <= 1)"
@@ -759,6 +843,11 @@ def _run_simulations_and_visualize(
     if cp_result:
         metrics["cp_q_hat"] = float(cp_result["q_hat"])
         metrics["cp_coverage_80"] = float(cp_result["cp_coverage_80"])
+
+    # Añadir métricas walk-forward al dict de resultados
+    if cp_wf_result:
+        metrics["cp_wf_coverage_80"] = float(cp_wf_result["cp_wf_coverage_80"])
+        metrics["cp_wf_folds_calibrated"] = int(cp_wf_result["cp_wf_folds_calibrated"])
 
     # Exportar CSVs de resultados si el usuario lo solicitó
     if getattr(args, "save_results", False):

@@ -251,15 +251,20 @@ CSV → TimeSeriesDataset (scale + regimes)
 - Backlog fuente: `archivos auxiliares/backlog_pipeline_investigacion_probabilistica.md`
 - **Sesión 2026-03-11** (commits `e91b66e`, `49592af`):
   1. ✅ Patch `_make_loader`: workers de rehearsal/fine-tuning ahora tienen semilla determinista (`e91b66e`).
-  2. ✅ Análisis Pareto Optuna: zona coverage≥0.75 + Sharpe>0 **NO existe** en 14 trials. Trade-off estructural confirmado. Punto más cercano: trial #9 (Sharpe=+0.161, coverage=0.739).
-  3. ✅ Diagnóstico épocas: early stopping dispara en épocas 10–16/20. Aumentar epochs **no ayudaría** con la varianza. La causa es sensibilidad de inicialización NF.
-  4. ✅ `--conformal-calibration` flag implementado (CP Enfoque 2 prototype, `49592af`): post-hoc sobre predicciones agregadas, reporta `cp_coverage_80` y `cp_q_hat` junto a métricas NF.
-- **Próximos pasos inmediatos** (Fase 1 — sesión futura):
-  1. Investigar fold 0 ausente en `training_history_*.csv` (MetricsTracker indexing)
-  2. Implementar CP Enfoque 1 (walk-forward fold-aware) sobre el prototype existente
-  3. Verificar cp_coverage_80≥0.80 en run real con `--conformal-calibration`
-  4. Multi-seed NVDA limpio (seeds 42,123,7,456) con `--conformal-calibration`
-  5. Especialistas multi-ticker (MSFT, AAPL, AMZN, META, TSLA) — siempre NVDA primero
+  2. ✅ Análisis Pareto Optuna: zona coverage≥0.75 + Sharpe>0 **NO existe** en 14 trials. Trade-off estructural confirmado.
+  3. ✅ `--conformal-calibration` flag implementado (CP Enfoque 2 prototype, `49592af`).
+- **Sesión 2026-03-11 (sesión 2)** — cambios unstaged, pendiente commit:
+  1. ✅ Fold 0 fix (Opción B): `fold_idx-1` en 3 call sites de `training/trainer.py` — CSV ahora 0-indexed.
+     Opción A (range(0,n_splits)) descartada: fold_idx=0 → train_end_idx=0 → sin datos de entrenamiento. Fold 0 es el bloque seed/warm-up; correcto por diseño.
+  2. ✅ CP Enfoque 1 (walk-forward fold-aware): `conformal_calibration_walkforward` en `utils/calibration.py` + `--cp-walkforward` + `_apply_cp_walkforward` en `main.py`. 293 tests passing (↑10).
+  3. ✅ Script verificación: `scripts/verify_cp_walkforward.py`
+  4. GPU local corregida: RTX 4050 Laptop (20 SMs, 6GB), tiempo run ~5-8 min.
+- **Próximos pasos inmediatos** (próxima sesión):
+  1. Commit cambios unstaged (trainer.py, calibration.py, main.py, tests)
+  2. Verificar cp_wf_coverage_80≥0.80: `python3 scripts/verify_cp_walkforward.py`
+  3. Limpiar worktree: `git worktree remove .claude/worktrees/agent-ace8b389 --force`
+  4. Multi-seed NVDA (seeds 42,123,7,456) con `--cp-walkforward` — Kaggle T4
+  5. Especialistas multi-ticker (MSFT, AAPL, AMZN, META, TSLA) — Kaggle P100
 - **Plan de validación corto plazo**: `docs/plans/2026-03-09-validacion-corto-plazo.md`
 
 ## Entrenamiento headless
@@ -303,5 +308,8 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Worktrees desde base antigua**: síntoma `add/add` conflict en cherry-pick. Solución: `--abort`, copiar manualmente, commit directo en `main`.
 - **Bash heredoc `python3 - << 'PYEOF'`**: para scripts con backslashes (`ci.yml`). `sed`/`awk` tienen escaping problemático.
 - **`tune_hyperparams.py`**: `sharpe` NO existe en `user_attrs` — en modo sharpe, `best_trial.value` = Sharpe. `composite_score = 0.5·sharpe + 0.3·(1-pinball_norm) + 0.2·coverage_score`. Nombre estudio auto: `tune_{ticker_stem}`. Kaggle: `kaggle_optuna_nvda.ipynb`; T4 tiene 40 SMs → compile puede activarse, añadir `cpu_safe` si NaN.
-- **`--conformal-calibration`** (`49592af`): CP Enfoque 2 post-hoc; reporta `cp_coverage_80` y `cp_q_hat` junto a métricas NF. Default: off. CP Enfoque 1 (walk-forward) pendiente Fase 1.
-- **fold 0 ausente en training_history**: n_splits=4 → solo folds 1,2,3 en CSV. No afecta entrenamiento. Pendiente investigar en Fase 1 (MetricsTracker indexing).
+- **`--conformal-calibration`** (`49592af`): CP Enfoque 2 post-hoc; reporta `cp_coverage_80` y `cp_q_hat`. Default: off.
+- **`--cp-walkforward`** (sesión 2 2026-03-11, unstaged): CP Enfoque 1 fold-aware; reporta `cp_wf_coverage_80`, `cp_wf_folds_calibrated`. Fold 0 excluido de cobertura (sin datos previos). Verificación empírica pendiente.
+- **fold 0 en training_history RESUELTO**: Opción B implementada — `fold_idx-1` en 3 call sites de trainer.py. CSV ahora 0-indexed (folds 0,1,2 con n_splits=4). Opción A descartada: fold 0 = bloque seed/warm-up, sin datos anteriores para entrenar.
+- **Scripts .sh en proyecto Python**: ruff los trata como Python → usar siempre `.py`.
+- **Worktrees desde base antigua**: verificar `git merge-base main worktree-branch` antes de mergear. Si sin commits propios, portear con `git diff HEAD` manual.
