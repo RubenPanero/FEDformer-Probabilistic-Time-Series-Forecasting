@@ -4,7 +4,6 @@ Sistema de entrenamiento walk-forward para el modelo FEDformer.
 Refactorizado a Python 3.10+ para garantizar typing nativo purificado, tolerancia a fallos, y eficiencia PEP 8.
 """
 
-import functools
 import gc
 import logging
 import os
@@ -49,14 +48,22 @@ device = get_device()
 DEFAULT_QUANTILE_LEVELS = np.array([0.1, 0.5, 0.9], dtype=np.float32)
 
 
-def _seed_worker(worker_id: int, base_seed: int) -> None:
-    """Inicializa la semilla de cada worker de DataLoader.
+class _SeedWorker:
+    """Callable picklable para inicializar semilla de cada worker de DataLoader.
 
-    Función de nivel de módulo (picklable) para compatibilidad con
-    multiprocessing_context='spawn' en Python 3.12+.
+    Clase de nivel de módulo — más robusta que functools.partial en contexto
+    multiprocessing_context='spawn' de Python 3.12+ (el pickle serializa la clase
+    por nombre, evitando ambigüedades de referencia).
     """
-    np.random.seed(base_seed + worker_id)
-    torch.manual_seed(base_seed + worker_id)
+
+    __slots__ = ("base_seed",)
+
+    def __init__(self, base_seed: int) -> None:
+        self.base_seed = base_seed
+
+    def __call__(self, worker_id: int) -> None:
+        np.random.seed(self.base_seed + worker_id)
+        torch.manual_seed(self.base_seed + worker_id)
 
 
 def _cumulative_returns_to_prices(
@@ -208,9 +215,9 @@ class WalkForwardTrainer:
         generator = torch.Generator()
         generator.manual_seed(self.config.seed)
 
-        # functools.partial produce un callable picklable (a diferencia de closure local)
-        # necesario para multiprocessing_context="spawn" en Python 3.12+
-        worker_init_fn = functools.partial(_seed_worker, base_seed=self.config.seed)
+        # _SeedWorker es una clase de módulo picklable — evita ambigüedades de
+        # functools.partial en multiprocessing_context="spawn" de Python 3.12+
+        worker_init_fn = _SeedWorker(self.config.seed)
 
         worker_kwargs = (
             {"prefetch_factor": 2, "multiprocessing_context": "spawn"}
@@ -249,8 +256,8 @@ class WalkForwardTrainer:
         num_workers = self._num_workers()
         generator = torch.Generator()
         generator.manual_seed(self.config.seed)
-        # functools.partial produce un callable picklable — mismo patrón que _prepare_data_loaders
-        worker_init_fn = functools.partial(_seed_worker, base_seed=self.config.seed)
+        # _SeedWorker es una clase de módulo picklable — mismo patrón que _prepare_data_loaders
+        worker_init_fn = _SeedWorker(self.config.seed)
         return DataLoader(
             subset,
             batch_size=self.config.batch_size,
