@@ -4,7 +4,7 @@ Implementación de **FEDformer** (Frequency Enhanced Decomposed Transformer) con
 
 ## Project Overview
 
-Este proyecto usa Python con `ruff` para linting (respetar límites de longitud de línea: 88 chars), `pytest` para testing (277+ tests), y YAML/Markdown para CI y documentación. Proyecto principal: FEDformer forecasting.
+Este proyecto usa Python con `ruff` para linting (respetar límites de longitud de línea: 88 chars), `pytest` para testing (283+ tests), y YAML/Markdown para CI y documentación. Proyecto principal: FEDformer forecasting.
 
 ## Stack
 
@@ -305,10 +305,17 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Épicas 1–9 COMPLETADAS** (2026-03-09) — commits `9810be1`→`623c5b1` en `main`.
 - Plan histórico: `archivos auxiliares/plan_ejecucion_pipeline_probabilistico.md`
 - Backlog fuente: `archivos auxiliares/backlog_pipeline_investigacion_probabilistica.md`
-- **Próximos pasos inmediatos** (sesión 2026-03-10):
-  1. ✅ Re-establecer baseline canónico NVDA post-fix `00f119c`: Sharpe **+0.609** (seed=42, 2026-03-10). MEMORY.md + model_registry.json + CLAUDE.md actualizados.
-  2. ✅ Tarea C: Optuna composite vs sharpe puro — 5 trials completados (de 10), resultados parciales registrados en Benchmarks. Estudios persistidos en `optuna_studies/nvda_composite_v1.db` y `optuna_studies/nvda_sharpe_v1.db` (reanudables). Notebook Kaggle: `kaggle_optuna_nvda.ipynb`.
-  3. ✅ Tarea D: Hallazgos Optuna documentados en CLAUDE.md (ver Benchmarks y Gotchas). Pendiente: completar los 10 trials restantes para confirmar tendencias.
+- **Sesión 2026-03-11** (commits `e91b66e`, `49592af`):
+  1. ✅ Patch `_make_loader`: workers de rehearsal/fine-tuning ahora tienen semilla determinista (`e91b66e`).
+  2. ✅ Análisis Pareto Optuna: zona coverage≥0.75 + Sharpe>0 **NO existe** en 14 trials. Trade-off estructural confirmado. Punto más cercano: trial #9 (Sharpe=+0.161, coverage=0.739).
+  3. ✅ Diagnóstico épocas: early stopping dispara en épocas 10–16/20. Aumentar epochs **no ayudaría** con la varianza. La causa es sensibilidad de inicialización NF.
+  4. ✅ `--conformal-calibration` flag implementado (CP Enfoque 2 prototype, `49592af`): post-hoc sobre predicciones agregadas, reporta `cp_coverage_80` y `cp_q_hat` junto a métricas NF.
+- **Próximos pasos inmediatos** (Fase 1 — sesión futura):
+  1. Investigar fold 0 ausente en `training_history_*.csv` (MetricsTracker indexing)
+  2. Implementar CP Enfoque 1 (walk-forward fold-aware) sobre el prototype existente
+  3. Verificar cp_coverage_80≥0.80 en run real con `--conformal-calibration`
+  4. Multi-seed NVDA limpio (seeds 42,123,7,456) con `--conformal-calibration`
+  5. Especialistas multi-ticker (MSFT, AAPL, AMZN, META, TSLA) — siempre NVDA primero
 - **Plan de validación corto plazo**: `docs/plans/2026-03-09-validacion-corto-plazo.md`
 
 ## Entrenamiento headless
@@ -364,7 +371,7 @@ recargado al agotar épocas. Ver `git log --oneline -10` para detalles por commi
 - **`last_prices` boundary en `preprocessing.py`**: `df.iloc[cutoff]` es el precio correcto en la frontera train/test — no es leakage. Está implícito en el último retorno de entrenamiento `log(P[cutoff]/P[cutoff-1])`. Test de regresión: `test_last_prices_is_boundary_anchor`.
 - **`gh` CLI no está instalado**: crear PRs manualmente desde la URL que imprime `git push` (`https://github.com/.../pull/new/BRANCH`).
 - **Smoke test en bash / pickling DataLoader RESUELTO** (`00f119c`, 2026-03-10): `_worker_init_fn` era closure no-picklable con `multiprocessing_context="spawn"`. Reemplazado por `_seed_worker(worker_id, base_seed)` a nivel de módulo + `functools.partial`. Tests y subprocesos ahora funcionan sin `--preset cpu_safe`. ⚠️ Este fix introduce **discontinuidad de reproducibilidad** (ver Benchmarks NVDA arriba).
-- **`_make_loader` sin fix de pickling** (follow-up pendiente): el método `_make_loader` en `trainer.py` (usado en paths de rehearsal y fine-tuning) no recibió el `worker_init_fn` de `_seed_worker`. Si `num_workers > 0` en esos paths, los workers no tienen semilla determinista. Bajo carga normal (sin rehearsal activo), esto no afecta. Ticket pendiente para sesión futura.
+- **`_make_loader` fix aplicado** (`e91b66e`, 2026-03-11): `worker_init_fn=functools.partial(_seed_worker, base_seed=seed)` añadido. Fix colateral: `generator` ya se pasa al constructor. Path rehearsal/fine-tuning ahora es determinista.
 - **`--base-args-json` acepta JSON inline** (desde `4733160`, 2026-03-10): `run_ablation_matrix.py` detecta si el argumento comienza con `{` para parsear JSON inline vs ruta de archivo. Ejemplo: `--base-args-json '{"seq_len": 96, "preset": "cpu_safe"}'`.
 - **Worktrees no tienen `data/`**: usar rutas absolutas al dataset en smoke tests lanzados desde un worktree (`/home/tmp/PROYECTOS PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/data/NVDA_features.csv`).
 - **`ci.yml` push trigger**: añadir manualmente cada rama nueva a `on: push: branches` en `.github/workflows/ci.yml`, y los nuevos archivos de test a los shards correspondientes (`Run simulations and utils fast shard` / `Run feature branch regression slice`).
@@ -378,5 +385,8 @@ recargado al agotar épocas. Ver `git log --oneline -10` para detalles por commi
 - **`tune_hyperparams.py` user_attrs**: el campo `sharpe` NO existe en `user_attrs`. En modo `sharpe`, el Sharpe ratio ES el `best_trial.value` directamente (también guardado como `composite_score`). En modo `composite`, `composite_score = 0.5·sharpe + 0.3·(1-pinball_norm) + 0.2·coverage_score`. Otros user_attrs disponibles: `sortino`, `var_95`, `pinball_p50`, `coverage_80`, `interval_width_80`, `max_drawdown`.
 - **`tune_hyperparams.py` nombre del estudio**: auto-generado como `tune_{ticker_stem}` donde `ticker_stem` es el stem del CSV (ej. `NVDA_features` → `tune_NVDA_features`). Usar este nombre al cargar con `optuna.load_study()`.
 - **`tune_hyperparams.py` NO tiene `--targets` ni `--study-name`**: flags que no existen. Los flags reales son `--csv`, `--n-trials`, `--n-splits`, `--storage-path`, `--study-objective`, `--composite-score-profile`, `--best-save-canonical`.
-- **Kaggle para runs largos de Optuna**: notebook `kaggle_optuna_nvda.ipynb` en la raíz del proyecto. T4 GPU (40 SMs exactos) → `torch.compile` puede activarse; si aparecen NaN añadir `"--preset", "cpu_safe"` al subprocess. Estudios SQLite se descargan desde Output del notebook.
+- **Kaggle para runs largos de Optuna**: notebook `kaggle_optuna_nvda.ipynb` en la raíz del proyecto.
+- **`--conformal-calibration` flag** (`49592af`, 2026-03-11): activa CP Enfoque 2 post-hoc. Computa `q_hat = conformal_quantile(gt, preds, alpha=0.2)` y reporta `cp_coverage_80` y `cp_q_hat` en métricas (junto a NF coverage, sin reemplazarla). Default: off. Enfoque 1 (walk-forward fold-aware) pendiente de implementar en Fase 1.
+- **fold 0 ausente en training_history** (2026-03-11): con n_splits=4, el CSV de training_history solo muestra folds 1,2,3. Fold 0 no aparece. Hipótesis: indexing en MetricsTracker o trainer. No afecta al entrenamiento. Investigar en Fase 1.
+- **Varianza inter-seed es NF initialization, NO falta de épocas** (2026-03-11): diagnóstico confirma que early stopping dispara en épocas 10–16 (techo=20). Aumentar a 40–60 no reduciría varianza. Causa raíz: sensibilidad de inicialización de los Normalizing Flows. T4 GPU (40 SMs exactos) → `torch.compile` puede activarse; si aparecen NaN añadir `"--preset", "cpu_safe"` al subprocess. Estudios SQLite se descargan desde Output del notebook.
 - **Worktrees de agentes pueden partir de base antigua**: si el agente se despacha inmediatamente después de un cherry-pick o merge complejo, el worktree puede arrancar desde un HEAD desactualizado. Síntoma: archivos existentes en `main` aparecen como "nuevos" en el worktree → conflicto `add/add` al cherry-pick. Solución: `git cherry-pick --abort`, copiar manualmente las funciones nuevas del worktree y hacer commit directo en `main`.
