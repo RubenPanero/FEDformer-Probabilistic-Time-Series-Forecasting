@@ -249,6 +249,8 @@ class WalkForwardTrainer:
         num_workers = self._num_workers()
         generator = torch.Generator()
         generator.manual_seed(self.config.seed)
+        # functools.partial produce un callable picklable — mismo patrón que _prepare_data_loaders
+        worker_init_fn = functools.partial(_seed_worker, base_seed=self.config.seed)
         return DataLoader(
             subset,
             batch_size=self.config.batch_size,
@@ -256,6 +258,8 @@ class WalkForwardTrainer:
             num_workers=num_workers,
             pin_memory=self._pin_memory_enabled(),
             persistent_workers=False,
+            worker_init_fn=worker_init_fn if num_workers > 0 else None,
+            generator=generator,
             **(
                 {"prefetch_factor": 2, "multiprocessing_context": "spawn"}
                 if num_workers > 0
