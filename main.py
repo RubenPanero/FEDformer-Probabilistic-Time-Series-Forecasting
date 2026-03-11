@@ -274,6 +274,15 @@ def _parse_arguments() -> argparse.Namespace:
             "probabilistic_eval. Los flags CLI explícitos tienen precedencia."
         ),
     )
+    parser.add_argument(
+        "--conformal-calibration",
+        action="store_true",
+        default=False,
+        help=(
+            "Aplica Conformal Prediction post-hoc sobre las predicciones "
+            "(Enfoque 2: global)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -653,6 +662,37 @@ def _save_results_to_csv(
         save_fold_metrics(fold_prob_metrics, results_dir, timestamp, ticker)
 
 
+def _apply_cp_calibration(
+    forecast: ForecastOutput, alpha: float = 0.2
+) -> dict[str, float | np.ndarray]:
+    """Calibración conformal post-hoc sobre predicciones agregadas (Enfoque 2 — global).
+
+    Usa todos los residuos como conjunto de calibración para estimar q_hat,
+    luego calcula la cobertura real del intervalo simétrico [pred-q_hat, pred+q_hat].
+    Garantía teórica: coverage ≈ 1 - alpha = 0.80.
+
+    Args:
+        forecast: ForecastOutput con preds_for_metrics y gt_for_metrics.
+        alpha: Nivel de no-cobertura (default 0.2 → objetivo 80%).
+
+    Returns:
+        Dict con q_hat, cp_coverage_80, cp_lower y cp_upper (estos últimos como arrays).
+    """
+    from utils.calibration import apply_conformal_interval, conformal_quantile
+
+    preds_flat = forecast.preds_for_metrics.reshape(-1)
+    gt_flat = forecast.gt_for_metrics.reshape(-1)
+    q_hat = conformal_quantile(gt_flat, preds_flat, alpha=alpha)
+    cp_lower, cp_upper = apply_conformal_interval(preds_flat, q_hat)
+    cp_coverage_80 = float(np.mean((gt_flat >= cp_lower) & (gt_flat <= cp_upper)))
+    return {
+        "q_hat": float(q_hat),
+        "cp_coverage_80": cp_coverage_80,
+        "cp_lower": cp_lower,
+        "cp_upper": cp_upper,
+    }
+
+
 def _run_portfolio_simulation(
     data: SimulationData,
     risk_stats: Tuple[np.ndarray, np.ndarray],
@@ -687,6 +727,16 @@ def _run_simulations_and_visualize(
     cvar = risk_sim.calculate_cvar()
     _log_risk_summary(var, cvar)
 
+    # Calibración conformal post-hoc si se solicitó
+    cp_result: dict[str, Any] = {}
+    if getattr(args, "conformal_calibration", False):
+        cp_result = _apply_cp_calibration(data.forecast)
+        logger.info(
+            "CP calibración: q_hat=%.4f | cp_coverage_80=%.4f (objetivo ≥ 0.80)",
+            cp_result["q_hat"],
+            cp_result["cp_coverage_80"],
+        )
+
     if data.forecast.gt_for_metrics.shape[1] <= 1:
         logger.info(
             "Omitiendo cálculos de simulación por límite infranqueable predictivo (Paso Ciego de TimeStep <= 1)"
@@ -704,6 +754,11 @@ def _run_simulations_and_visualize(
     _log_portfolio_metrics(metrics)
     _log_metrics_to_wandb(fig, metrics, var, cvar)
     _handle_visualization_output(fig, args)
+
+    # Añadir métricas de calibración conformal al dict de resultados
+    if cp_result:
+        metrics["cp_q_hat"] = float(cp_result["q_hat"])
+        metrics["cp_coverage_80"] = float(cp_result["cp_coverage_80"])
 
     # Exportar CSVs de resultados si el usuario lo solicitó
     if getattr(args, "save_results", False):
