@@ -90,11 +90,14 @@ def report_results() -> None:
         return
 
     manifest: dict = json.loads(manifests[0].read_text())
-    cp_keys = {k: v for k, v in manifest.items() if "cp_wf" in str(k)}
+    # Las métricas están en manifest["metrics"], no en raíz del manifiesto
+    metrics: dict = manifest.get("metrics", manifest)
+    cp_keys = {k: v for k, v in metrics.items() if "cp_wf" in str(k)}
 
     if not cp_keys:
         print("No se encontraron métricas cp_wf_ en el manifiesto")
-        print("Claves disponibles:", list(manifest.keys())[:20])
+        print("Claves raíz:", list(manifest.keys()))
+        print("Claves metrics:", list(metrics.keys())[:20])
         return
 
     print("\n=== Métricas CP Enfoque 1 (walk-forward) ===")
@@ -102,11 +105,13 @@ def report_results() -> None:
         print(f"  {k}: {v}")
 
     cov = cp_keys.get("cp_wf_coverage_80")
+    folds_cal = cp_keys.get("cp_wf_folds_calibrated", "?")
     if cov is not None:
         objetivo = 0.80
         ok = float(cov) >= objetivo
-        status = "OBJETIVO CUMPLIDO" if ok else f"Por debajo del objetivo ({objetivo})"
-        print(f"\n  cp_wf_coverage_80 = {float(cov):.4f}  [{status}]")
+        status = "OBJETIVO CUMPLIDO ✓" if ok else f"BAJO OBJETIVO (target={objetivo})"
+        print(f"\n  cp_wf_coverage_80      = {float(cov):.4f}  [{status}]")
+        print(f"  cp_wf_folds_calibrated = {folds_cal}")
 
 
 def main() -> None:
