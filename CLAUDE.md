@@ -1,5 +1,41 @@
 # FEDformer – Probabilistic Time Series Forecasting
 
+## Navegación de código (jcodemunch / tree-sitter)
+
+El repositorio está indexado con jcodemunch. **NUNCA usar `Read`/`Grep`/`Bash grep` para navegar código Python — usar siempre jcodemunch:**
+
+| Tarea | Herramienta preferida |
+|-------|-----------------------|
+| Buscar una función/clase por nombre | `mcp__jcodemunch__search_symbols` |
+| Ver métodos de un archivo | `mcp__jcodemunch__get_file_outline` |
+| Leer implementación de un símbolo | `mcp__jcodemunch__get_symbol` |
+| Buscar texto en todo el repo | `mcp__jcodemunch__search_text` |
+| Vista general de directorios | `mcp__jcodemunch__get_repo_outline` |
+| Leer archivo completo `.py` | `mcp__jcodemunch__get_file_content` |
+| `Read` | Solo para archivos de configuración/markdown (CLAUDE.md, MEMORY.md, etc.) |
+
+**Repo ID**: `local/FEDformer-Probabilistic-Time-Series-Forecasting-ed518b7c`
+**Re-indexar si hay commits nuevos**: `/start` lo hace automáticamente (paso 0).
+
+## Skills de desarrollo activas
+
+Invocar estas skills **proactivamente** según la situación — sin esperar que el usuario las pida:
+
+| Situación | Skill a invocar |
+|-----------|----------------|
+| Bug, test fallando, comportamiento inesperado | `systematic-debugging` — **antes** de proponer cualquier fix |
+| Feature nueva o cambio arquitectónico complejo | `feature-dev` — planificación guiada 7 fases antes de tocar código |
+| Tarea multi-paso con spec o requisitos claros | `writing-plans` — **antes** de tocar código |
+| Implementar feature o bugfix (escribir código) | `test-driven-development` — **antes** de la implementación |
+| Plan con tareas independientes paralelizables | `subagent-driven-development` — al ejecutar el plan |
+| A punto de decir "listo", commitear o crear PR | `verification-before-completion` — **siempre** antes de terminar |
+| El usuario pide commitear o hay cambios listos | `commit-commands:commit` — commits estandarizados con prefijo convencional |
+| Al final de sesión con cambios en archivos/APIs | `claude-md-management:revise-claude-md` — actualiza CLAUDE.md con lo aprendido |
+
+**Nota sobre `feature-dev`**: usar especialmente para Fase 2 del roadmap multi-ticker (MarketEncoder compartido, VIX/SPY conditioning cross-asset) y cualquier refactor estructural grande.
+
+
+
 Implementación de **FEDformer** (Frequency Enhanced Decomposed Transformer) con **Normalizing Flows** para predicción probabilística de series temporales, orientada a datos financieros.
 
 ## Project Overview
@@ -156,15 +192,8 @@ python3 scripts/run_multi_seed.py --csv data/NVDA_features.csv \
 - **Salidas del modelo**: objetos `Distribution` (`.mean`, `.log_prob`, `.sample()`), nunca escalares.
 - **`pred_len` debe ser par** (requisito del affine coupling split).
 - **Early stopping**: monitorea `val_loss` (no `train_loss`). `val_fraction=0.15` en `LoopSettings` reserva el último 15% del bloque train de cada fold. Defaults activos: `patience=5`, `min_delta=5e-3` (filtra ruido de folds pequeños), `gradient_accumulation_steps=2`. El checkpoint del mejor `val_loss` siempre se guarda **y se recarga antes de inferencia** independientemente de si el early stopping disparó o el loop agotó todas las épocas.
-- **Salidas del entrenador**: `run_backtest()` retorna `ForecastOutput` (no tuplas). Tiene campos
-  `preds_scaled/real`, `gt_scaled/real`, `samples_scaled/real`, `metric_space`, `return_transform`.
-  Usar `.preds_for_metrics` y `.gt_for_metrics` para acceder al espacio configurado.
-  `*_for_metrics` **siempre devuelve `*_real`**; `metric_space` controla qué contiene `preds_real` (vía `_inverse_transform_all`), no qué array selecciona la propiedad.
-  `RiskSimulator` convierte automáticamente muestras en espacio de precios a retornos acumulados `(P_t - P_0) / P_0` cuando `return_transform="none"`. VaR en t=0 siempre es 0 (trivial pero correcto).
-  `ForecastOutput.window_fold_ids`: `np.ndarray | None` shape `(n_windows,)` dtype int32 — fold de origen de cada ventana. Genera columna `fold` en `predictions_*.csv`. Es `None` en instancias construidas manualmente sin pasar el campo (retrocompatible).
-- **`return_transform` + `metric_space`**: dos dimensiones independientes. `return_transform` controla qué ve el modelo (precios vs log-returns); `metric_space` controla qué contiene `preds_real` en `ForecastOutput`. Combinación recomendada para NVDA/tickers con gran drift de precio: `--return-transform log_return --metric-space returns`. El backend (preprocessing, trainer, RiskSimulator) implementa log_return completo; la CLI lo expone desde `feat/log-return-transform` (2026-03-03).
-  - `metric_space="returns"` → `preds_real` son log-returns desescalados; `RiskSimulator` los usa directamente.
-  - `metric_space="prices"` → `preds_real` reconstruye precios con `last_prices` del fold vía `_cumulative_returns_to_prices()`.
+- **Salidas del entrenador**: `run_backtest()` retorna `ForecastOutput` (no tuplas). Usar `.preds_for_metrics`/`.gt_for_metrics` — siempre devuelven `*_real`. `window_fold_ids`: shape `(n_windows,)` int32, genera columna `fold` en CSV. Ver `memory/forecast_output.md` para API completa.
+- **`return_transform` + `metric_space`**: dimensiones independientes. `return_transform` controla qué ve el modelo; `metric_space` controla qué contiene `preds_real`. Recomendado: `--return-transform log_return --metric-space returns`. `metric_space="prices"` reconstruye precios vía `_cumulative_returns_to_prices(last_prices, log_return)`.
 
 ## Code Quality
 
@@ -174,35 +203,16 @@ python3 scripts/run_multi_seed.py --csv data/NVDA_features.csv \
 ## Git Workflow
 
 - **Sin co-autoría de Claude**: no agregar trailers `Co-Authored-By` en commits.
-- **PRs manuales**: para crear PRs, proporcionar la URL de GitHub generada por `git push` para creación manual — no usar `gh` CLI salvo que se pida explícitamente (`gh` no está instalado).
+- **PRs manuales**: para crear PRs, proporcionar la URL de GitHub generada por `git push` para creación manual — no usar `gh` CLI salvo que se pida explícitamente.
 - Commits atómicos con prefijo convencional en inglés: `fix:`, `feat:`, `chore:`.
 - Features en rama corta → PR pequeño → merge a `main`. Sin commits directos a `main`.
 
 ## Estándares de desarrollo Python
 
-**Tipado:**
-- Type hints en todas las funciones públicas; sintaxis 3.10+: `X | Y`, no `Optional[X]`
-- Dataclasses para contenedores de datos (patrón establecido: `ForecastOutput`, `FEDformerConfig`)
-- `np.ndarray` y `torch.Tensor` con shapes documentados en docstrings cuando no son obvios
-
-**Estilo (PEP 8 — enforced por `ruff`):**
-- `ruff` es el linter/formatter autoritativo (CI lo impone); longitud de línea: 88 chars
-- Nomenclatura: `snake_case` funciones/variables, `PascalCase` clases, `UPPER_CASE` constantes
-- Imports ordenados: stdlib → third-party → local (ruff/isort lo gestiona)
-- `logging` en lugar de `print()` en todo código de producción
-- f-strings exclusivamente; no `.format()` ni `%`
-- Sin argumentos mutables por defecto; sin lógica en `__init__.py`
-- Docstrings en español en funciones públicas (formato Google-style una línea o bloque)
-
-**Calidad:**
-- Toda función pública nueva requiere al menos un test unitario en `tests/`
-- Tests deben ser independientes del sistema de archivos (usar fixtures de `conftest.py`)
-- Mocks para llamadas externas (Alpha Vantage, yfinance) — nunca red real en tests
-  - Patrón para `financial_dataset_builder`: `patch("yfinance.download", return_value=ohlcv_df)` + `patch("data.vix_data.VixDataFetcher.get_vix_data", return_value=vix_df)`. El import inline de yfinance en `_fetch_ohlcv` se parchea a nivel de módulo `yfinance`.
-- Cobertura mínima esperada para módulos nuevos: ramas principales cubiertas
-
-**Seguridad:**
-- `security.yml` ejecuta bandit; no usar `eval()`, `pickle` sin validación, ni `shell=True`
+- Type hints 3.10+: `X | Y`, no `Optional[X]`. Docstrings en español (Google-style).
+- Toda función pública nueva: al menos un test en `tests/` con fixtures de `conftest.py`.
+- Mocks para llamadas externas — nunca red real en tests. Patrón yfinance: `patch("yfinance.download", return_value=ohlcv_df)` + `patch("data.vix_data.VixDataFetcher.get_vix_data", return_value=vix_df)`.
+- `security.yml` ejecuta bandit; no usar `eval()`, `pickle` sin validación, ni `shell=True`.
 
 ## Flujo de trabajo
 
@@ -246,25 +256,13 @@ CSV → TimeSeriesDataset (scale + regimes)
 
 ## Hoja de ruta activa
 
-- **Épicas 1–9 COMPLETADAS** (2026-03-09) — commits `9810be1`→`623c5b1` en `main`.
-- Plan histórico: `archivos auxiliares/plan_ejecucion_pipeline_probabilistico.md`
-- Backlog fuente: `archivos auxiliares/backlog_pipeline_investigacion_probabilistica.md`
-- **Sesión 2026-03-11** (commits `e91b66e`, `49592af`):
-  1. ✅ Patch `_make_loader`: workers de rehearsal/fine-tuning ahora tienen semilla determinista (`e91b66e`).
-  2. ✅ Análisis Pareto Optuna: zona coverage≥0.75 + Sharpe>0 **NO existe** en 14 trials. Trade-off estructural confirmado.
-  3. ✅ `--conformal-calibration` flag implementado (CP Enfoque 2 prototype, `49592af`).
-- **Sesión 2026-03-11 (sesión 2)** — cambios unstaged, pendiente commit:
-  1. ✅ Fold 0 fix (Opción B): `fold_idx-1` en 3 call sites de `training/trainer.py` — CSV ahora 0-indexed.
-     Opción A (range(0,n_splits)) descartada: fold_idx=0 → train_end_idx=0 → sin datos de entrenamiento. Fold 0 es el bloque seed/warm-up; correcto por diseño.
-  2. ✅ CP Enfoque 1 (walk-forward fold-aware): `conformal_calibration_walkforward` en `utils/calibration.py` + `--cp-walkforward` + `_apply_cp_walkforward` en `main.py`. 293 tests passing (↑10).
-  3. ✅ Script verificación: `scripts/verify_cp_walkforward.py`
-  4. GPU local corregida: RTX 4050 Laptop (20 SMs, 6GB), tiempo run ~5-8 min.
-- **Próximos pasos inmediatos** (próxima sesión):
-  1. Commit cambios unstaged (trainer.py, calibration.py, main.py, tests)
-  2. Verificar cp_wf_coverage_80≥0.80: `python3 scripts/verify_cp_walkforward.py`
-  3. Limpiar worktree: `git worktree remove .claude/worktrees/agent-ace8b389 --force`
-  4. Multi-seed NVDA (seeds 42,123,7,456) con `--cp-walkforward` — Kaggle T4
-  5. Especialistas multi-ticker (MSFT, AAPL, AMZN, META, TSLA) — Kaggle P100
+- **Épicas 1–9 COMPLETADAS** (2026-03-09). Ver: `archivos auxiliares/plan_ejecucion_pipeline_probabilistico.md`
+- **Estado actual** (2026-03-12): 293 tests fast · `--cp-walkforward` implementado · rama `feat/cp-walkforward-fold-fix` pendiente de PR.
+- **Próximos pasos**:
+  1. Multi-seed NVDA (seeds 42,123,7,456) con `--cp-walkforward` — Kaggle T4
+  2. Interpretar fold-2 gap: ¿sistemático vs seed-específico?
+  3. Especialistas multi-ticker (MSFT, AAPL, AMZN, META, TSLA) — Kaggle P100
+  4. PR `feat/cp-walkforward-fold-fix` → main (crear desde GitHub manualmente)
 - **Plan de validación corto plazo**: `docs/plans/2026-03-09-validacion-corto-plazo.md`
 
 ## Entrenamiento headless
@@ -280,36 +278,27 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Optuna NVDA** (14 trials, DBs persistidos en `optuna_studies/`): mejor config `{seq=96, pred=20, batch=32, clip=0.5}` → Sharpe +0.750, coverage_80=0.626. Zona Pareto coverage≥0.75 + Sharpe>0 **NO existe** en datos actuales (trade-off estructural). Candidato más cercano: trial #9 (Sharpe=+0.161, cov=0.739).
 - `metric_space="returns"` con `return_transform="log_return"`: VaR/CVaR en unidades de retorno (5–7%). Con `metric_space="prices"` se reconstruyen precios vía `_cumulative_returns_to_prices(last_prices, log_return)`.
 
+## Kaggle / notebooks
+
+- **`data/` gitignoreado**: los CSVs (`NVDA_features.csv`, etc.) NO están en el repo — subirlos como dataset Kaggle separado y copiarlos en el notebook con `glob('/kaggle/input/**/*.csv', recursive=True)`.
+- **Generar `.ipynb`**: usar `Bash` + `python3 << 'PYEOF' ... PYEOF` (hooks bloquean `Write`/`Read` sobre `.ipynb`).
+- **`os.chdir(WORKDIR)` en Kaggle**: llamar UNA sola vez en celda 1; no repetir. Usar rutas absolutas `/kaggle/working/` para DBs y outputs.
+- **GPU Kaggle**: activar en Settings → Accelerator → GPU T4 x1 + reiniciar kernel. Sin GPU: ~20 min/trial (vs ~3 min con T4).
+
 ## Gotchas
 
-- `FEDformerConfig` usa `enc_in`/`dec_in` para dimensiones (no `num_features`). Defaults: `seq_len=10, pred_len=5` (genera warnings); usar `seq_len=96, pred_len=24` para experimentos reales. Config anidado: `config.sections.preprocessing.return_transform`.
-- `pytest -q` no muestra línea de resumen — usar `pytest -v`. `build_financial_dataset()` es función, no clase.
-- `label_len` default = **5** (no 63). `len(TimeSeriesDataset)` = ventanas, no filas.
-- `torch.fft.rfft` no soporta bfloat16 (AMP Ada Lovelace) → `_apply_rfft` castea a float32, restaura `orig_dtype` tras irfft. `torch.compile(mode="max-autotune")` genera NaN en GPUs <40 SMs → trainer degrada a eager.
-- `torch.quantile()` se mueve a CPU en `_evaluate_model` (determinismo CUDA). Forward/backward GPU intacto.
-- **`lr_lambda` usa `math.cos`/`math.pi`** (nunca `np`): `np.cos()` → `numpy.float64` → `torch.load(weights_only=True)` falla al deserializar checkpoints.
-- **Retrocompatibilidad checkpoints numpy**: `torch.serialization.safe_globals([numpy._core.multiarray.scalar, np.float64, ...])` para cargar checkpoints antiguos. `numpy._core` es privado → `# pylint: disable=no-member`.
-- **`_optimizer_step` es `@staticmethod`**: pasar `clip_norm` como parámetro explícito; no usar `self.config.*` dentro.
-- **`drop_last=False` en train_loader**: ya aplicado; evita 0 batches en folds pequeños.
-- **Tests `model_factory` + `_prepare_batch`**: usar `model_factory().to(get_device())` — tensores van a CUDA, modelo se crea en CPU por defecto.
-- **`_set_split_view`**: solo para tests standalone. Walk-forward usa `flag="all"` + `Subset`.
-- **`sequential_finetuner.py` no tiene `--save-results`**: usar `main.py --finetune-from ... --finetune-lr 1e-5`.
-- **`apply_preset()` antes de CLI overrides**: orden `config_base → apply_preset → flags_CLI`. No reordenar.
-- **`monitor_metric` no en CLI**: solo programático vía `config.sections.loop.monitor_metric`.
-- **`scripts/__init__.py` obligatorio**: sin él, imports de tests lanzan `ModuleNotFoundError`.
-- **`--base-args-json` acepta JSON inline**: `run_ablation_matrix.py` detecta `{` para distinguir JSON vs ruta.
-- **`gh` CLI no instalado**: crear PRs manualmente desde la URL que imprime `git push`.
-- **Subagentes para entrenamientos**: requieren permiso Bash explícito. Usar `Bash(run_in_background=true)`.
+- **`lr_lambda` usa `math.cos`/`math.pi`** (nunca `np`): `numpy.float64` rompe `torch.load(weights_only=True)` al deserializar checkpoints.
+- **`functools.partial` para `worker_init_fn`**: NO usar — falla en Python 3.12 spawn. Patrón: clase callable módulo-level con `__slots__` (`_SeedWorker`).
+- **`pred_len` debe ser par**: requisito del affine coupling split.
+- **`run_manifest_*.json`**: métricas en `manifest["metrics"]`, NO en raíz. Usar `manifest.get("metrics", manifest)` para retrocompatibilidad.
+- **`.ipynb` en CI**: nunca commitear a main — ruff/pylint los parsean como Python y rompen GitHub Actions. Guardar en `archivos auxiliares/` (gitignored).
+- **Al añadir flags a `main.py`**: actualizar `argparse.Namespace` en `tests/test_finetune.py` con el nuevo atributo a `None`.
 - **`cpu_safe` NO fuerza CPU**: deshabilita AMP/compile/workers pero modelo sigue en CUDA.
-- **`last_prices` boundary**: `df.iloc[cutoff]` no es leakage — implícito en último retorno de entrenamiento.
-- **`df.index.tz_localize(None)`**: lanza `TypeError` con yfinance moderno. Usar `if df.index.tz is not None: df.index = df.index.tz_localize(None)`.
-- **`logging.basicConfig()` en `vix_data.py`/`alpha_vantage_client.py`**: anti-patrón pre-existente; corregir a `logger = logging.getLogger(__name__)` si se modifican.
-- **Worktrees sin `data/`**: usar rutas absolutas al dataset.
-- **Worktrees desde base antigua**: síntoma `add/add` conflict en cherry-pick. Solución: `--abort`, copiar manualmente, commit directo en `main`.
-- **Bash heredoc `python3 - << 'PYEOF'`**: para scripts con backslashes (`ci.yml`). `sed`/`awk` tienen escaping problemático.
-- **`tune_hyperparams.py`**: `sharpe` NO existe en `user_attrs` — en modo sharpe, `best_trial.value` = Sharpe. `composite_score = 0.5·sharpe + 0.3·(1-pinball_norm) + 0.2·coverage_score`. Nombre estudio auto: `tune_{ticker_stem}`. Kaggle: `kaggle_optuna_nvda.ipynb`; T4 tiene 40 SMs → compile puede activarse, añadir `cpu_safe` si NaN.
-- **`--conformal-calibration`** (`49592af`): CP Enfoque 2 post-hoc; reporta `cp_coverage_80` y `cp_q_hat`. Default: off.
-- **`--cp-walkforward`** (sesión 2 2026-03-11, unstaged): CP Enfoque 1 fold-aware; reporta `cp_wf_coverage_80`, `cp_wf_folds_calibrated`. Fold 0 excluido de cobertura (sin datos previos). Verificación empírica pendiente.
-- **fold 0 en training_history RESUELTO**: Opción B implementada — `fold_idx-1` en 3 call sites de trainer.py. CSV ahora 0-indexed (folds 0,1,2 con n_splits=4). Opción A descartada: fold 0 = bloque seed/warm-up, sin datos anteriores para entrenar.
-- **Scripts .sh en proyecto Python**: ruff los trata como Python → usar siempre `.py`.
-- **Worktrees desde base antigua**: verificar `git merge-base main worktree-branch` antes de mergear. Si sin commits propios, portear con `git diff HEAD` manual.
+- **`tune_hyperparams.py`**: NO tiene `--targets` ni `--study-name`. `sharpe` NO existe en `user_attrs` — en modo sharpe, `best_trial.value` = Sharpe. Nombre estudio auto: `tune_{ticker_stem}`.
+- **`--cp-walkforward` coverage 0.706** (seed=42): hallazgo de investigación, no bug — violación exchangeability CP bajo no-estacionariedad. Fold 0 excluido (sin datos previos).
+- **`scripts/__init__.py` obligatorio**: sin él, imports de tests lanzan `ModuleNotFoundError`.
+- **`FEDformerConfig`**: usa `enc_in`/`dec_in` (no `num_features`). Config anidado: `config.sections.preprocessing.return_transform`. Defaults `seq_len=10, pred_len=5` generan warnings — usar 96/20 en experimentos.
+- **Worktrees desde base antigua**: síntoma `add/add` conflict en cherry-pick. Solución: `--abort`, portear con `git diff HEAD` manual. Usar rutas absolutas al dataset.
+- **`apply_preset()` antes de CLI overrides**: orden `config_base → apply_preset → flags_CLI`. No reordenar.
+
+→ Gotchas técnicos detallados: `memory/gotchas.md`

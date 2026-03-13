@@ -72,6 +72,7 @@ artifacts_archive/
 data/**
 !data/**/*.py
 !data/**/*.md
+!data/NVDA_features.csv
 reports/**
 !reports/.gitkeep
 
