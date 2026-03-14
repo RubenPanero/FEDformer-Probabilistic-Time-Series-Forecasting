@@ -257,12 +257,12 @@ CSV → TimeSeriesDataset (scale + regimes)
 ## Hoja de ruta activa
 
 - **Épicas 1–9 COMPLETADAS** (2026-03-09). Ver: `archivos auxiliares/plan_ejecucion_pipeline_probabilistico.md`
-- **Estado actual** (2026-03-12): 293 tests fast · `--cp-walkforward` implementado · rama `feat/cp-walkforward-fold-fix` pendiente de PR.
+- **Estado actual** (2026-03-14): 293 tests fast · per-fold reseed fix activo (trainer.py) · seed 7 nuevo canónico NVDA (Sharpe +1.060).
 - **Próximos pasos**:
-  1. Multi-seed NVDA (seeds 42,123,7,456) con `--cp-walkforward` — Kaggle T4
-  2. Interpretar fold-2 gap: ¿sistemático vs seed-específico?
+  1. Verificar seed=42 localmente con fix (¿−0.525 consistente o recuperable?)
+  2. PR: per-fold reseed fix + cp-walkforward-fold-fix → main
   3. Especialistas multi-ticker (MSFT, AAPL, AMZN, META, TSLA) — Kaggle P100
-  4. PR `feat/cp-walkforward-fold-fix` → main (crear desde GitHub manualmente)
+  4. Ampliar multi-seed NVDA (≥10 seeds) para distribución robusta de performance
 - **Plan de validación corto plazo**: `docs/plans/2026-03-09-validacion-corto-plazo.md`
 
 ## Entrenamiento headless
@@ -273,8 +273,9 @@ CSV → TimeSeriesDataset (scale + regimes)
 - Sin `--epochs`: usa el default de `LoopSettings` (20 épocas). Pasar `--epochs N` solo para override explícito.
 - Dataset NVDA permanente: `data/NVDA_features.csv` (1725 filas × 11 features, 2019–2026).
 - **Segmentación canónica**: `seq_len=96, n_splits=4` → split_size=431. `split_min=342` con defaults; `n_splits = total_filas // split_min` para tickers heterogéneos.
-- **Baseline canónico NVDA** (post-fix `00f119c`, seed=42, 2026-03-10): Sharpe **+0.609** · Sortino **+0.993** · VaR 5.35% · CVaR 7.07% · MaxDD −72.69% · Vol 2.47%. Referencia válida para todas las comparaciones. `model_registry.json` actualizado.
-- **Alta varianza inter-seed NF**: multi-seed (42,123,7,456) → mean=+0.369, std=0.546; 2/4 seeds con Sharpe>0.5. **Causa: sensibilidad inicialización NF, no falta de épocas** (early stopping dispara en 10–16/20).
+- **Baseline canónico NVDA** (per-fold reseed fix, seed=7, 2026-03-14): Sharpe **+1.060** · Sortino **+1.940** · MaxDD −55.9% · Vol 2.40%. Referencia válida para comparaciones. `model_registry.json` actualizado.
+- **Per-fold reseed fix** (`_run_single_fold`: `torch.manual_seed(seed + fold_idx)`): resuelve regresión seed=42 (+0.609→−1.127). Multi-seed post-fix (seeds 7,123,456,999, Kaggle 2×T4): mean=**+0.534**, std=0.361; **4/4 seeds Sharpe>0**. Seed 7 nuevo canónico.
+- **Varianza inter-seed NF**: post-fix mean=+0.534, std=0.361 (vs pre-fix mean=+0.369, std=0.546; 2/4 positivos). **Causa raíz resuelta**: RNG global acumulado entre folds → per-fold reseed hace init independiente por fold.
 - **Optuna NVDA** (14 trials, DBs persistidos en `optuna_studies/`): mejor config `{seq=96, pred=20, batch=32, clip=0.5}` → Sharpe +0.750, coverage_80=0.626. Zona Pareto coverage≥0.75 + Sharpe>0 **NO existe** en datos actuales (trade-off estructural). Candidato más cercano: trial #9 (Sharpe=+0.161, cov=0.739).
 - `metric_space="returns"` con `return_transform="log_return"`: VaR/CVaR en unidades de retorno (5–7%). Con `metric_space="prices"` se reconstruyen precios vía `_cumulative_returns_to_prices(last_prices, log_return)`.
 
