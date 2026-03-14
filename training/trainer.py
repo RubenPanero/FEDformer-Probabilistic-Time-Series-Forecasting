@@ -820,6 +820,10 @@ class WalkForwardTrainer:
         train_subset = Subset(self.full_dataset, train_indices)
         test_subset = Subset(self.full_dataset, test_indices)
 
+        # Reseed por fold: init del modelo independiente del RNG acumulado de folds previos
+        torch.manual_seed(self.config.seed + fold_idx)
+        np.random.seed(self.config.seed + fold_idx)
+
         components = self._build_training_components(
             train_subset, test_subset, fold_idx, val_subset=val_subset
         )
