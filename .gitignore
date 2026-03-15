@@ -126,3 +126,9 @@ archivos auxiliares/
 
 # === Self-improvement learnings (locales) ===
 .learnings/
+
+# === Archivo de archivo — materiales históricos y temporales ===
+archive/
+
+# === Optuna study databases (binarios, no versionar) ===
+optuna_studies/

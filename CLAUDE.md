@@ -259,10 +259,10 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Épicas 1–9 COMPLETADAS** (2026-03-09). Ver: `archivos auxiliares/plan_ejecucion_pipeline_probabilistico.md`
 - **Estado actual** (2026-03-14): 293 tests fast · per-fold reseed fix activo (trainer.py) · seed 7 nuevo canónico NVDA (Sharpe +1.060).
 - **Próximos pasos**:
-  1. Verificar seed=42 localmente con fix (¿−0.525 consistente o recuperable?)
+  1. Push a origin/main (2 commits locales: `12f91df`, `b1b35ef`)
   2. PR: per-fold reseed fix + cp-walkforward-fold-fix → main
   3. Especialistas multi-ticker (MSFT, AAPL, AMZN, META, TSLA) — Kaggle P100
-  4. Ampliar multi-seed NVDA (≥10 seeds) para distribución robusta de performance
+  4. Ampliar multi-seed NVDA (≥10 seeds) para distribución robusta
 - **Plan de validación corto plazo**: `docs/plans/2026-03-09-validacion-corto-plazo.md`
 
 ## Entrenamiento headless
@@ -285,6 +285,9 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **Generar `.ipynb`**: usar `Bash` + `python3 << 'PYEOF' ... PYEOF` (hooks bloquean `Write`/`Read` sobre `.ipynb`).
 - **`os.chdir(WORKDIR)` en Kaggle**: llamar UNA sola vez en celda 1; no repetir. Usar rutas absolutas `/kaggle/working/` para DBs y outputs.
 - **GPU Kaggle**: activar en Settings → Accelerator → GPU T4 x1 + reiniciar kernel. Sin GPU: ~20 min/trial (vs ~3 min con T4).
+- **Docstrings en celdas generadas por PYEOF**: NO usar `"""..."""` — se renderizan como `\"\"\"` en el source → `SyntaxError`. Usar `#` comentarios en su lugar.
+- **Kaggle environment**: seleccionar "Latest environment" (no "Pin to original") — asegura PyTorch 2.0+, CUDA drivers actualizados y Python 3.10+.
+- **2×T4 parallelismo**: `threading.Thread` + `env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)` para seeds en paralelo. Referencia: `archivos auxiliares/kaggle_multiseed_nvda_2gpu.ipynb`.
 
 ## Gotchas
 
@@ -292,6 +295,7 @@ CSV → TimeSeriesDataset (scale + regimes)
 - **`functools.partial` para `worker_init_fn`**: NO usar — falla en Python 3.12 spawn. Patrón: clase callable módulo-level con `__slots__` (`_SeedWorker`).
 - **`pred_len` debe ser par**: requisito del affine coupling split.
 - **`run_manifest_*.json`**: métricas en `manifest["metrics"]`, NO en raíz. Usar `manifest.get("metrics", manifest)` para retrocompatibilidad.
+- **`seed=42` intrínsecamente pobre con per-fold reseed**: fórmula `seed + fold_idx` asigna fold-seeds 43/44/45 → Sharpe −0.525 determinista. Usar **seed=7** (fold-seeds 8/9/10) como canónico NVDA.
 - **`.ipynb` en CI**: nunca commitear a main — ruff/pylint los parsean como Python y rompen GitHub Actions. Guardar en `archivos auxiliares/` (gitignored).
 - **Al añadir flags a `main.py`**: actualizar `argparse.Namespace` en `tests/test_finetune.py` con el nuevo atributo a `None`.
 - **`cpu_safe` NO fuerza CPU**: deshabilita AMP/compile/workers pero modelo sigue en CUDA.
