@@ -5,7 +5,7 @@ FEDformer (Frequency Enhanced Decomposed Transformer) + Normalizing Flows para p
 ## Stack
 
 Python 3.10+ · PyTorch 2.0+ · pandas · scikit-learn · Optuna · W&B (opcional)
-Linting: `ruff` (88 chars) · Tests: `pytest` (293 fast + 7 @slow)
+Linting: `ruff` (88 chars) · Tests: `pytest` (299 fast + 7 @slow)
 Entorno: `.venv/` · Linux Mint 22.3 → **usar `python3`** (nunca `python`)
 
 ## Navegación de código
@@ -102,7 +102,7 @@ Actions: `checkout@v6` · `setup-python@v6`. Al añadir rama: actualizar `on: pu
 | TSLA   | −0.354 | −0.540  | −74.9% | 0.789  | cov₈₀ < 0.80 |
 
 MSFT* Optuna v2 (batch=32): Sharpe +0.742 — **NO confirmado**, pendiente multi-seed (AR #1/#7).
-**Acceptance criteria**: corto plazo = superar baseline del ticker; roadmap = Sharpe > 0.50 (todos los tickers de producción).
+**Acceptance criteria**: Sharpe > 0.50 post fine-tuning = modelo aceptable para ese ticker.
 Estado mutable, próximos pasos y resultados Optuna detallados → `MEMORY.md`
 
 ## Gotchas

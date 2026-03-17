@@ -132,3 +132,6 @@ archive/
 
 # === Optuna study databases (binarios, no versionar) ===
 optuna_studies/
+
+# === Specs / planes locales (no versionar) ===
+spec/
