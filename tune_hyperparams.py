@@ -307,6 +307,8 @@ def objective(
     n_splits: int,
     results_dir: Path,
     study_objective: str = "sharpe",
+    seed: int = 7,
+    compile_mode: str = "",
 ) -> float:
     """Entrena Flow_FEDformer con los hiperparámetros sugeridos y retorna el score.
 
@@ -320,6 +322,8 @@ def objective(
         n_splits: Número de folds walk-forward.
         results_dir: Directorio de resultados para parsear CSVs.
         study_objective: Modo de score ("sharpe", "composite", "multi-objective").
+        seed: Seed para reproducibilidad (debe coincidir con baselines).
+        compile_mode: Modo de torch.compile para el subprocess ("" = desactivado).
 
     Returns:
         Score penalizado, o -1.0 si el trial falló.
@@ -359,8 +363,14 @@ def objective(
         str(clip_norm),
         "--save-results",
         "--no-show",
+        "--seed",
+        str(seed),
         # Sin --save-canonical: los trials no tocan el model_registry
     ]
+
+    # Pasar compile_mode al subprocess (vacío = desactivado, evita overhead de compilación)
+    if compile_mode is not None:
+        cmd.extend(["--compile-mode", compile_mode])
 
     env = os.environ.copy()
     env["MPLBACKEND"] = "Agg"
@@ -501,6 +511,8 @@ def _run_best_params(
     best_params: dict,
     n_splits: int,
     save_canonical: bool,
+    seed: int = 7,
+    compile_mode: str = "",
 ) -> None:
     """Re-entrena con los mejores hiperparámetros encontrados por Optuna.
 
@@ -509,6 +521,8 @@ def _run_best_params(
         best_params: Dict con seq_len, pred_len, batch_size, gradient_clip_norm.
         n_splits: Número de folds walk-forward.
         save_canonical: Si True, registra en model_registry con --save-canonical.
+        seed: Seed para reproducibilidad.
+        compile_mode: Modo de torch.compile ("" = desactivado).
     """
     cmd = [
         sys.executable,
@@ -533,13 +547,17 @@ def _run_best_params(
         str(best_params["gradient_clip_norm"]),
         "--save-results",
         "--no-show",
+        "--seed",
+        str(seed),
     ]
     if save_canonical:
         cmd.append("--save-canonical")
+    if compile_mode is not None:
+        cmd.extend(["--compile-mode", compile_mode])
 
     env = os.environ.copy()
     env["MPLBACKEND"] = "Agg"
-    logger.info("Ejecutando run final con mejores parámetros...")
+    logger.info("Ejecutando run final con mejores parámetros (seed=%d)...", seed)
     subprocess.run(cmd, env=env)
 
 
@@ -617,6 +635,55 @@ def main() -> None:
         choices=["balanced"],
         help="Perfil de pesos para score compuesto (default: balanced).",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=7,
+        help="Seed para reproducibilidad del subprocess main.py (default: 7).",
+    )
+    parser.add_argument(
+        "--compile-mode",
+        type=str,
+        default="",
+        help=(
+            "Modo de torch.compile para el subprocess main.py. "
+            "Default '' (desactivado) — evita overhead de compilación en trials. "
+            "Opciones: '', 'default', 'max-autotune'."
+        ),
+    )
+    parser.add_argument(
+        "--n-startup-trials",
+        type=int,
+        default=5,
+        help="Trials aleatorios antes de que TPE active su modelo probabilístico.",
+    )
+    parser.add_argument(
+        "--sampler-seed",
+        type=int,
+        default=42,
+        help=(
+            "Seed del TPESampler (distinto de --seed que va al subprocess main.py). "
+            "Controla la aleatoriedad interna del sampler de Optuna."
+        ),
+    )
+    parser.add_argument(
+        "--clean-results",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Elimina todos los CSVs stale de results/ antes de optimizar. "
+            "Evita que _parse_portfolio_csv lea artefactos de runs anteriores."
+        ),
+    )
+    parser.add_argument(
+        "--enqueue-canonical",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Encola la configuración canónica (seq=96, pred=20, batch=64, clip=0.5) "
+            "como primer trial garantizado. Desactivar con --no-enqueue-canonical."
+        ),
+    )
     args = parser.parse_args()
 
     # Modo descarga
@@ -631,6 +698,15 @@ def main() -> None:
     ticker_stem = Path(csv_path).stem
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
+    summary_dir = Path("optuna_studies")
+    summary_dir.mkdir(exist_ok=True)
+
+    # Limpiar artefactos stale si se solicita (AR #8)
+    if args.clean_results:
+        stale_csvs = list(results_dir.glob("*.csv"))
+        logger.info("Limpiando %d artefactos stale de results/", len(stale_csvs))
+        for csv_file in stale_csvs:
+            csv_file.unlink()
 
     study_name = f"tune_{ticker_stem}"
 
@@ -642,8 +718,11 @@ def main() -> None:
         storage = f"sqlite:///{storage_file}"
         logger.info("Persistiendo estudio en: %s", storage_file)
 
-    # TPE sampler: 5 trials exploratorios aleatorios antes de usar el modelo probabilístico
-    sampler = optuna.samplers.TPESampler(seed=42, n_startup_trials=5)
+    # TPE sampler: trials exploratorios aleatorios antes de usar el modelo probabilístico
+    sampler = optuna.samplers.TPESampler(
+        seed=args.sampler_seed,
+        n_startup_trials=args.n_startup_trials,
+    )
 
     study = optuna.create_study(
         study_name=study_name,
@@ -652,6 +731,18 @@ def main() -> None:
         storage=storage,
         load_if_exists=True,  # reanuda si el estudio SQLite ya existe
     )
+
+    # Encolar configuración canónica como primer trial garantizado (AR #4)
+    if args.enqueue_canonical:
+        study.enqueue_trial(
+            {
+                "seq_len": 96,
+                "pred_len": 20,
+                "batch_size": 64,
+                "gradient_clip_norm": 0.5,
+            }
+        )
+        logger.info("Config canónica encolada como primer trial")
 
     logger.info(
         "Iniciando búsqueda para %s — %d trials, espacio: %d combinaciones posibles, "
@@ -669,6 +760,8 @@ def main() -> None:
             args.n_splits,
             results_dir,
             study_objective=args.study_objective,
+            seed=args.seed,
+            compile_mode=args.compile_mode,
         ),
         n_trials=args.n_trials,
         show_progress_bar=False,  # interfiere con el logging estándar
@@ -733,8 +826,6 @@ def main() -> None:
     print()
 
     # Guardar resumen completo
-    summary_dir = Path("optuna_studies")
-    summary_dir.mkdir(exist_ok=True)
     summary_path = summary_dir / f"{ticker_stem}_trials.csv"
     completed_df.to_csv(summary_path, index=False)
     logger.info("Resumen de trials guardado en: %s", summary_path)
@@ -748,6 +839,8 @@ def main() -> None:
             best_params=best.params,
             n_splits=args.n_splits,
             save_canonical=True,
+            seed=args.seed,
+            compile_mode=args.compile_mode,
         )
 
 

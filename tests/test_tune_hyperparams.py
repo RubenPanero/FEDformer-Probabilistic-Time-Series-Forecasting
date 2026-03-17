@@ -272,6 +272,43 @@ def test_objective_cmd_excludes_save_canonical(tmp_path: Path) -> None:
     assert "--save-canonical" not in captured_cmd
 
 
+def test_objective_cmd_includes_seed_and_compile_mode(tmp_path: Path) -> None:
+    """El subprocess recibe --seed y --compile-mode cuando se pasan a objective()."""
+    ts_before = time.time() - 1
+    _write_portfolio_csv(tmp_path, "MSFT_features", sharpe=0.5, sortino=0.8)
+    _write_risk_csv(tmp_path, "MSFT_features", var_95=0.03)
+
+    trial = _mock_trial(seq_len=96, pred_len=20)
+    captured_cmd: list[str] = []
+
+    def mock_run(cmd, **kwargs):  # noqa: ANN001
+        captured_cmd.extend(cmd)
+        m = MagicMock()
+        m.returncode = 0
+        return m
+
+    with (
+        patch("subprocess.run", side_effect=mock_run),
+        patch("tune_hyperparams._current_time", return_value=ts_before),
+    ):
+        th.objective(
+            trial,
+            "data/MSFT_features.csv",
+            4,
+            tmp_path / "results",
+            seed=7,
+            compile_mode="",
+        )
+
+    # --seed 7 debe estar en el comando
+    seed_idx = captured_cmd.index("--seed")
+    assert captured_cmd[seed_idx + 1] == "7"
+
+    # --compile-mode "" debe estar en el comando
+    cm_idx = captured_cmd.index("--compile-mode")
+    assert captured_cmd[cm_idx + 1] == ""
+
+
 # ---------------------------------------------------------------------------
 # Tests del resumen de trials
 # ---------------------------------------------------------------------------
@@ -515,3 +552,185 @@ def test_compose_trial_score_coverage_penalty() -> None:
 
     # Coverage perfecto debe dar score más alto
     assert score_perfect > score_bad
+
+
+# ---------------------------------------------------------------------------
+# Tests de flags nuevos (AR #3, #4, #8, #9)
+# ---------------------------------------------------------------------------
+
+
+def test_results_and_optuna_dirs_created_if_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """main() crea results/ y optuna_studies/ aunque no existan previamente."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "MSFT_features.csv").write_text("date,Close\n2024-01-01,1\n")
+
+    mock_study = MagicMock()
+    mock_study.trials = []
+    mock_study.optimize = MagicMock()
+
+    with (
+        patch("optuna.create_study", return_value=mock_study),
+        patch(
+            "sys.argv",
+            [
+                "tune_hyperparams.py",
+                "--csv",
+                str(tmp_path / "data" / "MSFT_features.csv"),
+                "--n-trials",
+                "0",
+            ],
+        ),
+    ):
+        th.main()
+
+    assert (tmp_path / "results").is_dir(), "results/ debe crearse si no existe"
+    assert (tmp_path / "optuna_studies").is_dir(), (
+        "optuna_studies/ debe crearse si no existe"
+    )
+
+
+def test_clean_results_removes_stale_csvs(tmp_path: Path, monkeypatch) -> None:
+    """--clean-results elimina todos los CSVs de results/ antes de optimizar."""
+    monkeypatch.chdir(tmp_path)
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    stale = [
+        results_dir / "portfolio_metrics_20260101_120000.csv",
+        results_dir / "risk_metrics_20260101_120000.csv",
+    ]
+    for f in stale:
+        f.write_text("metric,value\nsharpe_ratio,-1.0\n")
+
+    (tmp_path / "data").mkdir()
+    csv_path = tmp_path / "data" / "MSFT_features.csv"
+    csv_path.write_text("date,Close\n2024-01-01,1\n")
+
+    mock_study = MagicMock()
+    mock_study.trials = []
+    mock_study.optimize = MagicMock()
+
+    with (
+        patch("optuna.create_study", return_value=mock_study),
+        patch(
+            "sys.argv",
+            [
+                "tune_hyperparams.py",
+                "--csv",
+                str(csv_path),
+                "--n-trials",
+                "0",
+                "--clean-results",
+            ],
+        ),
+    ):
+        th.main()
+
+    remaining = list(results_dir.glob("*.csv"))
+    assert remaining == [], (
+        f"--clean-results debe eliminar todos los CSVs; quedan: {remaining}"
+    )
+
+
+def test_sampler_receives_configured_params(tmp_path: Path, monkeypatch) -> None:
+    """TPESampler recibe seed y n_startup_trials según los flags CLI."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    csv_path = tmp_path / "data" / "MSFT_features.csv"
+    csv_path.write_text("date,Close\n2024-01-01,1\n")
+
+    captured: dict = {}
+
+    def mock_tpe(**kwargs):  # noqa: ANN001
+        captured.update(kwargs)
+        return MagicMock()
+
+    mock_study = MagicMock()
+    mock_study.trials = []
+    mock_study.optimize = MagicMock()
+
+    with (
+        patch("optuna.samplers.TPESampler", side_effect=mock_tpe),
+        patch("optuna.create_study", return_value=mock_study),
+        patch(
+            "sys.argv",
+            [
+                "tune_hyperparams.py",
+                "--csv",
+                str(csv_path),
+                "--n-trials",
+                "0",
+                "--n-startup-trials",
+                "10",
+                "--sampler-seed",
+                "99",
+            ],
+        ),
+    ):
+        th.main()
+
+    assert captured.get("seed") == 99
+    assert captured.get("n_startup_trials") == 10
+
+
+def test_enqueue_canonical_calls_enqueue_trial(tmp_path: Path, monkeypatch) -> None:
+    """--enqueue-canonical (default=True) llama enqueue_trial con la config canónica exacta."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    csv_path = tmp_path / "data" / "MSFT_features.csv"
+    csv_path.write_text("date,Close\n2024-01-01,1\n")
+
+    mock_study = MagicMock()
+    mock_study.trials = []
+    mock_study.optimize = MagicMock()
+
+    with (
+        patch("optuna.create_study", return_value=mock_study),
+        patch(
+            "sys.argv",
+            [
+                "tune_hyperparams.py",
+                "--csv",
+                str(csv_path),
+                "--n-trials",
+                "0",
+            ],
+        ),
+    ):
+        th.main()
+
+    mock_study.enqueue_trial.assert_called_once_with(
+        {"seq_len": 96, "pred_len": 20, "batch_size": 64, "gradient_clip_norm": 0.5}
+    )
+
+
+def test_no_enqueue_canonical_skips_enqueue_trial(tmp_path: Path, monkeypatch) -> None:
+    """--no-enqueue-canonical omite la llamada a enqueue_trial."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    csv_path = tmp_path / "data" / "MSFT_features.csv"
+    csv_path.write_text("date,Close\n2024-01-01,1\n")
+
+    mock_study = MagicMock()
+    mock_study.trials = []
+    mock_study.optimize = MagicMock()
+
+    with (
+        patch("optuna.create_study", return_value=mock_study),
+        patch(
+            "sys.argv",
+            [
+                "tune_hyperparams.py",
+                "--csv",
+                str(csv_path),
+                "--n-trials",
+                "0",
+                "--no-enqueue-canonical",
+            ],
+        ),
+    ):
+        th.main()
+
+    mock_study.enqueue_trial.assert_not_called()

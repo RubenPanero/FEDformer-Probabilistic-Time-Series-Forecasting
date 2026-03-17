@@ -293,6 +293,7 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
         preset=None,
         conformal_calibration=False,
         cp_walkforward=False,
+        compile_mode=None,
     )
 
     cfg = main_module._create_config(

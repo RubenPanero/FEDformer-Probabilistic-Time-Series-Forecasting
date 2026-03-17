@@ -292,6 +292,15 @@ def _parse_arguments() -> argparse.Namespace:
             "(Enfoque 1: sin data leakage temporal)."
         ),
     )
+    parser.add_argument(
+        "--compile-mode",
+        type=str,
+        default=None,
+        help=(
+            "Modo de torch.compile: 'max-autotune', 'default', '' (desactivado). "
+            "Si no se especifica, usa el default de FEDformerConfig ('max-autotune')."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -360,6 +369,8 @@ def _create_config(
         config.sections.training.rehearsal.rehearsal_epochs = args.rehearsal_epochs
     if args.rehearsal_lr_mult is not None:
         config.rehearsal_lr_mult = args.rehearsal_lr_mult
+    if args.compile_mode is not None:
+        config.compile_mode = args.compile_mode
 
     # Aplicar preset si se especificó (prioridad: defaults < preset < CLI)
     if args.preset is not None:
