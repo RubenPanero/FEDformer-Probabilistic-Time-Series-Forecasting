@@ -368,9 +368,13 @@ def objective(
         # Sin --save-canonical: los trials no tocan el model_registry
     ]
 
-    # Pasar compile_mode al subprocess (vacío = desactivado, evita overhead de compilación)
-    if compile_mode is not None:
-        cmd.extend(["--compile-mode", compile_mode])
+    # Siempre pasar --compile-mode explícitamente al subprocess.
+    # CRÍTICO: config.py default es "max-autotune" — omitir el flag activa compilación
+    # completa en todos los trials (causó timeouts masivos en T4/Kaggle, sesión 10).
+    # "" desactiva compilación vía guarda truthy en trainer.py (`if compile_mode and ...`).
+    # TODO: reemplazar "" por sentinel explícito "none" cuando se refactorice
+    # _effective_compile_mode para reconocer "none" → "" (evita pasar string vacío como arg CLI).
+    cmd.extend(["--compile-mode", compile_mode])
 
     env = os.environ.copy()
     env["MPLBACKEND"] = "Agg"
@@ -552,8 +556,9 @@ def _run_best_params(
     ]
     if save_canonical:
         cmd.append("--save-canonical")
-    if compile_mode is not None:
-        cmd.extend(["--compile-mode", compile_mode])
+    # Ver comentario en objective(): siempre pasar explícitamente para neutralizar
+    # el default "max-autotune" de config.py.
+    cmd.extend(["--compile-mode", compile_mode])
 
     env = os.environ.copy()
     env["MPLBACKEND"] = "Agg"
