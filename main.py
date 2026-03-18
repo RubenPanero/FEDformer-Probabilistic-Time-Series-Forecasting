@@ -217,6 +217,12 @@ def _parse_arguments() -> argparse.Namespace:
         help="Regularización L2 en AdamW (default: config 1e-5).",
     )
     parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=None,
+        help="Learning rate del optimizador AdamW (default: config 1e-4).",
+    )
+    parser.add_argument(
         "--scheduler-type",
         default=None,
         choices=["none", "cosine", "cosine_warmup"],
@@ -352,6 +358,8 @@ def _create_config(
         config.dropout = args.dropout
     if args.weight_decay is not None:
         config.weight_decay = args.weight_decay
+    if args.learning_rate is not None:
+        config.learning_rate = args.learning_rate
     if args.scheduler_type is not None:
         config.scheduler_type = args.scheduler_type
     if args.warmup_epochs is not None:

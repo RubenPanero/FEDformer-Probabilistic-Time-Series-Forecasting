@@ -34,6 +34,7 @@ CSV → TimeSeriesDataset (scale + regimes)
 ```
 
 Directorios gitignoreados: `results/`, `checkpoints/`, `optuna_studies/`, `archive/`
+Scripts de experimentos: `archivos auxiliares/` — scripts bash para runs multi-seed, grids y limpieza
 
 ## Comandos esenciales
 
@@ -42,7 +43,8 @@ Directorios gitignoreados: `results/`, `checkpoints/`, `optuna_studies/`, `archi
 MPLBACKEND=Agg python3 main.py --csv data/NVDA_features.csv --targets "Close" \
   --seq-len 96 --pred-len 20 --batch-size 64 --splits 4 \
   --return-transform log_return --metric-space returns \
-  --gradient-clip-norm 0.5 --seed 7 --save-results --no-show
+  --gradient-clip-norm 0.5 --seed 7 --save-results --save-canonical --no-show
+# --save-canonical guarda el checkpoint en checkpoints/*_canonical.pt y actualiza model_registry.json
 
 # Tests rápidos
 pytest -q -m "not slow"
@@ -80,6 +82,7 @@ Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloqu
 - **Seed canónico**: 7. seed=42 descartado (Sharpe −0.525 con per-fold reseed).
 - **Per-fold reseed**: `_run_single_fold` usa `torch.manual_seed(seed + fold_idx)`.
 - Al añadir flags a `main.py`: actualizar `argparse.Namespace` en `tests/test_finetune.py`.
+- **`main.py` flags de optimizador**: `--learning-rate` (float, default: config 1e-4), `--weight-decay` (default: config 1e-5). Early stopping en época 6-7/20 es convergencia normal con lr=1e-4, no indica lr incorrecto.
 - Type hints 3.10+: `X | Y`, no `Optional[X]`. Tests con fixtures de `conftest.py`.
 - Mocks para llamadas externas — nunca red real en tests.
 - Ramas huérfanas `worktree-agent-*` y `claude/*`: limpiar periódicamente.
@@ -101,7 +104,7 @@ Actions: `checkout@v6` · `setup-python@v6`. Al añadir rama: actualizar `on: pu
 | AMZN   | −0.146 | −0.179  | −61.7% | 0.815  | Optuna pendiente |
 | TSLA   | −0.354 | −0.540  | −74.9% | 0.789  | cov₈₀ < 0.80 |
 
-MSFT* Optuna v2 (batch=32): Sharpe +0.742 — **NO confirmado**, pendiente multi-seed (AR #1/#7).
+MSFT batch=32: seed=7 +0.742 (confirmado), media 5 seeds +0.447 < 0.50 → no canónico. Siguiente: B' Grid2D (`archivos auxiliares/run_Bp_grid2d_msft.sh`)
 **Acceptance criteria**: Sharpe > 0.50 post fine-tuning = modelo aceptable para ese ticker.
 Estado mutable, próximos pasos y resultados Optuna detallados → `MEMORY.md`
 
@@ -110,11 +113,13 @@ Estado mutable, próximos pasos y resultados Optuna detallados → `MEMORY.md`
 - **`lr_lambda` usa `math.cos`/`math.pi`** (nunca `np`): `numpy.float64` rompe `torch.load(weights_only=True)`.
 - **`functools.partial` para `worker_init_fn`**: NO usar — falla Python 3.12 spawn. Usar `_SeedWorker` (clase callable módulo-level).
 - **`FEDformerConfig`**: usa `enc_in`/`dec_in` (no `num_features`). Defaults `seq_len=10, pred_len=5` — usar 96/20 en experimentos.
-- **`tune_hyperparams.py`**: NO tiene `--targets` ni `--study-name`. Pasa `--seed 7` y `--compile-mode ""` al subprocess. Nuevos flags: `--n-startup-trials`, `--sampler-seed`, `--clean-results`, `--enqueue-canonical/--no-enqueue-canonical`. Trials fallidos retornan `-1.0` — **no contaminan TPE** (Optuna los usa para modelar regiones malas del espacio, que es el comportamiento correcto).
+- **`tune_hyperparams.py`**: NO tiene `--targets` ni `--study-name`. Pasa `--seed 7` y **siempre** `--compile-mode ""` al subprocess (obligatorio — config.py default es `"max-autotune"`, omitir el flag activa compilación en todos los trials). Nuevos flags: `--n-startup-trials`, `--sampler-seed`, `--clean-results`, `--enqueue-canonical/--no-enqueue-canonical`. Trials fallidos retornan `-1.0` — **no contaminan TPE**. **Espacio actual**: 76 combinaciones válidas. Con ≤12 trials, TPE = random search (9% cobertura).
 - **`torch.compile` guard** (`trainer.py`): degrada `max-autotune→""` en GPUs <40 SMs. RTX 4050 (20 SMs) → sin compile. T4 (40 SMs) → NO degrada → timeouts.
 - **`run_manifest_*.json`**: métricas en `manifest["metrics"]`, NO en raíz.
 - **`scripts/__init__.py` obligatorio**: sin él, tests lanzan `ModuleNotFoundError`.
 - **Scripts bash**: NUNCA usar `Write` tool → produce CRLF. Usar `Bash` + `cat > file << 'EOF'`.
+- **Bash paths con espacios**: `ls "path con espacio"/glob*` falla silenciosamente. Usar `python3 -c "glob.glob(...)"` para listar/leer archivos con paths con espacios. En scripts, usar `PROJDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"` en vez de hardcodear el path.
+- **Bash scripts — `set -u`**: obligatorio para detectar variables vacías (e.g. PROJDIR="" → `mkdir /logs` en vez de error claro).
 - **`.ipynb` en CI**: nunca commitear a `main` — ruff los parsea y rompe Actions.
 - **Kaggle notebooks**: generar con `Bash` + `python3 << 'PYEOF'` (hooks bloquean Write/Read sobre .ipynb). Usar `#` comentarios, nunca `"""..."""` en celdas PYEOF.
 - **Timing RTX 4050**: ~10 min/run canónico, ~7-8 min/trial Optuna.

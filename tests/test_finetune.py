@@ -282,6 +282,7 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
         metric_space="prices",
         dropout=None,
         weight_decay=None,
+        learning_rate=None,
         scheduler_type=None,
         warmup_epochs=None,
         patience=None,
