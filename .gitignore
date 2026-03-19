@@ -96,6 +96,7 @@ github_log/
 *.orig
 .history/
 .ipynb_checkpoints/
+*.ipynb
 
 # === OS-specific metadata ===
 .DS_Store
