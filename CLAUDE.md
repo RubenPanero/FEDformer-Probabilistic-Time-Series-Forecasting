@@ -58,10 +58,6 @@ python3 tune_hyperparams.py --csv data/NVDA_features.csv \
   --storage-path optuna_studies/nvda_sharpe.db \
   --enqueue-canonical --clean-results
 
-# Contingencia si Optuna no mejora: revertir a multi-seed con config canónica
-# python3 scripts/run_multi_seed.py --csv data/MSFT_features.csv --seeds 7 42 123 256 512 \
-#   --extra-args --seq-len 96 --pred-len 20 --batch-size 64
-
 # Multi-seed
 python3 scripts/run_multi_seed.py --csv data/NVDA_features.csv \
   --seeds 7 42 123 --extra-args --seq-len 96 --pred-len 20 --batch-size 64
@@ -92,21 +88,15 @@ Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloqu
 `ci.yml` (Ubuntu+Windows, Py 3.10–3.11), `pylint.yml` (E/F only), `ruff.yml`, `security.yml`, `compatibility.yml`
 Actions: `checkout@v6` · `setup-python@v6`. Al añadir rama: actualizar `on: push: branches` en `ci.yml`.
 
-## Baselines multi-ticker (seed=7)
+## Modelos canónicos (seed=7)
 
-| Ticker | Sharpe | Sortino | MaxDD  | cov₈₀ | Estado |
-|--------|--------|---------|--------|--------|--------|
-| NVDA   | +1.060 | +1.940  | −55.9% | —      | canónico |
-| GOOGL  | +1.196 | +2.306  | −27.7% | —      | canónico |
-| MSFT   | +0.333 | +0.468  | −28.7% | 0.854  | producción |
-| AAPL   | +0.237 | +0.434  | −30.4% | 0.868  | producción |
-| META   | +0.148 | +0.206  | −65.8% | 0.829  | MaxDD alto |
-| AMZN   | −0.146 | −0.179  | −61.7% | 0.815  | Optuna pendiente |
-| TSLA   | −0.354 | −0.540  | −74.9% | 0.789  | cov₈₀ < 0.80 |
+| Ticker | Sharpe | Sortino | MaxDD  | Estado |
+|--------|--------|---------|--------|--------|
+| NVDA   | +1.060 | +1.940  | −55.9% | canónico |
+| GOOGL  | +1.196 | +2.306  | −27.7% | canónico |
 
-MSFT batch=32: seed=7 +0.742 (confirmado), media 5 seeds +0.447 < 0.50 → no canónico. Siguiente: B' Grid2D (`archivos auxiliares/run_Bp_grid2d_msft.sh`)
-**Acceptance criteria**: Sharpe > 0.50 post fine-tuning = modelo aceptable para ese ticker.
-Estado mutable, próximos pasos y resultados Optuna detallados → `MEMORY.md`
+**Multi-ticker optimization cerrado sesión 14** (2026-03-19). MSFT/AAPL/META/AMZN/TSLA no superaron Sharpe > 0.50 de forma reproducible tras Optuna + Grid2D + multi-seed. Checkpoints archivados en `archive/`. Resultados históricos → `MEMORY.md`.
+Foco actual: inference API + visualización probabilística sobre NVDA+GOOGL.
 
 ## Gotchas
 
