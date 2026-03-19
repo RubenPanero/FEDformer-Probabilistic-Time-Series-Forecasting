@@ -5,7 +5,7 @@ FEDformer (Frequency Enhanced Decomposed Transformer) + Normalizing Flows para p
 ## Stack
 
 Python 3.10+ · PyTorch 2.0+ · pandas · scikit-learn · Optuna · W&B (opcional)
-Linting: `ruff` (88 chars) · Tests: `pytest` (299 fast + 7 @slow)
+Linting: `ruff` (88 chars) · Tests: `pytest` (302 fast + 7 @slow)
 Entorno: `.venv/` · Linux Mint 22.3 → **usar `python3`** (nunca `python`)
 
 ## Navegación de código
@@ -44,13 +44,13 @@ MPLBACKEND=Agg python3 main.py --csv data/NVDA_features.csv --targets "Close" \
   --seq-len 96 --pred-len 20 --batch-size 64 --splits 4 \
   --return-transform log_return --metric-space returns \
   --gradient-clip-norm 0.5 --seed 7 --save-results --save-canonical --no-show
-# --save-canonical guarda el checkpoint en checkpoints/*_canonical.pt y actualiza model_registry.json
+# --save-canonical guarda checkpoint + preprocessing artifacts + actualiza model_registry.json
 
 # Tests rápidos
 pytest -q -m "not slow"
 
 # Pre-commit (paridad CI) — obligatorio antes de cada commit
-ruff check . --fix && ruff format . && pylint --errors-only models/ training/ data/ utils/ && pytest -q -m "not slow"
+ruff check . --fix && ruff format . && pylint --errors-only models/ training/ data/ utils/ inference/ && pytest -q -m "not slow"
 
 # Optuna
 python3 tune_hyperparams.py --csv data/NVDA_features.csv \
@@ -81,12 +81,15 @@ Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloqu
 - **`main.py` flags de optimizador**: `--learning-rate` (float, default: config 1e-4), `--weight-decay` (default: config 1e-5). Early stopping en época 6-7/20 es convergencia normal con lr=1e-4, no indica lr incorrecto.
 - Type hints 3.10+: `X | Y`, no `Optional[X]`. Tests con fixtures de `conftest.py`.
 - Mocks para llamadas externas — nunca red real en tests.
+- **`--save-canonical`**: ahora guarda preprocessing artifacts (scaler.pkl, schema.json, metadata.json) en `checkpoints/{ticker}_preprocessing/`. `config_dict` incluye `seed` y `target_features`. Checkpoints existentes (NVDA/GOOGL) NO tienen preprocessing artifacts — re-entrenar con `--save-canonical` para generarlos.
+- **Inference**: el preprocessor se carga pre-ajustado — NUNCA re-fitear con datos nuevos en inferencia.
 - Ramas huérfanas `worktree-agent-*` y `claude/*`: limpiar periódicamente.
 
 ## CI/CD
 
-`ci.yml` (Ubuntu+Windows, Py 3.10–3.11), `pylint.yml` (E/F only), `ruff.yml`, `security.yml`, `compatibility.yml`
-Actions: `checkout@v6` · `setup-python@v6`. Al añadir rama: actualizar `on: push: branches` en `ci.yml`.
+`ci.yml` (Ubuntu+Windows, Py 3.10–3.11), `pylint.yml` (E/F only), `ruff.yml`, `security.yml`, `compatibility.yml`, `critical-fixes.yml`
+Actions: `checkout@v6` · `setup-python@v6`. Al añadir rama: actualizar `on: push: branches` en **todos** los workflows (6 archivos).
+Rama activa en CI: `feat/inference-api` — añadida sesión 15. `tests/test_inference.py` en shards de ci.yml y compatibility.yml.
 
 ## Modelos canónicos (seed=7)
 
@@ -97,6 +100,7 @@ Actions: `checkout@v6` · `setup-python@v6`. Al añadir rama: actualizar `on: pu
 
 **Multi-ticker optimization cerrado sesión 14** (2026-03-19). MSFT/AAPL/META/AMZN/TSLA no superaron Sharpe > 0.50 de forma reproducible tras Optuna + Grid2D + multi-seed. Checkpoints archivados en `archive/`. Resultados históricos → `MEMORY.md`.
 Foco actual: inference API + visualización probabilística sobre NVDA+GOOGL.
+Rama de desarrollo: `feat/inference-api`. Plan detallado: `docs/superpowers/plans/2026-03-19-inference-api.md`.
 
 ## Gotchas
 
