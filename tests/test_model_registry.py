@@ -310,6 +310,7 @@ def _make_save_canonical_args(tmp_path: Path, splits: int = 4) -> object:
         return_transform="log_return",
         metric_space="returns",
         gradient_clip_norm=0.5,
+        seed=7,
     )
 
 
@@ -330,11 +331,14 @@ def _make_save_canonical_deps(tmp_path: Path):
     cfg.metric_space = "returns"
     cfg.gradient_clip_norm = 0.5
     cfg.batch_size = 64
+    cfg.target_features = ["Close"]
 
     dataset = MagicMock()
     dataset.full_data_scaled = MagicMock()
     dataset.full_data_scaled.__len__ = MagicMock(return_value=1725)
     dataset.full_data_scaled.shape = (1725, 11)
+    dataset.preprocessor = MagicMock()
+    dataset.preprocessor.save_artifacts = MagicMock()
 
     return cfg, dataset
 
@@ -418,3 +422,81 @@ def test_save_canonical_omits_when_existing_sharpe_is_better(
             "data/NVDA_features.csv", args, cfg, dataset, metrics
         )
         mock_reg.assert_not_called()
+
+
+def test_save_canonical_saves_preprocessing_artifacts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """_save_canonical_specialist guarda artefactos de preprocessing y los registra en data_info."""
+    import main as main_module
+
+    monkeypatch.chdir(tmp_path)
+    args = _make_save_canonical_args(tmp_path)
+    cfg, dataset = _make_save_canonical_deps(tmp_path)
+
+    registry_path = tmp_path / "checkpoints" / "model_registry.json"
+    monkeypatch.setattr(
+        main_module, "DEFAULT_REGISTRY_PATH", registry_path, raising=False
+    )
+
+    metrics = {
+        "sharpe_ratio": 0.8,
+        "sortino_ratio": 1.5,
+        "max_drawdown": -0.3,
+        "volatility": 0.15,
+    }
+
+    main_module._save_canonical_specialist(
+        "data/NVDA_features.csv", args, cfg, dataset, metrics
+    )
+
+    # Verificar que save_artifacts fue llamado con el path correcto
+    dataset.preprocessor.save_artifacts.assert_called_once()
+    call_args = dataset.preprocessor.save_artifacts.call_args
+    called_path = str(call_args[0][0])
+    assert "nvda_preprocessing" in called_path
+
+    # Verificar que data_info tiene preprocessing_artifacts en el registry
+    registry = load_registry(registry_path)
+    entry = registry["specialists"]["NVDA"]
+    assert "preprocessing_artifacts" in entry["data"]
+    assert "nvda_preprocessing" in entry["data"]["preprocessing_artifacts"]
+
+    # Verificar que config_dict tiene target_features y seed
+    assert entry["config"]["target_features"] == ["Close"]
+    assert entry["config"]["seed"] == 7
+
+
+def test_save_canonical_handles_preprocessing_save_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Si save_artifacts falla, preprocessing_artifacts queda como None en el registry."""
+    import main as main_module
+
+    monkeypatch.chdir(tmp_path)
+    args = _make_save_canonical_args(tmp_path)
+    cfg, dataset = _make_save_canonical_deps(tmp_path)
+
+    # Simular fallo en save_artifacts
+    dataset.preprocessor.save_artifacts.side_effect = OSError("disk full")
+
+    registry_path = tmp_path / "checkpoints" / "model_registry.json"
+    monkeypatch.setattr(
+        main_module, "DEFAULT_REGISTRY_PATH", registry_path, raising=False
+    )
+
+    metrics = {
+        "sharpe_ratio": 0.8,
+        "sortino_ratio": 1.5,
+        "max_drawdown": -0.3,
+        "volatility": 0.15,
+    }
+
+    main_module._save_canonical_specialist(
+        "data/NVDA_features.csv", args, cfg, dataset, metrics
+    )
+
+    # El registro debe completarse aún con preprocessing_artifacts = None
+    registry = load_registry(registry_path)
+    entry = registry["specialists"]["NVDA"]
+    assert entry["data"]["preprocessing_artifacts"] is None
