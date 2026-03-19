@@ -2,7 +2,7 @@ name: Pylint
 
 on:
   push:
-    branches: [ main, master, develop, feature/optuna ]
+    branches: [ main, master, develop, feature/optuna, feat/inference-api ]
   pull_request:
   workflow_dispatch:
 
@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           TARGET_PATHS=()
-          for path in main.py config.py models training utils; do
+          for path in main.py config.py models training utils inference; do
             if [ -e "$path" ]; then
               TARGET_PATHS+=("$path")
             fi

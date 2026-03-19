@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master, develop, feature/optuna, feat/probabilistic-metrics-pipeline]
+    branches: [main, master, develop, feature/optuna, feat/probabilistic-metrics-pipeline, feat/inference-api]
   pull_request:
     branches: [main, master, develop, feature/optuna]
   workflow_dispatch:
@@ -76,6 +76,7 @@ jobs:
             tests/test_trainer_integration.py \
             tests/test_tune_hyperparams.py \
             tests/test_checkpoint_selection.py \
+            tests/test_inference.py \
             --maxfail=1
 
       - name: Coverage report (best-effort)
