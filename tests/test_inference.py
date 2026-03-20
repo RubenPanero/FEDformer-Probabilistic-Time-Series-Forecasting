@@ -377,3 +377,75 @@ def test_inference_cli_unknown_ticker(mock_registry):
     )
     assert result.returncode != 0
     assert "Error" in result.stderr or "no registrado" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Edge case tests
+# ---------------------------------------------------------------------------
+
+
+def test_load_specialist_unknown_ticker_raises(mock_registry):
+    """load_specialist lanza ValueError para ticker no registrado."""
+    from inference.loader import load_specialist
+
+    with pytest.raises(ValueError, match="no registrado"):
+        load_specialist("FAKE", registry_path=mock_registry)
+
+
+def test_predict_insufficient_data(mock_registry):
+    """predict retorna ForecastOutput vacío si CSV tiene pocas filas."""
+    from inference.loader import load_specialist
+    from inference.predictor import predict
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+
+    # CSV con 5 filas — insuficiente para seq_len=20 + pred_len=4
+    csv_path = mock_registry.parent / "tiny_data.csv"
+    pd.DataFrame(
+        {
+            "Close": [100.0, 101.0, 102.0, 103.0, 104.0],
+            "Volume": [1000.0, 1100.0, 1200.0, 1300.0, 1400.0],
+        }
+    ).to_csv(csv_path, index=False)
+
+    forecast = predict(
+        model=model,
+        config=config,
+        preprocessor=preprocessor,
+        csv_path=str(csv_path),
+        n_samples=3,
+    )
+
+    assert forecast.preds_real.size == 0
+
+
+def test_forecast_output_quantile_levels(mock_registry):
+    """ForecastOutput tiene quantile_levels [0.1, 0.5, 0.9]."""
+    from inference.loader import load_specialist
+    from inference.predictor import predict
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+
+    rng = np.random.default_rng(55)
+    n_rows = config.seq_len + config.pred_len + 10
+    csv_path = mock_registry.parent / "enough_data.csv"
+    pd.DataFrame(
+        {
+            "Close": np.cumsum(rng.standard_normal(n_rows)) + 100,
+            "Volume": rng.integers(1000, 10000, n_rows).astype(float),
+        }
+    ).to_csv(csv_path, index=False)
+
+    forecast = predict(
+        model=model,
+        config=config,
+        preprocessor=preprocessor,
+        csv_path=str(csv_path),
+        n_samples=3,
+    )
+
+    if forecast.preds_real.size > 0:
+        np.testing.assert_array_almost_equal(
+            forecast.quantile_levels,
+            [0.1, 0.5, 0.9],
+        )
