@@ -81,7 +81,7 @@ Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloqu
 - **Seed canónico**: 7. Per-fold reseed: `torch.manual_seed(seed + fold_idx)`.
 - **`--save-canonical`**: guarda checkpoint + preprocessing artifacts en `checkpoints/{ticker}_preprocessing/`. `config_dict` incluye `seed`, `target_features` y todos los parámetros de arquitectura (`d_model`, `n_heads`, etc.) — necesarios para reconstruir el modelo en inferencia.
 - **`_save_canonical_specialist`**: si `save_artifacts` falla, el especialista NO se registra (return early) — evita estado de registry inconsistente.
-- **Inference**: el preprocessor se carga pre-ajustado — NUNCA re-fitear con datos nuevos.
+- **Inference**: el preprocessor se carga pre-ajustado — NUNCA re-fitear con datos nuevos. Propagar `label_len` explícitamente en `_make_inference_config` (sin él, default != entrenado causa zeros silenciosos en mc_dropout). Sobreescribir `preprocessor.fit_scope = "inference"` en try/finally antes de crear `TimeSeriesDataset` para evitar re-fit por `fold_train_only`.
 - **`main.py` flags de optimizador**: `--learning-rate` (default: 1e-4), `--weight-decay` (default: 1e-5). Early stopping época 6-7/20 es convergencia normal.
 
 ### Git y CI
@@ -131,6 +131,8 @@ Historial multi-ticker y resultados → `MEMORY.md`.
 - **`.ipynb` en CI**: nunca commitear a `main` — ruff los parsea y rompe Actions.
 - **Kaggle notebooks**: generar con `Bash` + `python3 << 'PYEOF'` (hooks bloquean Write/Read sobre .ipynb). Usar `#` comentarios, nunca `"""..."""` en celdas PYEOF.
 - **Timing RTX 4050**: ~10 min/run canónico, ~7-8 min/trial Optuna.
+- **`mc_dropout_inference` falla silenciosamente**: shapes incompatibles (e.g. `label_len` erróneo → x_dec size wrong) no lanzan excepción — retorna ceros y loguea WARNING. Verificar siempre que `label_len` se propaga explícitamente en configs de inferencia.
+- **`TimeSeriesDataset._fit_and_transform`**: re-fittea si `fit_scope == "fold_train_only"` aunque `preprocessor.fitted=True` — las tres condiciones de `should_refit` son OR independientes.
 
 → Lista completa con contexto: `memory/gotchas.md`
 
