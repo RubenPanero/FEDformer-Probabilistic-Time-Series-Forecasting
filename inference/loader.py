@@ -9,7 +9,7 @@ import torch
 from config import FEDformerConfig
 from data.preprocessing import PreprocessingPipeline
 from models.fedformer import Flow_FEDformer
-from utils.model_registry import get_specialist, DEFAULT_REGISTRY_PATH
+from utils.model_registry import get_specialist, list_specialists, DEFAULT_REGISTRY_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +92,16 @@ def _build_config(entry: dict) -> FEDformerConfig:
         return_transform=saved_config.get("return_transform", "log_return"),
         metric_space=saved_config.get("metric_space", "returns"),
         seed=saved_config.get("seed", 7),
+        # Parámetros de arquitectura — restauran el modelo exacto usado en entrenamiento
+        d_model=saved_config.get("d_model", 512),
+        n_heads=saved_config.get("n_heads", 8),
+        d_ff=saved_config.get("d_ff", 2048),
+        e_layers=saved_config.get("e_layers", 2),
+        d_layers=saved_config.get("d_layers", 1),
+        modes=saved_config.get("modes", 64),
+        dropout=saved_config.get("dropout", 0.1),
+        n_flow_layers=saved_config.get("n_flow_layers", 4),
+        flow_hidden_dim=saved_config.get("flow_hidden_dim", 64),
     )
 
 
@@ -110,10 +120,10 @@ def _load_model(config: FEDformerConfig, checkpoint_path: Path) -> Flow_FEDforme
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     logger.info(
-        "Modelo cargado desde %s (epoch=%d, fold=%d)",
+        "Modelo cargado desde %s (epoch=%s, fold=%s)",
         checkpoint_path,
-        checkpoint["epoch"],
-        checkpoint["fold"],
+        checkpoint.get("epoch", "?"),
+        checkpoint.get("fold", "?"),
     )
     return model
 
@@ -138,6 +148,4 @@ def _load_preprocessor(
 
 def available_tickers(registry_path: Path = DEFAULT_REGISTRY_PATH) -> list[str]:
     """Lista tickers disponibles en el registry."""
-    from utils.model_registry import list_specialists  # pylint: disable=import-outside-toplevel
-
     return list_specialists(registry_path=registry_path)

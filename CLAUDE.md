@@ -12,12 +12,14 @@ Entorno: `.venv/` · Linux Mint 22.3 → **usar `python3`** (nunca `python`)
 
 Repo indexado con jcodemunch. **NUNCA usar `Read`/`Grep` para código Python — usar jcodemunch:**
 
-- `search_symbols` → función/clase por nombre
-- `get_file_outline` → métodos de un archivo
-- `get_symbol` → implementación de un símbolo
+- `search_symbols` → función/clase por nombre ← **empezar siempre aquí**
+- `get_symbol` → implementación de un símbolo concreto
+- `get_file_outline` → esquema de un archivo (⚠️ evitar en archivos grandes como `config.py` — tiene 100+ propiedades; usar `search_symbols` en su lugar)
 - `search_text` → buscar texto en todo el repo
-- `get_file_content` → archivo `.py` completo
+- `get_file_content` → archivo `.py` completo (solo si se necesita el archivo entero)
 - `Read` → solo para config/markdown (CLAUDE.md, MEMORY.md, .yml)
+
+**Regla anti-token**: preferir `search_symbols` + `get_symbol` sobre `get_file_outline` o `get_file_content` cuando solo se necesitan 1-3 símbolos.
 
 **Repo ID**: `local/FEDformer-Probabilistic-Time-Series-Forecasting-ed518b7c`
 Context7 MCP: usar proactivamente para docs externas (PyTorch, Optuna, yfinance, etc.).
@@ -77,7 +79,8 @@ Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloqu
 - **ForecastOutput**: usar `.preds_for_metrics`/`.gt_for_metrics` (siempre `*_real`).
 - **Anti-leakage**: walk-forward obligatorio; scaler ajustado solo en train de cada fold.
 - **Seed canónico**: 7. Per-fold reseed: `torch.manual_seed(seed + fold_idx)`.
-- **`--save-canonical`**: guarda checkpoint + preprocessing artifacts en `checkpoints/{ticker}_preprocessing/`. `config_dict` incluye `seed` y `target_features`.
+- **`--save-canonical`**: guarda checkpoint + preprocessing artifacts en `checkpoints/{ticker}_preprocessing/`. `config_dict` incluye `seed`, `target_features` y todos los parámetros de arquitectura (`d_model`, `n_heads`, etc.) — necesarios para reconstruir el modelo en inferencia.
+- **`_save_canonical_specialist`**: si `save_artifacts` falla, el especialista NO se registra (return early) — evita estado de registry inconsistente.
 - **Inference**: el preprocessor se carga pre-ajustado — NUNCA re-fitear con datos nuevos.
 - **`main.py` flags de optimizador**: `--learning-rate` (default: 1e-4), `--weight-decay` (default: 1e-5). Early stopping época 6-7/20 es convergencia normal.
 
@@ -90,6 +93,7 @@ Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloqu
 ### Testing
 - Mocks para llamadas externas — nunca red real en tests. Fixtures en `conftest.py`.
 - Al añadir flags a `main.py`: actualizar `argparse.Namespace` en `tests/test_finetune.py`.
+- Al añadir campos a `config_dict` en `_save_canonical_specialist`: actualizar `_make_save_canonical_deps` en `tests/test_model_registry.py` con los nuevos attrs del mock `cfg` — `MagicMock` sin valor explícito devuelve objetos no serializables a JSON.
 
 ## CI/CD
 

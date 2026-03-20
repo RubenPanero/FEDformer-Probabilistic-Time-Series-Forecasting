@@ -333,6 +333,18 @@ def _make_save_canonical_deps(tmp_path: Path):
     cfg.label_len = 48
     cfg.batch_size = 64
     cfg.target_features = ["Close"]
+    # Parámetros de arquitectura (deben ser serializables a JSON)
+    cfg.d_model = 512
+    cfg.n_heads = 8
+    cfg.d_ff = 2048
+    cfg.e_layers = 2
+    cfg.d_layers = 1
+    cfg.modes = 64
+    cfg.dropout = 0.1
+    cfg.n_flow_layers = 4
+    cfg.flow_hidden_dim = 64
+    cfg.enc_in = 11
+    cfg.dec_in = 11
 
     dataset = MagicMock()
     dataset.full_data_scaled = MagicMock()
@@ -475,7 +487,7 @@ def test_save_canonical_saves_preprocessing_artifacts(
 def test_save_canonical_handles_preprocessing_save_failure(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Si save_artifacts falla, preprocessing_artifacts queda como None en el registry."""
+    """Si save_artifacts falla, el especialista NO se registra (evita estado engañoso)."""
     import main as main_module
 
     monkeypatch.chdir(tmp_path)
@@ -497,11 +509,9 @@ def test_save_canonical_handles_preprocessing_save_failure(
         "volatility": 0.15,
     }
 
-    main_module._save_canonical_specialist(
-        "data/NVDA_features.csv", args, cfg, dataset, metrics
-    )
-
-    # El registro debe completarse aún con preprocessing_artifacts = None
-    registry = load_registry(registry_path)
-    entry = registry["specialists"]["NVDA"]
-    assert entry["data"]["preprocessing_artifacts"] is None
+    with patch("main.register_specialist") as mock_reg:
+        main_module._save_canonical_specialist(
+            "data/NVDA_features.csv", args, cfg, dataset, metrics
+        )
+        # El registry NO debe actualizarse — modelo incompleto sin preprocessing
+        mock_reg.assert_not_called()

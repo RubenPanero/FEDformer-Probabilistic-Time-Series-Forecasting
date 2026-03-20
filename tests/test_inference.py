@@ -19,12 +19,13 @@ def mock_registry(tmp_path):
     las mismas 2 columnas (Close, Volume) para coherencia de dimensiones.
     """
     # 1. Crear CSV sintético — necesario para que FEDformerConfig.__init__ funcione
+    rng = np.random.default_rng(42)
     n_rows = 200
     csv_path = tmp_path / "NVDA_features.csv"
     pd.DataFrame(
         {
-            "Close": np.cumsum(np.random.randn(n_rows)) + 100,
-            "Volume": np.random.randint(1000, 10000, n_rows).astype(float),
+            "Close": np.cumsum(rng.standard_normal(n_rows)) + 100,
+            "Volume": rng.integers(1000, 10000, n_rows).astype(float),
         }
     ).to_csv(csv_path, index=False)
 
@@ -64,6 +65,18 @@ def mock_registry(tmp_path):
             "batch_size": 8,
             "seed": 7,
             "target_features": ["Close"],
+            # Parámetros de arquitectura (reflejan defaults con seq_len=20)
+            "d_model": 512,
+            "n_heads": 8,
+            "d_ff": 2048,
+            "e_layers": 2,
+            "d_layers": 1,
+            "modes": 10,  # clamped: max(1, seq_len//2) = 10
+            "dropout": 0.1,
+            "n_flow_layers": 4,
+            "flow_hidden_dim": 64,
+            "enc_in": 2,
+            "dec_in": 2,
         },
     }
     torch.save(checkpoint, checkpoints / "nvda_canonical.pt")
@@ -115,7 +128,7 @@ def mock_registry(tmp_path):
         )
     )
     scaler = RobustScaler()
-    scaler.fit(np.random.randn(50, 2))
+    scaler.fit(rng.standard_normal((50, 2)))
     with (preproc_dir / "scaler.pkl").open("wb") as f:
         pickle.dump(scaler, f)
 

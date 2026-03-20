@@ -987,6 +987,18 @@ def _save_canonical_specialist(
         "label_len": config.label_len,
         "seed": getattr(args, "seed", 7),
         "target_features": list(config.target_features),
+        # Parámetros de arquitectura — necesarios para reconstruir el modelo en inferencia
+        "d_model": config.d_model,
+        "n_heads": config.n_heads,
+        "d_ff": config.d_ff,
+        "e_layers": config.e_layers,
+        "d_layers": config.d_layers,
+        "modes": config.modes,
+        "dropout": config.dropout,
+        "n_flow_layers": config.n_flow_layers,
+        "flow_hidden_dim": config.flow_hidden_dim,
+        "enc_in": config.enc_in,
+        "dec_in": config.dec_in,
     }
 
     # Información del dataset (nº de filas del dataset completo)
@@ -1044,12 +1056,12 @@ def _save_canonical_specialist(
         logger.info("Artefactos de preprocessing guardados en %s", preprocessing_dir)
         data_info["preprocessing_artifacts"] = str(preprocessing_dir)
     except (AttributeError, OSError, RuntimeError) as exc:
-        logger.warning(
-            "Error al guardar artefactos de preprocessing para '%s': %s",
+        logger.error(
+            "Especialista '%s' no registrado: error al guardar artefactos de preprocessing: %s",
             ticker,
             exc,
         )
-        data_info["preprocessing_artifacts"] = None
+        return
 
     try:
         canonical_path = register_specialist(
