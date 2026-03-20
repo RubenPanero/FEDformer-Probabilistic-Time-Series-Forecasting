@@ -1001,20 +1001,6 @@ def _save_canonical_specialist(
         "features": n_features,
     }
 
-    # Guardar artefactos de preprocessing para inferencia sin reentrenar
-    preprocessing_dir = Path("checkpoints") / f"{ticker.lower()}_preprocessing"
-    try:
-        full_dataset.preprocessor.save_artifacts(preprocessing_dir)
-        logger.info("Artefactos de preprocessing guardados en %s", preprocessing_dir)
-        data_info["preprocessing_artifacts"] = str(preprocessing_dir)
-    except (AttributeError, OSError, RuntimeError) as exc:
-        logger.warning(
-            "Error al guardar artefactos de preprocessing para '%s': %s",
-            ticker,
-            exc,
-        )
-        data_info["preprocessing_artifacts"] = None
-
     # Reconstruir el comando CLI de forma aproximada para reproducibilidad
     training_command = (
         f"MPLBACKEND=Agg python3 main.py --csv {csv_path} --targets {args.targets} "
@@ -1049,6 +1035,20 @@ def _save_canonical_specialist(
                 existing_sharpe,
             )
             return
+
+    # Guardar artefactos de preprocessing solo si el modelo pasó ambas guardias
+    preprocessing_dir = Path("checkpoints") / f"{ticker.lower()}_preprocessing"
+    try:
+        full_dataset.preprocessor.save_artifacts(preprocessing_dir)
+        logger.info("Artefactos de preprocessing guardados en %s", preprocessing_dir)
+        data_info["preprocessing_artifacts"] = str(preprocessing_dir)
+    except (AttributeError, OSError, RuntimeError) as exc:
+        logger.warning(
+            "Error al guardar artefactos de preprocessing para '%s': %s",
+            ticker,
+            exc,
+        )
+        data_info["preprocessing_artifacts"] = None
 
     try:
         canonical_path = register_specialist(

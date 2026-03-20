@@ -369,6 +369,8 @@ def test_save_canonical_omits_below_min_sharpe(tmp_path: Path, monkeypatch) -> N
             "data/MSFT_features.csv", args, cfg, dataset, metrics
         )
         mock_reg.assert_not_called()
+        # Artefactos de preprocessing NO deben guardarse si el modelo es rechazado
+        dataset.preprocessor.save_artifacts.assert_not_called()
 
 
 def test_save_canonical_omits_when_existing_sharpe_is_better(
@@ -422,6 +424,8 @@ def test_save_canonical_omits_when_existing_sharpe_is_better(
             "data/NVDA_features.csv", args, cfg, dataset, metrics
         )
         mock_reg.assert_not_called()
+        # Artefactos de preprocessing NO deben guardarse si el modelo es rechazado
+        dataset.preprocessor.save_artifacts.assert_not_called()
 
 
 def test_save_canonical_saves_preprocessing_artifacts(
