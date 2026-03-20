@@ -155,6 +155,14 @@ def mock_registry(tmp_path):
     return registry_path
 
 
+def _rewrite_registry_ticker_key(registry_path, new_key: str) -> None:
+    """Reescribe la clave del especialista para probar compatibilidad por casing."""
+    registry = json.loads(registry_path.read_text())
+    specialist = registry["specialists"].pop("NVDA")
+    registry["specialists"][new_key] = specialist
+    registry_path.write_text(json.dumps(registry, indent=2))
+
+
 def test_predict_returns_forecast_output(mock_registry):
     """predict() retorna ForecastOutput con shapes correctos."""
     from inference.loader import load_specialist
@@ -190,6 +198,66 @@ def test_predict_returns_forecast_output(mock_registry):
     assert forecast.preds_real.shape[2] == len(config.target_features)
 
 
+def test_predict_preserves_label_len(mock_registry):
+    """predict() usa label_len del modelo entrenado, no el default del config."""
+    from inference.loader import load_specialist
+    from inference.predictor import _make_inference_config
+
+    _, config, _ = load_specialist("NVDA", registry_path=mock_registry)
+    # El mock usa label_len=10, seq_len=20 (seq_len//2 == label_len, latente)
+    # Forzamos una discrepancia modificando label_len en config
+    config.label_len = 7  # != seq_len//2 = 10
+
+    csv_path = (
+        mock_registry.parent.parent / "NVDA_features.csv"
+    )  # tmp_path/NVDA_features.csv
+    inference_cfg = _make_inference_config(config, str(csv_path))
+
+    assert inference_cfg.label_len == 7, (
+        f"label_len esperado=7, obtenido={inference_cfg.label_len}"
+    )
+
+
+def test_predict_does_not_refit_preprocessor(mock_registry, monkeypatch):
+    """predict() no re-fittea el preprocessor — usa artefactos de entrenamiento."""
+    from inference.loader import load_specialist
+    from inference.predictor import predict
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+    assert preprocessor.fitted, "El preprocessor debe estar fitted tras load_specialist"
+
+    refit_calls = []
+    original_fit = preprocessor.fit
+
+    def tracking_fit(*args, **kwargs):
+        refit_calls.append(1)
+        return original_fit(*args, **kwargs)
+
+    monkeypatch.setattr(preprocessor, "fit", tracking_fit)
+
+    rng = np.random.default_rng(77)
+    n_rows = config.seq_len + config.pred_len + 10
+    csv_path = mock_registry.parent / "test_data2.csv"
+    pd.DataFrame(
+        {
+            "Close": np.cumsum(rng.standard_normal(n_rows)) + 100,
+            "Volume": rng.integers(1000, 10000, n_rows).astype(float),
+        }
+    ).to_csv(csv_path, index=False)
+
+    predict(
+        model=model,
+        config=config,
+        preprocessor=preprocessor,
+        csv_path=str(csv_path),
+        n_samples=3,
+    )
+
+    assert refit_calls == [], (
+        f"preprocessor.fit fue llamado {len(refit_calls)} vez(ces) — no debe re-fitear en inferencia"
+    )
+
+
 def test_load_specialist_returns_model_config_preprocessor(mock_registry):
     """load_specialist retorna tupla (model, config, preprocessor)."""
     from inference.loader import load_specialist
@@ -206,3 +274,44 @@ def test_load_specialist_returns_model_config_preprocessor(mock_registry):
     assert preprocessor.fitted is True
     # Verificar que el modelo está en eval mode
     assert not model.training
+
+
+def test_load_specialist_accepts_lowercase_registry_key(mock_registry):
+    """load_specialist resuelve claves legacy en minúsculas."""
+    from inference.loader import load_specialist
+
+    _rewrite_registry_ticker_key(mock_registry, "nvda")
+
+    model, config, preprocessor = load_specialist("nvda", registry_path=mock_registry)
+
+    assert model is not None
+    assert config.label_len == 10
+    assert preprocessor.fitted is True
+
+
+def test_load_specialist_accepts_uppercase_query_for_lowercase_registry_key(
+    mock_registry,
+):
+    """load_specialist debe resolver queries uppercase contra claves lowercase."""
+    from inference.loader import load_specialist
+
+    _rewrite_registry_ticker_key(mock_registry, "nvda")
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+
+    assert model is not None
+    assert config.target_features == ["Close"]
+    assert preprocessor.fitted is True
+
+
+def test_load_specialist_accepts_mixed_case_registry_key(mock_registry):
+    """load_specialist resuelve claves mixed case sin exigir normalización previa."""
+    from inference.loader import load_specialist
+
+    _rewrite_registry_ticker_key(mock_registry, "NvDa")
+
+    model, config, preprocessor = load_specialist("nvda", registry_path=mock_registry)
+
+    assert model is not None
+    assert config.pred_len == 4
+    assert preprocessor.fitted is True

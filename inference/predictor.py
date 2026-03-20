@@ -40,13 +40,21 @@ def predict(
     Returns:
         ForecastOutput con predicciones, cuantiles y muestras.
     """
-    # Crear dataset reutilizando el preprocessor pre-ajustado (no re-fit)
+    # Crear dataset reutilizando el preprocessor pre-ajustado (no re-fit).
+    # fit_scope="fold_train_only" activa refit incondicionalmente en _fit_and_transform,
+    # incluso si el preprocessor ya está fitted. Se sobreescribe temporalmente para
+    # garantizar que los artefactos de entrenamiento no sean contaminados con datos nuevos.
     inference_config = _make_inference_config(config, csv_path)
-    dataset = TimeSeriesDataset(
-        config=inference_config,
-        flag="all",
-        preprocessor=preprocessor,
-    )
+    original_fit_scope = preprocessor.fit_scope
+    preprocessor.fit_scope = "inference"
+    try:
+        dataset = TimeSeriesDataset(
+            config=inference_config,
+            flag="all",
+            preprocessor=preprocessor,
+        )
+    finally:
+        preprocessor.fit_scope = original_fit_scope
 
     if len(dataset) == 0:
         logger.warning("CSV no contiene ventanas suficientes para predicción.")
@@ -104,11 +112,16 @@ def predict(
 
 
 def _make_inference_config(config: FEDformerConfig, csv_path: str) -> FEDformerConfig:
-    """Crea config apuntando al CSV de inferencia."""
+    """Crea config apuntando al CSV de inferencia.
+
+    Preserva label_len del modelo entrenado — un valor distinto al default
+    causaría tensores x_dec incompatibles y fallos silenciosos en mc_dropout.
+    """
     return FEDformerConfig(
         target_features=list(config.target_features),
         file_path=csv_path,
         seq_len=config.seq_len,
+        label_len=config.label_len,
         pred_len=config.pred_len,
         batch_size=config.batch_size,
         return_transform=config.return_transform,

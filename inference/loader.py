@@ -9,7 +9,12 @@ import torch
 from config import FEDformerConfig
 from data.preprocessing import PreprocessingPipeline
 from models.fedformer import Flow_FEDformer
-from utils.model_registry import get_specialist, list_specialists, DEFAULT_REGISTRY_PATH
+from utils.model_registry import (
+    DEFAULT_REGISTRY_PATH,
+    get_specialist,
+    list_specialists,
+    load_registry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +36,7 @@ def load_specialist(
         ValueError: Si el ticker no está registrado.
         FileNotFoundError: Si el checkpoint o artefactos no existen.
     """
-    ticker = ticker.upper()
-    entry = get_specialist(ticker, registry_path=registry_path)
+    ticker, entry = _resolve_registry_entry(ticker, registry_path=registry_path)
     if entry is None:
         raise ValueError(
             f"Ticker '{ticker}' no registrado. "
@@ -58,6 +62,30 @@ def load_specialist(
     preprocessor = _load_preprocessor(config, Path(artifacts_path))
 
     return model, config, preprocessor
+
+
+def _resolve_registry_entry(
+    ticker: str, registry_path: Path = DEFAULT_REGISTRY_PATH
+) -> tuple[str, dict | None]:
+    """Resuelve el ticker contra el registry sin perder compatibilidad por casing."""
+    entry = get_specialist(ticker, registry_path=registry_path)
+    if entry is not None:
+        return ticker, entry
+
+    registry = load_registry(registry_path)
+    specialists = registry.get("specialists", {})
+    normalized = ticker.casefold()
+    matches = [key for key in specialists if key.casefold() == normalized]
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"Ticker ambiguo '{ticker}' en registry: {matches}. "
+            "Normaliza las claves del registry para evitar colisiones por casing."
+        )
+    if len(matches) == 1:
+        resolved = matches[0]
+        return resolved, specialists[resolved]
+    return ticker, None
 
 
 def _validated_file_path(data_info: dict) -> str:
