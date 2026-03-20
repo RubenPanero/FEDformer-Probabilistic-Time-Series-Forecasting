@@ -155,6 +155,41 @@ def mock_registry(tmp_path):
     return registry_path
 
 
+def test_predict_returns_forecast_output(mock_registry):
+    """predict() retorna ForecastOutput con shapes correctos."""
+    from inference.loader import load_specialist
+    from inference.predictor import predict
+    from training.forecast_output import ForecastOutput
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+
+    # CSV sintético con suficientes filas (seq_len=20, pred_len=4)
+    rng = np.random.default_rng(99)
+    n_rows = config.seq_len + config.pred_len + 10
+    csv_path = mock_registry.parent / "test_data.csv"
+    pd.DataFrame(
+        {
+            "Close": np.cumsum(rng.standard_normal(n_rows)) + 100,
+            "Volume": rng.integers(1000, 10000, n_rows).astype(float),
+        }
+    ).to_csv(csv_path, index=False)
+
+    forecast = predict(
+        model=model,
+        config=config,
+        preprocessor=preprocessor,
+        csv_path=str(csv_path),
+        n_samples=3,  # mínimo para tests rápidos
+    )
+
+    assert isinstance(forecast, ForecastOutput)
+    assert forecast.preds_real.size > 0
+    assert forecast.quantiles_real is not None
+    assert forecast.quantile_levels is not None
+    assert forecast.preds_real.shape[1] == config.pred_len
+    assert forecast.preds_real.shape[2] == len(config.target_features)
+
+
 def test_load_specialist_returns_model_config_preprocessor(mock_registry):
     """load_specialist retorna tupla (model, config, preprocessor)."""
     from inference.loader import load_specialist
