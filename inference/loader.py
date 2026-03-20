@@ -1,0 +1,131 @@
+"""Carga de modelos canónicos desde el model_registry."""
+
+import logging
+from pathlib import Path
+
+import numpy as np
+import torch
+
+from config import FEDformerConfig
+from data.preprocessing import PreprocessingPipeline
+from models.fedformer import Flow_FEDformer
+from utils.model_registry import get_specialist, DEFAULT_REGISTRY_PATH
+
+logger = logging.getLogger(__name__)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def load_specialist(
+    ticker: str,
+    registry_path: Path = DEFAULT_REGISTRY_PATH,
+) -> tuple[Flow_FEDformer, FEDformerConfig, PreprocessingPipeline]:
+    """Carga un modelo canónico con su config y preprocessor desde el registry.
+
+    Args:
+        ticker: Símbolo del activo financiero (ej. "NVDA").
+        registry_path: Ruta al model_registry.json.
+
+    Returns:
+        Tupla (modelo, config, preprocessor) listos para inferencia.
+
+    Raises:
+        ValueError: Si el ticker no está registrado.
+        FileNotFoundError: Si el checkpoint o artefactos no existen.
+    """
+    entry = get_specialist(ticker, registry_path=registry_path)
+    if entry is None:
+        raise ValueError(
+            f"Ticker '{ticker}' no registrado. "
+            f"Disponibles: {available_tickers(registry_path)}"
+        )
+
+    # Reconstruir config — necesita file_path a un CSV real
+    config = _build_config(entry)
+
+    # Cargar modelo
+    checkpoint_path = Path(entry["checkpoint"])
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint no encontrado: {checkpoint_path}")
+    model = _load_model(config, checkpoint_path)
+
+    # Cargar preprocessor
+    artifacts_path = entry.get("data", {}).get("preprocessing_artifacts")
+    if artifacts_path is None:
+        raise FileNotFoundError(
+            f"Artefactos de preprocessing no registrados para '{ticker}'. "
+            "Re-entrena con --save-canonical para generarlos."
+        )
+    preprocessor = _load_preprocessor(config, Path(artifacts_path))
+
+    return model, config, preprocessor
+
+
+def _build_config(entry: dict) -> FEDformerConfig:
+    """Reconstruye FEDformerConfig desde el dict del registry.
+
+    Lee target_features del config guardado — no asume siempre 'Close'.
+    file_path apunta al CSV original para que __init__ detecte enc_in/dec_in.
+    """
+    saved_config = entry.get("config", {})
+    data_info = entry.get("data", {})
+    target_features = saved_config.get("target_features", ["Close"])
+
+    return FEDformerConfig(
+        target_features=target_features,
+        file_path=data_info.get("file", ""),
+        seq_len=saved_config.get("seq_len", 96),
+        pred_len=saved_config.get("pred_len", 20),
+        batch_size=saved_config.get("batch_size", 64),
+        gradient_clip_norm=saved_config.get("gradient_clip_norm", 0.5),
+        return_transform=saved_config.get("return_transform", "log_return"),
+        metric_space=saved_config.get("metric_space", "returns"),
+        seed=saved_config.get("seed", 7),
+    )
+
+
+def _load_model(config: FEDformerConfig, checkpoint_path: Path) -> Flow_FEDformer:
+    """Carga pesos del modelo desde un checkpoint canónico."""
+    import numpy._core.multiarray as _npcma  # pylint: disable=import-outside-toplevel
+
+    model = Flow_FEDformer(config).to(device, non_blocking=True)
+
+    with torch.serialization.safe_globals(
+        [_npcma.scalar, np.float64, np.float32, np.int64, np.int32, np.bool_]  # pylint: disable=no-member
+    ):
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.eval()
+    logger.info(
+        "Modelo cargado desde %s (epoch=%d, fold=%d)",
+        checkpoint_path,
+        checkpoint["epoch"],
+        checkpoint["fold"],
+    )
+    return model
+
+
+def _load_preprocessor(
+    config: FEDformerConfig, artifacts_path: Path
+) -> PreprocessingPipeline:
+    """Reconstruye PreprocessingPipeline desde artefactos guardados."""
+    if not artifacts_path.exists():
+        raise FileNotFoundError(
+            f"Directorio de artefactos no encontrado: {artifacts_path}"
+        )
+
+    preprocessor = PreprocessingPipeline(
+        config=config,
+        target_features=list(config.target_features),
+    )
+    preprocessor.load_artifacts(artifacts_path)
+    logger.info("Preprocessor cargado desde %s", artifacts_path)
+    return preprocessor
+
+
+def available_tickers(registry_path: Path = DEFAULT_REGISTRY_PATH) -> list[str]:
+    """Lista tickers disponibles en el registry."""
+    from utils.model_registry import list_specialists  # pylint: disable=import-outside-toplevel
+
+    return list_specialists(registry_path=registry_path)
