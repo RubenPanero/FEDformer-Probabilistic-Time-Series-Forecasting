@@ -13,8 +13,6 @@ from utils.model_registry import get_specialist, DEFAULT_REGISTRY_PATH
 
 logger = logging.getLogger(__name__)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 def load_specialist(
     ticker: str,
@@ -33,6 +31,7 @@ def load_specialist(
         ValueError: Si el ticker no está registrado.
         FileNotFoundError: Si el checkpoint o artefactos no existen.
     """
+    ticker = ticker.upper()
     entry = get_specialist(ticker, registry_path=registry_path)
     if entry is None:
         raise ValueError(
@@ -61,6 +60,17 @@ def load_specialist(
     return model, config, preprocessor
 
 
+def _validated_file_path(data_info: dict) -> str:
+    """Valida que file_path del registry exista antes de pasarlo a FEDformerConfig."""
+    file_path = data_info.get("file", "")
+    if not file_path or not Path(file_path).exists():
+        raise FileNotFoundError(
+            f"CSV de entrenamiento no encontrado: '{file_path}'. "
+            "El registry apunta a un archivo que ya no existe."
+        )
+    return file_path
+
+
 def _build_config(entry: dict) -> FEDformerConfig:
     """Reconstruye FEDformerConfig desde el dict del registry.
 
@@ -73,7 +83,7 @@ def _build_config(entry: dict) -> FEDformerConfig:
 
     return FEDformerConfig(
         target_features=target_features,
-        file_path=data_info.get("file", ""),
+        file_path=_validated_file_path(data_info),
         seq_len=saved_config.get("seq_len", 96),
         pred_len=saved_config.get("pred_len", 20),
         batch_size=saved_config.get("batch_size", 64),
@@ -88,12 +98,13 @@ def _load_model(config: FEDformerConfig, checkpoint_path: Path) -> Flow_FEDforme
     """Carga pesos del modelo desde un checkpoint canónico."""
     import numpy._core.multiarray as _npcma  # pylint: disable=import-outside-toplevel
 
-    model = Flow_FEDformer(config).to(device, non_blocking=True)
+    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = Flow_FEDformer(config).to(dev, non_blocking=True)
 
     with torch.serialization.safe_globals(
         [_npcma.scalar, np.float64, np.float32, np.int64, np.int32, np.bool_]  # pylint: disable=no-member
     ):
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        checkpoint = torch.load(checkpoint_path, map_location=dev, weights_only=True)
 
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
