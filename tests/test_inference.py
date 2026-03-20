@@ -444,11 +444,14 @@ def test_forecast_output_quantile_levels(mock_registry):
         n_samples=3,
     )
 
-    if forecast.preds_real.size > 0:
-        np.testing.assert_array_almost_equal(
-            forecast.quantile_levels,
-            [0.1, 0.5, 0.9],
-        )
+    # CSV tiene suficientes filas — exigir predicciones no vacías
+    assert forecast.preds_real.size > 0, (
+        "predict() retornó ForecastOutput vacío con CSV de suficientes filas"
+    )
+    np.testing.assert_array_almost_equal(
+        forecast.quantile_levels,
+        [0.1, 0.5, 0.9],
+    )
 
 
 # ---------------------------------------------------------------------------
