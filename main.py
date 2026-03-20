@@ -984,6 +984,7 @@ def _save_canonical_specialist(
         "metric_space": config.metric_space,
         "gradient_clip_norm": config.gradient_clip_norm,
         "batch_size": config.batch_size,
+        "label_len": config.label_len,
         "seed": getattr(args, "seed", 7),
         "target_features": list(config.target_features),
     }

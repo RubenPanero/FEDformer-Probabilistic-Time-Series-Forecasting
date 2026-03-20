@@ -330,6 +330,7 @@ def _make_save_canonical_deps(tmp_path: Path):
     cfg.return_transform = "log_return"
     cfg.metric_space = "returns"
     cfg.gradient_clip_norm = 0.5
+    cfg.label_len = 48
     cfg.batch_size = 64
     cfg.target_features = ["Close"]
 

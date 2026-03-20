@@ -85,6 +85,7 @@ def _build_config(entry: dict) -> FEDformerConfig:
         target_features=target_features,
         file_path=_validated_file_path(data_info),
         seq_len=saved_config.get("seq_len", 96),
+        label_len=saved_config.get("label_len", 48),
         pred_len=saved_config.get("pred_len", 20),
         batch_size=saved_config.get("batch_size", 64),
         gradient_clip_norm=saved_config.get("gradient_clip_norm", 0.5),

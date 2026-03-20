@@ -35,6 +35,7 @@ def mock_registry(tmp_path):
         target_features=["Close"],
         file_path=str(csv_path),
         seq_len=20,  # Corto para tests rápidos
+        label_len=10,
         pred_len=4,  # Par (requisito affine coupling)
         batch_size=8,
     )
@@ -54,6 +55,7 @@ def mock_registry(tmp_path):
         "loss": 0.5,
         "config": {
             "seq_len": 20,
+            "label_len": 10,
             "pred_len": 4,
             "n_splits": 4,
             "return_transform": "none",
@@ -149,6 +151,7 @@ def test_load_specialist_returns_model_config_preprocessor(mock_registry):
     assert model is not None
     # Verificar que config tiene los valores del registry
     assert config.seq_len == 20
+    assert config.label_len == 10
     assert config.pred_len == 4
     assert config.target_features == ["Close"]
     # Verificar que preprocessor está fitted
