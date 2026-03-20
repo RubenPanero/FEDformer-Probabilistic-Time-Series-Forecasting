@@ -2,9 +2,9 @@ name: Compatibility Tests
 
 on:
   push:
-    branches: [main, master, develop, feature/optuna]
+    branches: [main, master, develop, feature/optuna, feat/inference-api]
   pull_request:
-    branches: [main, master, develop, feature/optuna]
+    branches: [main, master, develop, feature/optuna, feat/inference-api]
   workflow_dispatch:
 
 jobs:
@@ -115,6 +115,7 @@ jobs:
             tests/test_flows.py \
             tests/test_forecast_output.py \
             tests/test_model_registry.py \
+            tests/test_inference.py \
             tests/test_trainer_scheduling.py \
             tests/test_tune_hyperparams.py \
             tests/test_reproducibility.py \

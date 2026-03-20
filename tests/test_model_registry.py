@@ -310,6 +310,7 @@ def _make_save_canonical_args(tmp_path: Path, splits: int = 4) -> object:
         return_transform="log_return",
         metric_space="returns",
         gradient_clip_norm=0.5,
+        seed=7,
     )
 
 
@@ -329,12 +330,28 @@ def _make_save_canonical_deps(tmp_path: Path):
     cfg.return_transform = "log_return"
     cfg.metric_space = "returns"
     cfg.gradient_clip_norm = 0.5
+    cfg.label_len = 48
     cfg.batch_size = 64
+    cfg.target_features = ["Close"]
+    # Parámetros de arquitectura (deben ser serializables a JSON)
+    cfg.d_model = 512
+    cfg.n_heads = 8
+    cfg.d_ff = 2048
+    cfg.e_layers = 2
+    cfg.d_layers = 1
+    cfg.modes = 64
+    cfg.dropout = 0.1
+    cfg.n_flow_layers = 4
+    cfg.flow_hidden_dim = 64
+    cfg.enc_in = 11
+    cfg.dec_in = 11
 
     dataset = MagicMock()
     dataset.full_data_scaled = MagicMock()
     dataset.full_data_scaled.__len__ = MagicMock(return_value=1725)
     dataset.full_data_scaled.shape = (1725, 11)
+    dataset.preprocessor = MagicMock()
+    dataset.preprocessor.save_artifacts = MagicMock()
 
     return cfg, dataset
 
@@ -365,6 +382,8 @@ def test_save_canonical_omits_below_min_sharpe(tmp_path: Path, monkeypatch) -> N
             "data/MSFT_features.csv", args, cfg, dataset, metrics
         )
         mock_reg.assert_not_called()
+        # Artefactos de preprocessing NO deben guardarse si el modelo es rechazado
+        dataset.preprocessor.save_artifacts.assert_not_called()
 
 
 def test_save_canonical_omits_when_existing_sharpe_is_better(
@@ -417,4 +436,82 @@ def test_save_canonical_omits_when_existing_sharpe_is_better(
         main_module._save_canonical_specialist(
             "data/NVDA_features.csv", args, cfg, dataset, metrics
         )
+        mock_reg.assert_not_called()
+        # Artefactos de preprocessing NO deben guardarse si el modelo es rechazado
+        dataset.preprocessor.save_artifacts.assert_not_called()
+
+
+def test_save_canonical_saves_preprocessing_artifacts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """_save_canonical_specialist guarda artefactos de preprocessing y los registra en data_info."""
+    import main as main_module
+
+    monkeypatch.chdir(tmp_path)
+    args = _make_save_canonical_args(tmp_path)
+    cfg, dataset = _make_save_canonical_deps(tmp_path)
+
+    registry_path = tmp_path / "checkpoints" / "model_registry.json"
+    monkeypatch.setattr(
+        main_module, "DEFAULT_REGISTRY_PATH", registry_path, raising=False
+    )
+
+    metrics = {
+        "sharpe_ratio": 0.8,
+        "sortino_ratio": 1.5,
+        "max_drawdown": -0.3,
+        "volatility": 0.15,
+    }
+
+    main_module._save_canonical_specialist(
+        "data/NVDA_features.csv", args, cfg, dataset, metrics
+    )
+
+    # Verificar que save_artifacts fue llamado con el path correcto
+    dataset.preprocessor.save_artifacts.assert_called_once()
+    call_args = dataset.preprocessor.save_artifacts.call_args
+    called_path = str(call_args[0][0])
+    assert "nvda_preprocessing" in called_path
+
+    # Verificar que data_info tiene preprocessing_artifacts en el registry
+    registry = load_registry(registry_path)
+    entry = registry["specialists"]["NVDA"]
+    assert "preprocessing_artifacts" in entry["data"]
+    assert "nvda_preprocessing" in entry["data"]["preprocessing_artifacts"]
+
+    # Verificar que config_dict tiene target_features y seed
+    assert entry["config"]["target_features"] == ["Close"]
+    assert entry["config"]["seed"] == 7
+
+
+def test_save_canonical_handles_preprocessing_save_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Si save_artifacts falla, el especialista NO se registra (evita estado engañoso)."""
+    import main as main_module
+
+    monkeypatch.chdir(tmp_path)
+    args = _make_save_canonical_args(tmp_path)
+    cfg, dataset = _make_save_canonical_deps(tmp_path)
+
+    # Simular fallo en save_artifacts
+    dataset.preprocessor.save_artifacts.side_effect = OSError("disk full")
+
+    registry_path = tmp_path / "checkpoints" / "model_registry.json"
+    monkeypatch.setattr(
+        main_module, "DEFAULT_REGISTRY_PATH", registry_path, raising=False
+    )
+
+    metrics = {
+        "sharpe_ratio": 0.8,
+        "sortino_ratio": 1.5,
+        "max_drawdown": -0.3,
+        "volatility": 0.15,
+    }
+
+    with patch("main.register_specialist") as mock_reg:
+        main_module._save_canonical_specialist(
+            "data/NVDA_features.csv", args, cfg, dataset, metrics
+        )
+        # El registry NO debe actualizarse — modelo incompleto sin preprocessing
         mock_reg.assert_not_called()
