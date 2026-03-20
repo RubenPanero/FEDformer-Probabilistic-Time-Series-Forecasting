@@ -449,3 +449,126 @@ def test_forecast_output_quantile_levels(mock_registry):
             forecast.quantile_levels,
             [0.1, 0.5, 0.9],
         )
+
+
+# ---------------------------------------------------------------------------
+# Bug fixes: P1 (short CSV), P2 (multi-target export), P3 (mean vs p50)
+# ---------------------------------------------------------------------------
+
+
+def test_pad_csv_for_forecast_returns_none_when_sufficient(mock_registry, tmp_path):
+    """_pad_csv_for_forecast retorna None cuando el CSV ya tiene filas suficientes."""
+    from inference.__main__ import _pad_csv_for_forecast
+
+    csv_path = tmp_path / "long.csv"
+    pd.DataFrame({"Close": range(50), "Volume": range(50)}).to_csv(
+        csv_path, index=False
+    )
+
+    result = _pad_csv_for_forecast(str(csv_path), seq_len=20, pred_len=4)
+    assert result is None
+
+
+def test_pad_csv_for_forecast_pads_short_csv(tmp_path):
+    """_pad_csv_for_forecast padea el CSV cuando tiene seq_len <= filas < seq_len+pred_len."""
+    from inference.__main__ import _pad_csv_for_forecast
+    import os
+
+    # CSV con exactamente seq_len filas — falta pred_len para la ventana
+    seq_len, pred_len = 20, 4
+    csv_path = tmp_path / "short.csv"
+    pd.DataFrame({"Close": range(seq_len), "Volume": range(seq_len)}).to_csv(
+        csv_path, index=False
+    )
+
+    padded_path = _pad_csv_for_forecast(
+        str(csv_path), seq_len=seq_len, pred_len=pred_len
+    )
+    try:
+        assert padded_path is not None
+        df_padded = pd.read_csv(padded_path)
+        assert len(df_padded) == seq_len + pred_len
+        # Las últimas pred_len filas son copia de la última fila original
+        assert df_padded["Close"].iloc[-1] == seq_len - 1
+    finally:
+        if padded_path:
+            os.unlink(padded_path)
+
+
+def test_export_predictions_includes_all_targets(mock_registry, tmp_path):
+    """_export_predictions escribe columnas para todos los targets, no solo el primero."""
+    from inference.__main__ import _export_predictions
+    from training.forecast_output import ForecastOutput
+    from training.trainer import DEFAULT_QUANTILE_LEVELS
+
+    n_windows, pred_len, n_targets = 2, 4, 2
+    n_samples = 3
+    rng = np.random.default_rng(42)
+
+    samples = rng.standard_normal((n_samples, n_windows, pred_len, n_targets)).astype(
+        np.float32
+    )
+    quantiles = np.quantile(samples, DEFAULT_QUANTILE_LEVELS, axis=0).astype(np.float32)
+
+    forecast = ForecastOutput(
+        preds_scaled=quantiles[1],
+        gt_scaled=rng.standard_normal((n_windows, pred_len, n_targets)).astype(
+            np.float32
+        ),
+        samples_scaled=samples,
+        preds_real=quantiles[1].copy(),
+        gt_real=rng.standard_normal((n_windows, pred_len, n_targets)).astype(
+            np.float32
+        ),
+        samples_real=samples.copy(),
+        quantiles_scaled=quantiles,
+        quantiles_real=quantiles.copy(),
+        quantile_levels=DEFAULT_QUANTILE_LEVELS.copy(),
+        target_names=["Close", "Volume"],
+    )
+
+    output_path = tmp_path / "out.csv"
+    _export_predictions(forecast, output_path)
+
+    df = pd.read_csv(output_path)
+    # Ambos targets deben aparecer en el CSV
+    assert any("Close" in c for c in df.columns), f"Columnas: {df.columns.tolist()}"
+    assert any("Volume" in c for c in df.columns), f"Columnas: {df.columns.tolist()}"
+
+
+def test_export_predictions_uses_sample_mean_not_p50(mock_registry, tmp_path):
+    """_export_predictions usa media muestral (no p50) para la columna de punto central."""
+    from inference.__main__ import _export_predictions
+    from training.forecast_output import ForecastOutput
+    from training.trainer import DEFAULT_QUANTILE_LEVELS
+
+    n_windows, pred_len, n_targets = 1, 4, 1
+    n_samples = 3
+    rng = np.random.default_rng(7)
+
+    samples = rng.standard_normal((n_samples, n_windows, pred_len, n_targets)).astype(
+        np.float32
+    )
+    quantiles = np.quantile(samples, DEFAULT_QUANTILE_LEVELS, axis=0).astype(np.float32)
+
+    forecast = ForecastOutput(
+        preds_scaled=quantiles[1],
+        gt_scaled=np.zeros((n_windows, pred_len, n_targets), dtype=np.float32),
+        samples_scaled=samples,
+        preds_real=quantiles[1].copy(),
+        gt_real=np.zeros((n_windows, pred_len, n_targets), dtype=np.float32),
+        samples_real=samples.copy(),
+        quantiles_scaled=quantiles,
+        quantiles_real=quantiles.copy(),
+        quantile_levels=DEFAULT_QUANTILE_LEVELS.copy(),
+        target_names=["Close"],
+    )
+
+    output_path = tmp_path / "out.csv"
+    _export_predictions(forecast, output_path)
+
+    df = pd.read_csv(output_path)
+    # No debe haber columna "pred_mean" (era incorrecto)
+    assert "pred_mean" not in df.columns, "pred_mean debería haberse renombrado"
+    # Debe haber columna de media basada en muestras
+    assert any("mean" in c for c in df.columns), f"Columnas: {df.columns.tolist()}"
