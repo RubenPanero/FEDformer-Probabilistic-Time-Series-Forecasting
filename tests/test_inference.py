@@ -3,6 +3,8 @@
 
 import json
 import pickle
+import subprocess
+import sys
 
 import numpy as np
 import pandas as pd
@@ -315,3 +317,63 @@ def test_load_specialist_accepts_mixed_case_registry_key(mock_registry):
     assert model is not None
     assert config.pred_len == 4
     assert preprocessor.fitted is True
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Tests del CLI (inference/__main__.py)
+# ---------------------------------------------------------------------------
+
+
+def test_inference_cli_help():
+    """CLI de inference responde a --help sin errores."""
+    result = subprocess.run(
+        [sys.executable, "-m", "inference", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    assert "--ticker" in result.stdout
+    assert "--csv" in result.stdout
+    assert "--registry" in result.stdout
+
+
+def test_inference_cli_list_models(mock_registry):
+    """CLI --list-models muestra tickers del registry."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "inference",
+            "--list-models",
+            "--registry",
+            str(mock_registry),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    assert "NVDA" in result.stdout
+
+
+def test_inference_cli_unknown_ticker(mock_registry):
+    """CLI falla con error claro para ticker no registrado."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "inference",
+            "--ticker",
+            "FAKE",
+            "--csv",
+            "x.csv",
+            "--registry",
+            str(mock_registry),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode != 0
+    assert "Error" in result.stderr or "no registrado" in result.stderr
