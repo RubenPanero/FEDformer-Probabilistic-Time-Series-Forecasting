@@ -64,6 +64,11 @@ python3 tune_hyperparams.py --csv data/NVDA_features.csv \
 # Multi-seed
 python3 scripts/run_multi_seed.py --csv data/NVDA_features.csv \
   --seeds 7 42 123 --extra-args --seq-len 96 --pred-len 20 --batch-size 64
+
+# Inferencia sobre modelo canónico
+python3 -m inference --ticker NVDA --csv data/NVDA_features.csv
+python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --output results/preds.csv
+python3 -m inference --list-models
 ```
 
 Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloquea).
@@ -82,6 +87,8 @@ Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloqu
 - **`--save-canonical`**: guarda checkpoint + preprocessing artifacts en `checkpoints/{ticker}_preprocessing/`. `config_dict` incluye `seed`, `target_features` y todos los parámetros de arquitectura (`d_model`, `n_heads`, etc.) — necesarios para reconstruir el modelo en inferencia.
 - **`_save_canonical_specialist`**: si `save_artifacts` falla, el especialista NO se registra (return early) — evita estado de registry inconsistente.
 - **Inference**: el preprocessor se carga pre-ajustado — NUNCA re-fitear con datos nuevos. Propagar `label_len` explícitamente en `_make_inference_config` (sin él, default != entrenado causa zeros silenciosos en mc_dropout). Sobreescribir `preprocessor.fit_scope = "inference"` en try/finally antes de crear `TimeSeriesDataset` para evitar re-fit por `fold_train_only`.
+- **Inference CLI padding**: `python3 -m inference` padea automáticamente CSVs con `seq_len ≤ filas < seq_len+pred_len` duplicando la última fila. CSV de salida usa `mean_{target}` (media muestral de MC Dropout) y `p10/p50/p90_{target}` por cada target.
+- **Inference CLI export**: columnas `mean_{name}`, `gt_{name}`, `p10_{name}`, `p50_{name}`, `p90_{name}` por cada `target_name`. No hay columna `pred_mean` — esa era p50, estadísticamente incorrecto para distribuciones asimétricas.
 - **`main.py` flags de optimizador**: `--learning-rate` (default: 1e-4), `--weight-decay` (default: 1e-5). Early stopping época 6-7/20 es convergencia normal.
 
 ### Git y CI
