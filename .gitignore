@@ -136,3 +136,6 @@ optuna_studies/
 
 # === Specs / planes locales (no versionar) ===
 spec/
+
+# === BMAD brainstorming output (no versionar) ===
+_bmad/
