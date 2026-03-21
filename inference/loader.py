@@ -109,7 +109,7 @@ def _build_config(entry: dict) -> FEDformerConfig:
     data_info = entry.get("data", {})
     target_features = saved_config.get("target_features", ["Close"])
 
-    return FEDformerConfig(
+    config = FEDformerConfig(
         target_features=target_features,
         file_path=_validated_file_path(data_info),
         seq_len=saved_config.get("seq_len", 96),
@@ -131,6 +131,15 @@ def _build_config(entry: dict) -> FEDformerConfig:
         n_flow_layers=saved_config.get("n_flow_layers", 4),
         flow_hidden_dim=saved_config.get("flow_hidden_dim", 64),
     )
+
+    # __post_init__ deduce enc_in/dec_in del CSV actual, que puede diferir del
+    # entrenamiento (ej. columna 'date' contada como feature si date_column no
+    # coincide). Sobreescribir con los valores guardados en el registry.
+    if "enc_in" in saved_config:
+        config.enc_in = saved_config["enc_in"]
+        config.dec_in = saved_config.get("dec_in", saved_config["enc_in"])
+
+    return config
 
 
 def _load_model(config: FEDformerConfig, checkpoint_path: Path) -> Flow_FEDformer:
