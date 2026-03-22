@@ -99,6 +99,7 @@ python3 -m inference --list-models
 
 # Inferencia con visualización (pendiente implementar)
 # python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --plot
+# Plan TDD: docs/superpowers/specs/2026-03-22-probabilistic-visualization-design.md
 ```
 
 Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloquea).
@@ -146,7 +147,7 @@ Actions: `checkout@v6` · `setup-python@v6`. `tests/test_inference.py` en shards
 
 Config: seq=96, pred=20, batch=64, splits=4, log_return, clip=0.5, seed=7
 Modelo: ~11.9M parámetros (99.2% en encoder/decoder, 0.2% en normalizing flows), 18 hiperparámetros.
-Historial multi-ticker y resultados → `MEMORY.md`.
+Historial multi-ticker y resultados → auto-memory `MEMORY.md` (cargado automáticamente).
 
 ## Gotchas
 
@@ -170,10 +171,11 @@ Historial multi-ticker y resultados → `MEMORY.md`.
 - **`mc_dropout_inference` falla silenciosamente**: shapes incompatibles (e.g. `label_len` erróneo → x_dec size wrong) no lanzan excepción — retorna ceros y loguea WARNING. Verificar siempre que `label_len` se propaga explícitamente en configs de inferencia.
 - **`TimeSeriesDataset._fit_and_transform`**: re-fittea si `fit_scope == "fold_train_only"` aunque `preprocessor.fitted=True` — las tres condiciones de `should_refit` son OR independientes.
 
-→ Lista completa con contexto: `memory/gotchas.md`
+→ Lista completa con contexto: auto-memory `memory/gotchas.md` (cargado automáticamente en cada sesión)
 
 ## Skills proactivas
 
+<!-- Invocar con el Skill tool: Skill("nombre-skill") -->
 | Situación | Skill |
 |-----------|-------|
 | Bug / test fallando (manual) | `systematic-debugging` |
