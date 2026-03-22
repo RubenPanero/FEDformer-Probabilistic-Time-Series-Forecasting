@@ -1,19 +1,11 @@
-"""Tests RED para utils/visualization.py — fase TDD.
-
-Todos estos tests deben FALLAR con ImportError hasta que se implemente
-utils/visualization.py (Task 2).
-
-Cobertura:
-    - plot_fan_chart: retorno Figure, 2 subplots, escala % change
-    - plot_calibration: retorno Figure, 2 subplots, reliability diagram, PIT histogram
-    - Guardado a PNG: fan chart y calibration
-"""
+"""Tests para utils/visualization.py — fan charts y calibración probabilística."""
 
 import os
 
 # Configurar backend headless ANTES de cualquier import de matplotlib o visualization
 os.environ["MPLBACKEND"] = "Agg"
 import matplotlib  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
 
 matplotlib.use("Agg")
 
@@ -75,6 +67,13 @@ from utils.visualization import plot_calibration, plot_fan_chart  # noqa: E402
 def synthetic_df() -> pd.DataFrame:
     """DataFrame sintético reutilizable en todos los tests del módulo."""
     return make_synthetic_df(n_windows=5, pred_len=20)
+
+
+@pytest.fixture(autouse=True)
+def _cerrar_figuras():
+    """Cierra todas las figuras matplotlib después de cada test para evitar leak."""
+    yield
+    plt.close("all")
 
 
 # ---------------------------------------------------------------------------
@@ -174,8 +173,8 @@ def test_plot_calibration_pit_histogram(synthetic_df: pd.DataFrame) -> None:
     ax_pit = fig.get_axes()[1]
 
     patches = ax_pit.patches
-    assert len(patches) >= 1, (
-        f"El PIT histogram debe tener al menos 1 barra, encontró {len(patches)}"
+    assert len(patches) == 10, (
+        f"El PIT histogram debe tener exactamente 10 barras (bins=10), encontró {len(patches)}"
     )
 
 
