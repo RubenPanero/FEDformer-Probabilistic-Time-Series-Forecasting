@@ -61,6 +61,17 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Lista modelos canónicos disponibles y sale",
     )
+    parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Genera fan chart y calibration plot tras inferencia",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="results",
+        help="Directorio de salida para plots (default: results/)",
+    )
     return parser.parse_args()
 
 
@@ -194,6 +205,33 @@ def main() -> int:
     output_path = Path(args.output or f"results/inference_{ticker.lower()}.csv")
     _export_predictions(forecast, output_path)
 
+    # Visualización probabilística (solo si --plot activado)
+    fan_path = None
+    cal_path = None
+    if args.plot:
+        import matplotlib
+
+        matplotlib.use("Agg")  # Headless — antes de importar pyplot
+        import matplotlib.pyplot as plt
+
+        from utils.visualization import plot_calibration, plot_fan_chart
+
+        df_viz = pd.read_csv(output_path)
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        fig_fan = plot_fan_chart(df_viz, ticker=ticker)
+        fan_path = output_dir / f"fan_chart_{ticker.lower()}.png"
+        fig_fan.savefig(str(fan_path), dpi=150)
+        plt.close(fig_fan)
+        logger.info("Fan chart guardado en %s", fan_path)
+
+        fig_cal = plot_calibration(df_viz, ticker=ticker)
+        cal_path = output_dir / f"calibration_{ticker.lower()}.png"
+        fig_cal.savefig(str(cal_path), dpi=150)
+        plt.close(fig_cal)
+        logger.info("Calibration plot guardado en %s", cal_path)
+
     # Resumen en stdout
     print(f"\n{'=' * 50}")
     print(f"Inferencia {ticker} completada")
@@ -209,6 +247,9 @@ def main() -> int:
         print(
             f"  Media cuantiles — p10: {p10_mean:.4f}  p50: {p50_mean:.4f}  p90: {p90_mean:.4f}"
         )
+    if args.plot:
+        print(f"  Fan chart: {fan_path}")
+        print(f"  Calibration: {cal_path}")
 
     return 0
 

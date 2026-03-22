@@ -575,3 +575,128 @@ def test_export_predictions_uses_sample_mean_not_p50(mock_registry, tmp_path):
     assert "pred_mean" not in df.columns, "pred_mean debería haberse renombrado"
     # Debe haber columna de media basada en muestras
     assert any("mean" in c for c in df.columns), f"Columnas: {df.columns.tolist()}"
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Tests de --plot y --output-dir en CLI
+# ---------------------------------------------------------------------------
+
+
+def test_cli_plot_flag_accepted():
+    """CLI acepta --plot y --output-dir sin error de argparse."""
+    result = subprocess.run(
+        [sys.executable, "-m", "inference", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    assert "--plot" in result.stdout
+    assert "--output-dir" in result.stdout
+
+
+def test_cli_plot_generates_pngs(mock_registry, tmp_path, monkeypatch):
+    """--plot genera fan_chart y calibration PNGs en --output-dir."""
+    import os
+    import shutil
+
+    os.environ["MPLBACKEND"] = "Agg"
+
+    # Crear CSV de predicciones sintético (lo que _export_predictions generaría)
+    rng = np.random.default_rng(42)
+    n_windows, pred_len = 3, 4
+    rows = []
+    for w in range(n_windows):
+        for s in range(pred_len):
+            q = np.sort(rng.normal(0, 0.02, 3))
+            rows.append(
+                {
+                    "window": w,
+                    "step": s,
+                    "mean_Close": rng.normal(0, 0.02),
+                    "gt_Close": rng.normal(0, 0.02),
+                    "p10_Close": float(q[0]),
+                    "p50_Close": float(q[1]),
+                    "p90_Close": float(q[2]),
+                }
+            )
+    csv_pred = tmp_path / "predictions.csv"
+    pd.DataFrame(rows).to_csv(csv_pred, index=False)
+
+    output_dir = tmp_path / "plots"
+
+    # Construir un ForecastOutput dummy para que main() no falle
+    from training.forecast_output import ForecastOutput
+    from training.trainer import DEFAULT_QUANTILE_LEVELS
+
+    n_targets = 1
+    n_samples = 3
+    samples = rng.standard_normal((n_samples, n_windows, pred_len, n_targets)).astype(
+        np.float32
+    )
+    quantiles = np.quantile(samples, DEFAULT_QUANTILE_LEVELS, axis=0).astype(np.float32)
+    dummy_forecast = ForecastOutput(
+        preds_scaled=quantiles[1],
+        gt_scaled=np.zeros((n_windows, pred_len, n_targets), dtype=np.float32),
+        samples_scaled=samples,
+        preds_real=quantiles[1].copy(),
+        gt_real=np.zeros((n_windows, pred_len, n_targets), dtype=np.float32),
+        samples_real=samples.copy(),
+        quantiles_scaled=quantiles,
+        quantiles_real=quantiles.copy(),
+        quantile_levels=DEFAULT_QUANTILE_LEVELS.copy(),
+        target_names=["Close"],
+    )
+
+    # Parchear predict y _export_predictions para inyectar el CSV sintético
+    import inference.__main__ as cli_module
+
+    def fake_predict(**kwargs):
+        return dummy_forecast
+
+    def fake_export(forecast, output_path):
+        """Copiar CSV sintético a la ruta esperada por main()."""
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(csv_pred, output_path)
+
+    monkeypatch.setattr(cli_module, "predict", fake_predict)
+    monkeypatch.setattr(cli_module, "_export_predictions", fake_export)
+
+    # Parchear load_specialist para evitar cargar modelo real
+    from inference.loader import load_specialist
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+    monkeypatch.setattr(
+        cli_module, "load_specialist", lambda *a, **kw: (model, config, preprocessor)
+    )
+
+    # Parchear _pad_csv_for_forecast para que retorne None (sin padding)
+    monkeypatch.setattr(cli_module, "_pad_csv_for_forecast", lambda *a, **kw: None)
+
+    # CSV path real (existe en mock_registry)
+    csv_data = mock_registry.parent.parent / "NVDA_features.csv"
+
+    # Ejecutar main con --plot
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "inference",
+            "--ticker",
+            "NVDA",
+            "--csv",
+            str(csv_data),
+            "--registry",
+            str(mock_registry),
+            "--plot",
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    from inference.__main__ import main
+
+    ret = main()
+
+    assert ret == 0, "main() debe retornar 0"
+    assert (output_dir / "fan_chart_nvda.png").exists(), "fan_chart PNG no generado"
+    assert (output_dir / "calibration_nvda.png").exists(), "calibration PNG no generado"
