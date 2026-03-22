@@ -12,8 +12,9 @@ import torch
 
 from config import FEDformerConfig
 from data.preprocessing import PreprocessingPipeline
-from inference.loader import _build_config
+from inference.loader import _build_config, load_specialist
 from models.fedformer import Flow_FEDformer
+from utils.model_registry import register_specialist
 
 # ── Dimensiones tiny para tests rápidos ──────────────────────────────
 TINY = dict(
@@ -229,3 +230,128 @@ def test_model_state_dict_roundtrip(
         mean_loaded = dist_loaded.mean
 
     torch.testing.assert_close(mean_loaded, mean_original, atol=0, rtol=0)
+
+
+# ── T4 ───────────────────────────────────────────────────────────────
+
+
+def test_full_roundtrip_save_load_predict(
+    tiny_config: FEDformerConfig,
+    tiny_model: Flow_FEDformer,
+    fitted_preprocessor: PreprocessingPipeline,
+    synthetic_csv: Path,
+    tmp_path: Path,
+) -> None:
+    """Ciclo completo: save checkpoint+artifacts+registry → load_specialist → predict idéntico."""
+    # 1. Capturar output original
+    x_enc, x_dec, x_regime = _make_input(tiny_config)
+    with torch.no_grad():
+        mean_original = tiny_model(x_enc, x_dec, x_regime).mean
+
+    # 2. Guardar checkpoint (simula trainer.save_checkpoint para fold 3)
+    ckpt_dir = tmp_path / "checkpoints"
+    ckpt_dir.mkdir()
+    ckpt_src = ckpt_dir / "best_model_fold_3.pt"
+    torch.save(
+        {
+            "model_state_dict": tiny_model.state_dict(),
+            "optimizer_state_dict": {},
+            "scaler_state_dict": None,
+            "epoch": 5,
+            "fold": 3,
+            "loss": 0.123,
+            "config": asdict(tiny_config),
+        },
+        ckpt_src,
+    )
+
+    # 3. Guardar preprocessing artifacts
+    prep_dir = ckpt_dir / "test_preprocessing"
+    fitted_preprocessor.save_artifacts(prep_dir)
+
+    # 4. Registrar en registry (usa register_specialist real)
+    config_dict = _make_config_dict(tiny_config)
+    registry_path = tmp_path / "model_registry.json"
+    data_info = {
+        "file": str(synthetic_csv),
+        "rows": 60,
+        "features": N_FEATURES,
+        "preprocessing_artifacts": str(prep_dir),
+    }
+    register_specialist(
+        ticker="TEST",
+        checkpoint_src=ckpt_src,
+        metrics={
+            "sharpe": 1.0,
+            "sortino": 1.5,
+            "max_drawdown": -0.2,
+            "volatility": 0.1,
+        },
+        config_dict=config_dict,
+        data_info=data_info,
+        registry_path=registry_path,
+        canonical_dir=ckpt_dir,
+    )
+
+    # 5. Cargar con load_specialist (la función real de inferencia)
+    model_loaded, config_loaded, preprocessor_loaded = load_specialist(
+        "TEST", registry_path=registry_path
+    )
+
+    # 6. Verificar config
+    for key in config_dict:
+        original = config_dict[key]
+        loaded = getattr(config_loaded, key)
+        if isinstance(original, list):
+            loaded = list(loaded)
+        assert loaded == original, f"Config mismatch {key}: {loaded} != {original}"
+
+    # 7. Verificar preprocessor
+    assert preprocessor_loaded.fitted is True
+    assert preprocessor_loaded.target_indices == fitted_preprocessor.target_indices
+    assert preprocessor_loaded.feature_columns == fitted_preprocessor.feature_columns
+    rng = np.random.default_rng(123)
+    test_vec = rng.standard_normal((5, N_FEATURES)).astype(np.float32)
+    np.testing.assert_array_equal(
+        preprocessor_loaded.scaler.transform(test_vec),
+        fitted_preprocessor.scaler.transform(test_vec),
+    )
+
+    # 8. Verificar output del modelo
+    # _load_model puede poner el modelo en CUDA → mover a CPU para comparar con original
+    model_loaded.cpu().eval()
+    x_enc2, x_dec2, x_regime2 = _make_input(tiny_config)
+    with torch.no_grad():
+        mean_loaded = model_loaded(x_enc2, x_dec2, x_regime2).mean
+
+    torch.testing.assert_close(mean_loaded, mean_original, atol=0, rtol=0)
+
+
+# ── T5 ───────────────────────────────────────────────────────────────
+
+
+def test_enc_in_dec_in_survives_roundtrip(
+    synthetic_csv: Path,
+) -> None:
+    """Regresión sesión 19: enc_in/dec_in del registry prevalecen sobre __post_init__."""
+    # enc_in=5 en el registry, pero el CSV tiene 6 columnas (5 features + date).
+    # Sin el fix, __post_init__ leería 6 columnas y pondría enc_in=6.
+    config_dict = {
+        **TINY,
+        "target_features": TARGET,
+        "enc_in": N_FEATURES,
+        "dec_in": N_FEATURES,
+    }
+    entry = {
+        "config": config_dict,
+        "data": {"file": str(synthetic_csv)},
+    }
+
+    rebuilt = _build_config(entry)
+
+    assert rebuilt.enc_in == N_FEATURES, (
+        f"enc_in corrupted by __post_init__: {rebuilt.enc_in} != {N_FEATURES}"
+    )
+    assert rebuilt.dec_in == N_FEATURES, (
+        f"dec_in corrupted by __post_init__: {rebuilt.dec_in} != {N_FEATURES}"
+    )
