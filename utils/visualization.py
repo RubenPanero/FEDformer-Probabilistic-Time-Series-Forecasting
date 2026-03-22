@@ -187,18 +187,17 @@ def plot_calibration(df: pd.DataFrame, ticker: str) -> Figure:
     # ── PIT scores ────────────────────────────────────────────────────────
     # Cálculo por fila: interpola el GT sobre los cuantiles de esa observación.
     # Usamos np.sort para garantizar xp no-decreciente (requisito de np.interp).
-    # Recorte a [0, 1] para cubrir GT fuera del rango [p10, p90].
+    # left=0.0 / right=1.0: GT por debajo de p10 → 0.0, GT por encima de p90 → 1.0,
+    # lo que permite que el histograma muestre masa en las colas [0, 0.1) y (0.9, 1].
     pit_scores = np.array(
         [
             float(
-                np.clip(
-                    np.interp(
-                        gt[i],
-                        np.sort([p10[i], p50[i], p90[i]]),
-                        [0.1, 0.5, 0.9],
-                    ),
-                    0.0,
-                    1.0,
+                np.interp(
+                    gt[i],
+                    np.sort([p10[i], p50[i], p90[i]]),
+                    [0.1, 0.5, 0.9],
+                    left=0.0,
+                    right=1.0,
                 )
             )
             for i in range(len(gt))

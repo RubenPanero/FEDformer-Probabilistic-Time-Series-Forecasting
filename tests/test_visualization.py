@@ -175,7 +175,7 @@ def test_plot_calibration_reliability_diagram(synthetic_df: pd.DataFrame) -> Non
 
 
 def test_plot_calibration_pit_histogram(synthetic_df: pd.DataFrame) -> None:
-    """El PIT histogram debe tener al menos 1 barra (patch)."""
+    """El PIT histogram debe tener exactamente 10 barras (bins=10)."""
     from utils.visualization import plot_calibration
 
     fig = plot_calibration(synthetic_df, ticker="TEST")
@@ -184,6 +184,57 @@ def test_plot_calibration_pit_histogram(synthetic_df: pd.DataFrame) -> None:
     patches = ax_pit.patches
     assert len(patches) == 10, (
         f"El PIT histogram debe tener exactamente 10 barras (bins=10), encontró {len(patches)}"
+    )
+
+
+def test_plot_calibration_pit_tails() -> None:
+    """PIT debe asignar 0.0 a GT << p10 y 1.0 a GT >> p90, no clampar a 0.1/0.9.
+
+    Verifica que el histograma tiene masa en el primer bin [0, 0.1) y en el
+    último bin (0.9, 1] cuando todas las observaciones caen fuera del intervalo.
+    """
+    from utils.visualization import plot_calibration
+
+    # Construir DataFrame donde GT siempre cae fuera del rango [p10, p90]
+    rng = np.random.default_rng(seed=0)
+    n = 50
+    center = rng.normal(0, 0.005, n)  # cuantiles apretados cerca de 0
+
+    # Mitad de GT muy por debajo de p10, mitad muy por encima de p90
+    gt_bajo = center - 0.1  # GT << p10 → PIT debe ser 0.0
+    gt_alto = center + 0.1  # GT >> p90 → PIT debe ser 1.0
+    gt_all = np.concatenate([gt_bajo, gt_alto])
+
+    rows = []
+    for i in range(len(gt_all)):
+        q = np.sort(center[i % n] + rng.normal(0, 0.001, 3))
+        rows.append(
+            {
+                "window": i,
+                "step": 0,
+                "mean_Close": float(q[1]),
+                "gt_Close": float(gt_all[i]),
+                "p10_Close": float(q[0]),
+                "p50_Close": float(q[1]),
+                "p90_Close": float(q[2]),
+            }
+        )
+    df_tails = pd.DataFrame(rows)
+
+    fig = plot_calibration(df_tails, ticker="TAILS")
+    ax_pit = fig.get_axes()[1]
+
+    # Extraer alturas de los bins
+    heights = np.array([p.get_height() for p in ax_pit.patches])
+
+    # Con left=0.0/right=1.0: masa en primer bin (0–0.1) y último bin (0.9–1.0)
+    assert heights[0] > 0, (
+        "PIT bin [0, 0.1) debe tener masa cuando GT < p10 — "
+        "si es 0, np.interp está clampando a 0.1 en vez de retornar 0.0"
+    )
+    assert heights[-1] > 0, (
+        "PIT bin (0.9, 1.0] debe tener masa cuando GT > p90 — "
+        "si es 0, np.interp está clampando a 0.9 en vez de retornar 1.0"
     )
 
 
