@@ -37,25 +37,20 @@ def make_synthetic_df(n_windows: int = 5, pred_len: int = 20) -> pd.DataFrame:
     rows = []
     for w in range(n_windows):
         for s in range(pred_len):
+            # Cuantiles ordenados: muestrear 3 valores y ordenar para garantizar p10 ≤ p50 ≤ p90
+            q = np.sort(rng.normal(0, 0.02, 3))
             rows.append(
                 {
                     "window": w,
                     "step": s,
                     "mean_Close": rng.normal(0, 0.02),
                     "gt_Close": rng.normal(0, 0.02),
-                    "p10_Close": rng.normal(-0.03, 0.01),
-                    "p50_Close": rng.normal(0, 0.02),
-                    "p90_Close": rng.normal(0.03, 0.01),
+                    "p10_Close": float(q[0]),
+                    "p50_Close": float(q[1]),
+                    "p90_Close": float(q[2]),
                 }
             )
     return pd.DataFrame(rows)
-
-
-# ---------------------------------------------------------------------------
-# Import del módulo a implementar (producirá ImportError hasta Task 2)
-# ---------------------------------------------------------------------------
-
-from utils.visualization import plot_calibration, plot_fan_chart  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +80,8 @@ def test_plot_fan_chart_returns_figure(synthetic_df: pd.DataFrame) -> None:
     """plot_fan_chart debe retornar un objeto matplotlib.figure.Figure."""
     from matplotlib.figure import Figure
 
+    from utils.visualization import plot_fan_chart
+
     fig = plot_fan_chart(synthetic_df, ticker="TEST")
     assert isinstance(fig, Figure), (
         f"plot_fan_chart debe retornar Figure, obtuvo {type(fig)}"
@@ -93,6 +90,8 @@ def test_plot_fan_chart_returns_figure(synthetic_df: pd.DataFrame) -> None:
 
 def test_plot_fan_chart_has_two_subplots(synthetic_df: pd.DataFrame) -> None:
     """El fan chart debe tener exactamente 2 ejes (rolling overview + zoom)."""
+    from utils.visualization import plot_fan_chart
+
     fig = plot_fan_chart(synthetic_df, ticker="TEST")
     axes = fig.get_axes()
     assert len(axes) == 2, f"Fan chart debe tener 2 subplots, encontró {len(axes)}"
@@ -105,6 +104,8 @@ def test_plot_fan_chart_pct_scale(synthetic_df: pd.DataFrame) -> None:
     (ej. 5-10% vs 0.05-0.10). Verificamos que al menos un dato visible
     supera 1.0 en valor absoluto (imposible en log-return normal de mercado).
     """
+    from utils.visualization import plot_fan_chart
+
     # gt_Close tiene media 0, std ~0.02 → en % change: np.expm1(0.02)*100 ≈ 2.0%
     # Un rango de ±2% debe estar en el orden de magnitud de % (>0.5), no de log-returns
     fig = plot_fan_chart(synthetic_df, ticker="TEST")
@@ -136,6 +137,8 @@ def test_plot_calibration_returns_figure(synthetic_df: pd.DataFrame) -> None:
     """plot_calibration debe retornar un objeto matplotlib.figure.Figure."""
     from matplotlib.figure import Figure
 
+    from utils.visualization import plot_calibration
+
     fig = plot_calibration(synthetic_df, ticker="TEST")
     assert isinstance(fig, Figure), (
         f"plot_calibration debe retornar Figure, obtuvo {type(fig)}"
@@ -144,6 +147,8 @@ def test_plot_calibration_returns_figure(synthetic_df: pd.DataFrame) -> None:
 
 def test_plot_calibration_has_two_subplots(synthetic_df: pd.DataFrame) -> None:
     """El calibration plot debe tener exactamente 2 ejes (1×2 layout)."""
+    from utils.visualization import plot_calibration
+
     fig = plot_calibration(synthetic_df, ticker="TEST")
     axes = fig.get_axes()
     assert len(axes) == 2, (
@@ -153,6 +158,8 @@ def test_plot_calibration_has_two_subplots(synthetic_df: pd.DataFrame) -> None:
 
 def test_plot_calibration_reliability_diagram(synthetic_df: pd.DataFrame) -> None:
     """El reliability diagram debe tener exactamente 3 puntos (p10, p50, p90)."""
+    from utils.visualization import plot_calibration
+
     fig = plot_calibration(synthetic_df, ticker="TEST")
     ax_reliability = fig.get_axes()[0]
 
@@ -169,6 +176,8 @@ def test_plot_calibration_reliability_diagram(synthetic_df: pd.DataFrame) -> Non
 
 def test_plot_calibration_pit_histogram(synthetic_df: pd.DataFrame) -> None:
     """El PIT histogram debe tener al menos 1 barra (patch)."""
+    from utils.visualization import plot_calibration
+
     fig = plot_calibration(synthetic_df, ticker="TEST")
     ax_pit = fig.get_axes()[1]
 
@@ -185,6 +194,8 @@ def test_plot_calibration_pit_histogram(synthetic_df: pd.DataFrame) -> None:
 
 def test_save_fan_chart_png(synthetic_df: pd.DataFrame) -> None:
     """plot_fan_chart debe poder guardarse como .png en un directorio temporal."""
+    from utils.visualization import plot_fan_chart
+
     fig = plot_fan_chart(synthetic_df, ticker="SAVETEST")
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -196,6 +207,8 @@ def test_save_fan_chart_png(synthetic_df: pd.DataFrame) -> None:
 
 def test_save_calibration_png(synthetic_df: pd.DataFrame) -> None:
     """plot_calibration debe poder guardarse como .png en un directorio temporal."""
+    from utils.visualization import plot_calibration
+
     fig = plot_calibration(synthetic_df, ticker="SAVETEST")
 
     with tempfile.TemporaryDirectory() as tmpdir:
