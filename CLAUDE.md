@@ -2,6 +2,24 @@
 
 FEDformer (Frequency Enhanced Decomposed Transformer) + Normalizing Flows para predicción probabilística de series temporales financieras.
 
+## Git & CI Rules
+
+- Always run `ruff check` and `ruff format --check` before committing to avoid CI round-trips
+- Never use `cd` to change directories — use full paths or Bash with `cd ... &&` in a single command
+- When creating commits, do NOT add co-authorship trailers unless explicitly asked
+
+## Code Quality
+
+- After implementing any feature, run the full test suite before reporting completion
+- Never silently change acceptance criteria, thresholds, or test assertions — always discuss changes with the user first
+- When generating Python in bash heredocs or notebooks, test the syntax before presenting it
+
+## Tool Usage
+
+- Use the correct MCP tool when the user specifies one — don't substitute with Bash/Search/Grep
+- When writing files on Linux, always use Unix (LF) line endings — never CRLF
+- Avoid using jcodemunch `get_file_outline` on large config files as it consumes excessive context tokens
+
 ## Stack
 
 Python 3.10+ · PyTorch 2.0+ · pandas · scikit-learn · Optuna · W&B (opcional)
@@ -54,6 +72,8 @@ pytest -q -m "not slow"
 
 # Pre-commit (paridad CI) — obligatorio antes de cada commit
 ruff check . --fix && ruff format . && pylint --errors-only models/ training/ data/ utils/ inference/ && pytest -q -m "not slow"
+# Shorthand equivalente:
+make ci-check
 
 # Optuna
 python3 tune_hyperparams.py --csv data/NVDA_features.csv \
@@ -76,6 +96,9 @@ MPLBACKEND=Agg python3 main.py --csv data/GOOGL_features.csv --targets "Close" \
 python3 -m inference --ticker NVDA --csv data/NVDA_features.csv
 python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --output results/preds.csv
 python3 -m inference --list-models
+
+# Inferencia con visualización (pendiente implementar)
+# python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --plot
 ```
 
 Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloquea).
@@ -92,8 +115,9 @@ Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloqu
 - **Anti-leakage**: walk-forward obligatorio; scaler ajustado solo en train de cada fold.
 - **Seed canónico**: 7. Per-fold reseed: `torch.manual_seed(seed + fold_idx)`.
 - **`--save-canonical`**: guarda checkpoint + preprocessing artifacts en `checkpoints/{ticker}_preprocessing/`. `config_dict` incluye `seed`, `target_features` y todos los parámetros de arquitectura (`d_model`, `n_heads`, etc.) — necesarios para reconstruir el modelo en inferencia.
-- **`_save_canonical_specialist`**: si `save_artifacts` falla, el especialista NO se registra (return early) — evita estado de registry inconsistente.
+- **`_save_canonical_specialist`**: si `save_artifacts` falla, el especialista NO se registra (return early) — evita estado de registry inconsistente. Guardia 2 impide overwrite si Sharpe nuevo ≤ existente — para re-entrenar con artifacts, resetear Sharpe en registry primero.
 - **Inference**: el preprocessor se carga pre-ajustado — NUNCA re-fitear con datos nuevos. Propagar `label_len` explícitamente en `_make_inference_config` (sin él, default != entrenado causa zeros silenciosos en mc_dropout). Sobreescribir `preprocessor.fit_scope = "inference"` en try/finally antes de crear `TimeSeriesDataset` para evitar re-fit por `fold_train_only`.
+- **`_build_config` en inference**: `__post_init__` sobreescribe `enc_in`/`dec_in` leyendo el CSV actual (columna `date` contada como feature si `date_column=None`). Fix: sobreescribir con valores del registry después de construir el config.
 - **`main.py` flags de optimizador**: `--learning-rate` (default: 1e-4), `--weight-decay` (default: 1e-5). Early stopping época 6-7/20 es convergencia normal.
 
 ### Git y CI
@@ -115,13 +139,13 @@ Actions: `checkout@v6` · `setup-python@v6`. `tests/test_inference.py` en shards
 
 ## Modelos canónicos (seed=7)
 
-| Ticker | Sharpe | Sortino | MaxDD  | Estado |
-|--------|--------|---------|--------|--------|
-| NVDA   | +1.060 | +1.940  | −55.9% | canónico |
-| GOOGL  | +1.196 | +2.306  | −27.7% | canónico |
+| Ticker | Sharpe | Sortino | MaxDD  | Preprocessing | Estado |
+|--------|--------|---------|--------|---------------|--------|
+| NVDA   | +0.990 | +1.857  | −54.2% | OK | canónico |
+| GOOGL  | +0.737 | +1.009  | −40.2% | OK | canónico |
 
 Config: seq=96, pred=20, batch=64, splits=4, log_return, clip=0.5, seed=7
-Checkpoints existentes NO tienen preprocessing artifacts — re-entrenar con `--save-canonical` para generarlos.
+Modelo: ~11.9M parámetros (99.2% en encoder/decoder, 0.2% en normalizing flows), 18 hiperparámetros.
 Historial multi-ticker y resultados → `MEMORY.md`.
 
 ## Gotchas
@@ -152,11 +176,14 @@ Historial multi-ticker y resultados → `MEMORY.md`.
 
 | Situación | Skill |
 |-----------|-------|
-| Bug / test fallando | `systematic-debugging` |
+| Bug / test fallando (manual) | `systematic-debugging` |
+| Tests fallando — loop autónomo sin input | `fix-tests` |
 | Feature nueva / refactor grande | `feature-dev` |
 | Tarea multi-paso con spec | `writing-plans` |
 | Escribir código | `test-driven-development` |
 | Tareas paralelas independientes | `subagent-driven-development` |
 | Antes de decir "listo" / commit / PR | `verification-before-completion` |
+| Antes de mergear una rama a main | `adversarial-review` |
+| Commit + push con CI local y review adversarial | `push-safe` |
 | Commit | `commit-commands:commit` |
-| Fin de sesión | `claude-md-management:revise-claude-md` |
+| Fin de sesión | `session-end` |
