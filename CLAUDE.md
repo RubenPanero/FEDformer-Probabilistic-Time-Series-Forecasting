@@ -23,7 +23,7 @@ FEDformer (Frequency Enhanced Decomposed Transformer) + Normalizing Flows para p
 ## Stack
 
 Python 3.10+ · PyTorch 2.0+ · pandas · scikit-learn · Optuna · W&B (opcional)
-Linting: `ruff` (88 chars) · Tests: `pytest` (318 fast + 7 @slow)
+Linting: `ruff` (88 chars) · Tests: `pytest` (335 fast + 7 @slow)
 Entorno: `.venv/` · Linux Mint 22.3 → **usar `python3`** (nunca `python`)
 
 ## Navegación de código
@@ -53,7 +53,7 @@ CSV → TimeSeriesDataset (scale + regimes)
     → RiskSimulator + PortfolioSimulator → métricas
 ```
 
-Módulos: `models/` (FEDformer, flows) · `training/` (trainer, utils, forecast_output) · `data/` (dataset, preprocessing) · `utils/` (registry, I/O) · `inference/` (loader, predictor, CLI) · `scripts/` (multi-seed, helpers)
+Módulos: `models/` (FEDformer, flows) · `training/` (trainer, utils, forecast_output) · `data/` (dataset, preprocessing) · `utils/` (registry, I/O, visualization) · `inference/` (loader, predictor, CLI) · `scripts/` (multi-seed, helpers)
 Directorios gitignoreados: `results/`, `checkpoints/`, `optuna_studies/`, `archive/`
 Scripts de experimentos: `archivos auxiliares/` — scripts bash para runs multi-seed, grids y limpieza
 
@@ -97,9 +97,9 @@ python3 -m inference --ticker NVDA --csv data/NVDA_features.csv
 python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --output results/preds.csv
 python3 -m inference --list-models
 
-# Inferencia con visualización (pendiente implementar)
-# python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --plot
-# Plan TDD: docs/superpowers/specs/2026-03-22-probabilistic-visualization-design.md
+# Inferencia con visualización
+python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --plot
+python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --plot --output-dir results/
 ```
 
 Siempre `MPLBACKEND=Agg` + `--no-show` en ejecuciones headless (plt.show() bloquea).
@@ -170,6 +170,7 @@ Historial multi-ticker y resultados → auto-memory `MEMORY.md` (cargado automá
 - **Timing RTX 4050**: ~10 min/run canónico, ~7-8 min/trial Optuna.
 - **`mc_dropout_inference` falla silenciosamente**: shapes incompatibles (e.g. `label_len` erróneo → x_dec size wrong) no lanzan excepción — retorna ceros y loguea WARNING. Verificar siempre que `label_len` se propaga explícitamente en configs de inferencia.
 - **`TimeSeriesDataset._fit_and_transform`**: re-fittea si `fit_scope == "fold_train_only"` aunque `preprocessor.fitted=True` — las tres condiciones de `should_refit` son OR independientes.
+- **Hooks bash (`.claude/hooks/`)**: drenar stdin con `cat > /dev/null 2>&1 || true` al inicio — Claude Code envía JSON por stdin y sin drenarlo el hook falla con pipe error en cada invocación.
 
 → Lista completa con contexto: auto-memory `memory/gotchas.md` (cargado automáticamente en cada sesión)
 
