@@ -90,6 +90,7 @@ github_log/
 # === IDE & editor settings ===
 .vscode/
 .idea/
+.qwen/
 *.code-workspace
 *.swp
 *.swo
@@ -106,6 +107,8 @@ $RECYCLE.BIN/
 
 # === Claude Code (local AI context — no compartir en el repositorio) ===
 # CLAUDE.md re-indexado para control de versiones (2026-03-09)
+.superpowers/
+docs/superpowers/plans/
 
 # === Documentation (personal/internal) ===
 CRITICAL_FIXES.md

@@ -23,7 +23,7 @@ FEDformer (Frequency Enhanced Decomposed Transformer) + Normalizing Flows para p
 ## Stack
 
 Python 3.10+ · PyTorch 2.0+ · pandas · scikit-learn · Optuna · W&B (opcional)
-Linting: `ruff` (88 chars) · Tests: `pytest` (335 fast + 7 @slow)
+Linting: `ruff` (88 chars) · Tests: `pytest` (336 fast + 7 @slow)
 Entorno: `.venv/` · Linux Mint 22.3 → **usar `python3`** (nunca `python`)
 
 ## Navegación de código

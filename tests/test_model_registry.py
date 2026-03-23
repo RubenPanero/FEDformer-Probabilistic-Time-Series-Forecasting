@@ -332,6 +332,7 @@ def _make_save_canonical_deps(tmp_path: Path):
     cfg.gradient_clip_norm = 0.5
     cfg.label_len = 48
     cfg.batch_size = 64
+    cfg.seed = 7
     cfg.target_features = ["Close"]
     # Parámetros de arquitectura (deben ser serializables a JSON)
     cfg.d_model = 512

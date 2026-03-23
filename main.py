@@ -932,6 +932,41 @@ def _print_ticker_summary(
         logger.info("Comparativa multi-ticker exportada a: %s", comparison_path)
 
 
+def _build_config_dict(config: FEDformerConfig, n_splits: int | None = None) -> dict:
+    """Construye config_dict para el registry del especialista.
+
+    Args:
+        config: Configuración del modelo entrenado.
+        n_splits: Número de splits walk-forward (opcional, de args.splits).
+    """
+    d = {
+        "seq_len": config.seq_len,
+        "pred_len": config.pred_len,
+        "label_len": config.label_len,
+        "return_transform": config.return_transform,
+        "metric_space": config.metric_space,
+        "gradient_clip_norm": config.gradient_clip_norm,
+        "batch_size": config.batch_size,
+        "seed": config.seed,
+        "target_features": list(config.target_features),
+        # Parámetros de arquitectura — necesarios para reconstruir el modelo en inferencia
+        "d_model": config.d_model,
+        "n_heads": config.n_heads,
+        "d_ff": config.d_ff,
+        "e_layers": config.e_layers,
+        "d_layers": config.d_layers,
+        "modes": config.modes,
+        "dropout": config.dropout,
+        "n_flow_layers": config.n_flow_layers,
+        "flow_hidden_dim": config.flow_hidden_dim,
+        "enc_in": config.enc_in,
+        "dec_in": config.dec_in,
+    }
+    if n_splits is not None:
+        d["n_splits"] = n_splits
+    return d
+
+
 def _save_canonical_specialist(
     csv_path: str,
     args: argparse.Namespace,
@@ -976,30 +1011,7 @@ def _save_canonical_specialist(
     }
 
     # Construir dict de configuración con los parámetros del entrenamiento
-    config_dict = {
-        "seq_len": config.seq_len,
-        "pred_len": config.pred_len,
-        "n_splits": args.splits,
-        "return_transform": config.return_transform,
-        "metric_space": config.metric_space,
-        "gradient_clip_norm": config.gradient_clip_norm,
-        "batch_size": config.batch_size,
-        "label_len": config.label_len,
-        "seed": getattr(args, "seed", 7),
-        "target_features": list(config.target_features),
-        # Parámetros de arquitectura — necesarios para reconstruir el modelo en inferencia
-        "d_model": config.d_model,
-        "n_heads": config.n_heads,
-        "d_ff": config.d_ff,
-        "e_layers": config.e_layers,
-        "d_layers": config.d_layers,
-        "modes": config.modes,
-        "dropout": config.dropout,
-        "n_flow_layers": config.n_flow_layers,
-        "flow_hidden_dim": config.flow_hidden_dim,
-        "enc_in": config.enc_in,
-        "dec_in": config.dec_in,
-    }
+    config_dict = _build_config_dict(config, n_splits=args.splits)
 
     # Información del dataset (nº de filas del dataset completo)
     n_rows = len(full_dataset.full_data_scaled)

@@ -13,6 +13,7 @@ import torch
 from config import FEDformerConfig
 from data.preprocessing import PreprocessingPipeline
 from inference.loader import _build_config, load_specialist
+from main import _build_config_dict
 from models.fedformer import Flow_FEDformer
 from utils.model_registry import register_specialist
 
@@ -66,33 +67,9 @@ def tiny_config(synthetic_csv: Path) -> FEDformerConfig:
     # Forzar enc_in/dec_in al nº real de features (no depender de __post_init__)
     cfg.enc_in = N_FEATURES
     cfg.dec_in = N_FEATURES
+    # Setting no-default para detectar bug de settings no restaurados
+    cfg.sections.preprocessing.scaling_strategy = "standard"  # default es "robust"
     return cfg
-
-
-def _make_config_dict(cfg: FEDformerConfig) -> dict:
-    """Construye config_dict igual que _save_canonical_specialist."""
-    return {
-        "seq_len": cfg.seq_len,
-        "pred_len": cfg.pred_len,
-        "label_len": cfg.label_len,
-        "return_transform": cfg.return_transform,
-        "metric_space": cfg.metric_space,
-        "gradient_clip_norm": cfg.gradient_clip_norm,
-        "batch_size": cfg.batch_size,
-        "seed": cfg.seed,
-        "target_features": list(cfg.target_features),
-        "d_model": cfg.d_model,
-        "n_heads": cfg.n_heads,
-        "d_ff": cfg.d_ff,
-        "e_layers": cfg.e_layers,
-        "d_layers": cfg.d_layers,
-        "modes": cfg.modes,
-        "dropout": cfg.dropout,
-        "n_flow_layers": cfg.n_flow_layers,
-        "flow_hidden_dim": cfg.flow_hidden_dim,
-        "enc_in": cfg.enc_in,
-        "dec_in": cfg.dec_in,
-    }
 
 
 # ── T1: Config roundtrip ─────────────────────────────────────────────
@@ -100,7 +77,7 @@ def _make_config_dict(cfg: FEDformerConfig) -> dict:
 
 def test_config_roundtrip(tiny_config: FEDformerConfig, synthetic_csv: Path) -> None:
     """Config sobrevive save→registry→_build_config sin perder arch params."""
-    config_dict = _make_config_dict(tiny_config)
+    config_dict = _build_config_dict(tiny_config)
     entry = {
         "config": config_dict,
         "data": {"file": str(synthetic_csv)},
@@ -143,9 +120,20 @@ def test_preprocessor_artifacts_roundtrip(
     artifacts_dir = tmp_path / "preprocessing"
     fitted_preprocessor.save_artifacts(artifacts_dir)
 
-    # Cargar en un pipeline nuevo
+    # Cargar en un pipeline nuevo con config fresca (settings por defecto)
+    # para verificar que load_artifacts restaura los settings desde el JSON.
+    fresh_config = FEDformerConfig(
+        target_features=TARGET,
+        file_path=str(tiny_config.file_path),
+        **TINY,
+    )
+    fresh_config.enc_in = N_FEATURES
+    fresh_config.dec_in = N_FEATURES
+    # Confirmar que fresh_config tiene el default "robust" (distinto del "standard" del fixture)
+    assert fresh_config.sections.preprocessing.scaling_strategy == "robust"
+
     loaded = PreprocessingPipeline(
-        config=tiny_config,
+        config=fresh_config,
         target_features=TARGET,
     )
     loaded.load_artifacts(artifacts_dir)
@@ -162,6 +150,22 @@ def test_preprocessor_artifacts_roundtrip(
     assert loaded.outlier_bounds == fitted_preprocessor.outlier_bounds
     assert loaded.fill_values == fitted_preprocessor.fill_values
     assert loaded.fitted is True
+
+    # Verificar que settings sobreviven roundtrip
+    assert (
+        loaded.settings.scaling_strategy
+        == fitted_preprocessor.settings.scaling_strategy
+    )
+    assert loaded.settings.missing_policy == fitted_preprocessor.settings.missing_policy
+    assert loaded.settings.outlier_policy == fitted_preprocessor.settings.outlier_policy
+    assert loaded.settings.fit_scope == fitted_preprocessor.settings.fit_scope
+    assert (
+        loaded.settings.categorical_encoding
+        == fitted_preprocessor.settings.categorical_encoding
+    )
+    assert loaded.settings.strict_mode == fitted_preprocessor.settings.strict_mode
+    assert loaded.settings.time_features == fitted_preprocessor.settings.time_features
+    assert loaded.settings.drift_checks == fitted_preprocessor.settings.drift_checks
 
     # Verificar que el scaler produce la misma transformación
     rng = np.random.default_rng(1)
@@ -270,7 +274,7 @@ def test_full_roundtrip_save_load_predict(
     fitted_preprocessor.save_artifacts(prep_dir)
 
     # 4. Registrar en registry (usa register_specialist real)
-    config_dict = _make_config_dict(tiny_config)
+    config_dict = _build_config_dict(tiny_config)
     registry_path = tmp_path / "model_registry.json"
     data_info = {
         "file": str(synthetic_csv),
@@ -355,3 +359,9 @@ def test_enc_in_dec_in_survives_roundtrip(
     assert rebuilt.dec_in == N_FEATURES, (
         f"dec_in corrupted by __post_init__: {rebuilt.dec_in} != {N_FEATURES}"
     )
+
+
+def test_build_config_dict_importable():
+    """_build_config_dict es importable desde main y produce dict con todas las keys."""
+
+    assert callable(_build_config_dict)

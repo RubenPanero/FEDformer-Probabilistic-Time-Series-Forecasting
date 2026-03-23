@@ -50,6 +50,7 @@ class PreprocessingPipeline:
         self.settings = config.sections.preprocessing
         self.target_features = list(target_features)
         self.date_column = date_column
+        self._strict_mode_explicit = strict_mode is not None
         self.strict_mode = (
             self.settings.strict_mode if strict_mode is None else strict_mode
         )
@@ -622,6 +623,54 @@ class PreprocessingPipeline:
         # Restaurar transformada de retornos y últimos precios almacenados
         self.return_transform = metadata.get("return_transform", "none")
         self.last_prices = metadata.get("last_prices", {})
+
+        # Restaurar settings de preprocessing serializados
+        saved_settings = metadata.get("settings", {})
+        if saved_settings:
+            self.settings.feature_roles = saved_settings.get(
+                "feature_roles", self.settings.feature_roles
+            )
+            self.settings.scaling_strategy = saved_settings.get(
+                "scaling_strategy", self.settings.scaling_strategy
+            )
+            self.settings.missing_policy = saved_settings.get(
+                "missing_policy", self.settings.missing_policy
+            )
+            self.settings.outlier_policy = saved_settings.get(
+                "outlier_policy", self.settings.outlier_policy
+            )
+            self.settings.fit_scope = saved_settings.get(
+                "fit_scope", self.settings.fit_scope
+            )
+            self.settings.persist_artifacts = saved_settings.get(
+                "persist_artifacts", self.settings.persist_artifacts
+            )
+            self.settings.drift_checks = saved_settings.get(
+                "drift_checks", self.settings.drift_checks
+            )
+            self.settings.strict_mode = saved_settings.get(
+                "strict_mode", self.settings.strict_mode
+            )
+            self.settings.categorical_encoding = saved_settings.get(
+                "categorical_encoding", self.settings.categorical_encoding
+            )
+            self.settings.time_features = saved_settings.get(
+                "time_features", self.settings.time_features
+            )
+            self.settings.artifact_dir = saved_settings.get(
+                "artifact_dir", self.settings.artifact_dir
+            )
+            self.settings.return_transform = saved_settings.get(
+                "return_transform", self.settings.return_transform
+            )
+
+        # Sincronizar campos cacheados en __init__ con los settings restaurados
+        # (respetar strict_mode si fue overrideado explícitamente en el constructor)
+        if not self._strict_mode_explicit:
+            self.strict_mode = self.settings.strict_mode
+        self.fit_scope = self.settings.fit_scope
+        self.artifact_dir = Path(self.settings.artifact_dir)
+
         self.fitted = True
 
         return self
