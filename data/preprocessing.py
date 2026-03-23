@@ -668,6 +668,10 @@ class PreprocessingPipeline:
         # (respetar strict_mode si fue overrideado explícitamente en el constructor)
         if not self._strict_mode_explicit:
             self.strict_mode = self.settings.strict_mode
+        else:
+            # Mantener settings en sintonía con el override explícito del constructor
+            # para que save_artifacts() serialice el valor correcto
+            self.settings.strict_mode = self.strict_mode
         self.fit_scope = self.settings.fit_scope
         self.artifact_dir = Path(self.settings.artifact_dir)
 

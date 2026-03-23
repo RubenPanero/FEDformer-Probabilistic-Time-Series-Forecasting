@@ -175,6 +175,59 @@ def test_preprocessor_artifacts_roundtrip(
     np.testing.assert_array_equal(original_scaled, loaded_scaled)
 
 
+def test_strict_mode_override_survives_load_artifacts(
+    tiny_config: FEDformerConfig,
+    synthetic_csv: Path,
+    tmp_path: Path,
+) -> None:
+    """Override explícito de strict_mode mantiene settings y comportamiento consistentes tras load_artifacts."""
+    import json
+
+    # El default del config es True; el override es el opuesto
+    assert tiny_config.sections.preprocessing.strict_mode is True
+    override = False
+
+    df = pd.read_csv(synthetic_csv)
+    pipeline = PreprocessingPipeline(
+        config=tiny_config,
+        target_features=TARGET,
+        date_column="date",
+        strict_mode=override,
+    )
+    assert pipeline.strict_mode == override
+    pipeline.fit(df)
+
+    artifacts_dir = tmp_path / "preprocessing_override"
+    pipeline.save_artifacts(artifacts_dir)
+
+    # Cargar con el mismo override explícito en el constructor
+    fresh_config = FEDformerConfig(
+        target_features=TARGET,
+        file_path=str(tiny_config.file_path),
+        **TINY,
+    )
+    fresh_config.enc_in = N_FEATURES
+    fresh_config.dec_in = N_FEATURES
+    loaded = PreprocessingPipeline(
+        config=fresh_config,
+        target_features=TARGET,
+        date_column="date",
+        strict_mode=override,
+    )
+    loaded.load_artifacts(artifacts_dir)
+
+    # self.strict_mode (comportamiento runtime) debe respetar el override
+    assert loaded.strict_mode == override
+    # self.settings.strict_mode debe concordar — sin el fix del P2 sería True
+    assert loaded.settings.strict_mode == override
+
+    # Una serialización posterior debe propagar el override, no el valor del disco
+    resaved_dir = tmp_path / "preprocessing_resave"
+    loaded.save_artifacts(resaved_dir)
+    resaved_meta = json.loads((resaved_dir / "metadata.json").read_text())
+    assert resaved_meta["settings"]["strict_mode"] == override
+
+
 # ── T3: Model state_dict roundtrip ───────────────────────────────────
 
 
