@@ -126,7 +126,12 @@ class BatchTensors:
 
 
 class WalkForwardTrainer:
-    """Monitor de entrenamiento avanzado walk-forward optimizado y a prueba del GC."""
+    """Entrenador walk-forward para evaluacion leakage-safe de series temporales.
+
+    Orquesta splits temporales, entrenamiento por fold, evaluacion
+    probabilistica y persistencia de checkpoints sin mezclar informacion del
+    futuro en el pipeline de entrenamiento.
+    """
 
     def __init__(
         self, config: FEDformerConfig, full_dataset: TimeSeriesDataset
@@ -1098,7 +1103,15 @@ class WalkForwardTrainer:
         return metrics
 
     def run_backtest(self, n_splits: int = 5) -> ForecastOutput:
-        """Despliegue operativo automatizado del algoritmo sobre cortes asincrónos."""
+        """Ejecuta el backtest walk-forward completo y agrega los folds.
+
+        Args:
+            n_splits: Numero total de particiones temporales a evaluar.
+
+        Returns:
+            `ForecastOutput` agregado con predicciones, muestras, cuantiles y
+            metadatos por ventana en todos los folds validos.
+        """
         self._initialize_wandb()
         # Reiniciar métricas probabilísticas por fold para evitar acumulación entre runs
         self.fold_probabilistic_metrics = []

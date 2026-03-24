@@ -15,7 +15,11 @@ from .layers import OptimizedSeriesDecomp
 
 
 class Flow_FEDformer(nn.Module):
-    """Enhanced FEDformer with gradient checkpointing and strict typing."""
+    """Modelo FEDformer probabilistico condicionado por regimes y flows.
+
+    Combina encoder/decoder FEDformer con un bloque de normalizing flows para
+    producir una distribucion predictiva en lugar de una salida puntual.
+    """
 
     # pylint: disable=invalid-name
 
@@ -181,7 +185,22 @@ class Flow_FEDformer(nn.Module):
     def forward(
         self, x_enc: torch.Tensor, x_dec: torch.Tensor, x_regime: torch.Tensor
     ) -> "NormalizingFlowDistribution":
-        """Propagate encoder/decoder inputs and produce a flow distribution."""
+        """Ejecuta el forward y devuelve una distribucion condicionada.
+
+        Args:
+            x_enc: Tensor del encoder con shape `(batch, seq_len, enc_in)`.
+            x_dec: Tensor del decoder con shape
+                `(batch, label_len + pred_len, dec_in)`.
+            x_regime: Tensor de indices de regimen por batch.
+
+        Returns:
+            `NormalizingFlowDistribution` con media y flows condicionados para
+            calcular `log_prob()` o muestrear trayectorias futuras.
+
+        Raises:
+            RuntimeError: Si hay incompatibilidades de shape o falla la
+                propagacion interna del modelo.
+        """
         seasonal_init, trend_init = self._prepare_decoder_input(x_dec)
 
         x_enc_with_regime, seasonal_init_with_regime = self._attach_regime_vectors(
@@ -227,7 +246,12 @@ class Flow_FEDformer(nn.Module):
 
 
 class NormalizingFlowDistribution:
-    """Distribución que encapsula los flows normalizadores"""
+    """Distribucion predictiva respaldada por normalizing flows por feature.
+
+    Expone una interfaz compatible con entrenamiento probabilistico mediante
+    `mean`, `log_prob()` y `sample()`, manteniendo un flow independiente por
+    variable objetivo y su contexto asociado.
+    """
 
     def __init__(
         self, means: torch.Tensor, flows: nn.ModuleList, contexts: torch.Tensor
@@ -245,7 +269,15 @@ class NormalizingFlowDistribution:
     def log_prob(
         self, y_true: torch.Tensor, mask: torch.Tensor | None = None
     ) -> torch.Tensor:
-        """Compute log probability per batch, supports optional mask over time dimension."""
+        """Calcula log-prob medio por batch.
+
+        Args:
+            y_true: Targets reales con shape `(batch, pred_len, c_out)`.
+            mask: Mascara opcional sobre la dimension temporal.
+
+        Returns:
+            Tensor con log-probabilidad media por elemento del batch.
+        """
         batch_size, time_steps, num_features = y_true.shape
         total_lp = torch.zeros(batch_size, device=y_true.device, dtype=y_true.dtype)
 
@@ -269,7 +301,14 @@ class NormalizingFlowDistribution:
         return total_lp / float(time_steps)
 
     def sample(self, n_samples: int) -> torch.Tensor:
-        """Generate samples by inverting the learned flows."""
+        """Genera trayectorias muestreadas desde la distribucion aprendida.
+
+        Args:
+            n_samples: Numero de muestras Monte Carlo a generar.
+
+        Returns:
+            Tensor con shape `(n_samples, batch, pred_len, c_out)`.
+        """
         batch_size, time_steps, num_features = self.means.shape
         feature_samples: list[torch.Tensor] = []
 

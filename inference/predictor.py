@@ -24,7 +24,7 @@ def predict(
     csv_path: str,
     n_samples: int = 50,
 ) -> ForecastOutput:
-    """Genera predicciones probabilísticas sobre datos de un CSV.
+    """Genera predicciones probabilisticas sobre datos nuevos.
 
     Crea un dataset con el preprocessor pre-ajustado (sin re-fit),
     evalúa todas las ventanas disponibles con MC Dropout, y retorna
@@ -39,6 +39,10 @@ def predict(
 
     Returns:
         ForecastOutput con predicciones, cuantiles y muestras.
+
+    Raises:
+        RuntimeError: Si el pipeline de inferencia no puede construir el
+            dataset a partir del preprocesador restaurado.
     """
     # Crear dataset reutilizando el preprocessor pre-ajustado (no re-fit).
     # fit_scope="fold_train_only" activa refit incondicionalmente en _fit_and_transform,

@@ -12,7 +12,13 @@ import numpy as np
 
 @dataclass
 class ForecastOutput:
-    """Contenedor de predicciones en espacio escalado y real."""
+    """Contenedor dual-space para predicciones, muestras y cuantiles.
+
+    La clase preserva tanto el espacio escalado del modelo como el espacio real
+    usado por metricas e interpretacion. `preds_real` sigue siendo la ruta p50
+    de compatibilidad, mientras que los cuantiles explicitos viven en
+    `quantiles_scaled`, `quantiles_real` y `quantile_levels`.
+    """
 
     # Espacio escalado (raw del modelo)
     preds_scaled: np.ndarray  # (n_windows, pred_len, n_targets)

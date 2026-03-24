@@ -38,10 +38,14 @@ A production-ready, optimized implementation of FEDformer (Frequency Enhanced De
 
 ## 🏗️ Architecture Overview
 
-```
-Input Data → Regime Detection → Feature Embedding → FEDformer Encoder/Decoder → Normalizing Flows → Probabilistic Output
-     ↓              ↓                    ↓                      ↓                       ↓                    ↓
-Time Series → Volatility Regimes → Contextual Features → Fourier Attention → Flow Transforms → Full Distribution
+```text
+CSV -> TimeSeriesDataset / PreprocessingPipeline (scale + regimes)
+    -> WalkForwardTrainer (walk-forward, anti-leakage)
+        -> Flow_FEDformer: x_enc, x_dec, x_regime -> Distribution
+            -> FEDformer Encoder/Decoder (Fourier attention)
+            -> Normalizing Flows -> probabilistic forecasts
+    -> ForecastOutput (preds, ground_truth, quantiles, samples)
+    -> RiskSimulator + PortfolioSimulator -> Sharpe, Sortino, MaxDD
 ```
 
 ### Core Components
@@ -90,15 +94,15 @@ Time Series → Volatility Regimes → Contextual Features → Fourier Attention
 
 ### Installation
 
-```powershell
+```bash
 # Clone the repository
 git clone https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting.git
 cd FEDformer-Probabilistic-Time-Series-Forecasting
 
-# Create venv (Windows PowerShell)
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+# Create venv (Linux)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
 
 # Install dependencies
 pip install -r requirements.txt
@@ -106,22 +110,44 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
-```powershell
-# Run with your CSV data
-python main.py \
-    --csv data/your_data.csv \
-    --targets "price,volume" \
-    --date-col "timestamp" \
-    --pred-len 24 \
+```bash
+# Canonical headless NVDA run (seed=7)
+MPLBACKEND=Agg python3 main.py \
+    --csv data/NVDA_features.csv \
+    --targets "Close" \
     --seq-len 96 \
-    --epochs 10 \
-    --batch-size 32
+    --pred-len 20 \
+    --batch-size 64 \
+    --splits 4 \
+    --return-transform log_return \
+    --metric-space returns \
+    --gradient-clip-norm 0.5 \
+    --seed 7 \
+    --save-results \
+    --save-canonical \
+    --no-show
+
+# Canonical headless GOOGL run (seed=7)
+MPLBACKEND=Agg python3 main.py \
+    --csv data/GOOGL_features.csv \
+    --targets "Close" \
+    --seq-len 96 \
+    --pred-len 20 \
+    --batch-size 64 \
+    --splits 4 \
+    --return-transform log_return \
+    --metric-space returns \
+    --gradient-clip-norm 0.5 \
+    --seed 7 \
+    --save-results \
+    --save-canonical \
+    --no-show
 ```
 
 ### Advanced Configuration
 
-```powershell
-python main.py \
+```bash
+MPLBACKEND=Agg python3 main.py \
     --csv data/financial_data.csv \
     --targets "close_price" \
     --date-col "date" \
@@ -137,8 +163,47 @@ python main.py \
     --wandb-entity "your-team" \
     --seed 123 \
     --deterministic \
+    --save-fig results/portfolio.png \
     --no-show
 ```
+
+## Resultados canonicos (seed=7)
+
+| Ticker | Sharpe | Sortino | MaxDD  | Config |
+|--------|--------|---------|--------|--------|
+| NVDA   | +0.990 | +1.857  | -54.2% | seq=96, pred=20, batch=64, splits=4 |
+| GOOGL  | +0.737 | +1.009  | -40.2% | seq=96, pred=20, batch=64, splits=4 |
+
+Config comun: `log_return`, `metric_space=returns`, `gradient_clip_norm=0.5`, `seed=7`
+
+## Inference CLI
+
+Canonical inference requires checkpoints trained with `--save-canonical`, which stores both the model checkpoint and preprocessing artifacts. The repository currently ships canonical specialists for `NVDA` and `GOOGL`.
+
+```bash
+# Canonical model inference
+python3 -m inference --ticker NVDA --csv data/NVDA_features.csv
+python3 -m inference --ticker GOOGL --csv data/GOOGL_features.csv
+
+# Export predictions to CSV
+python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --output results/preds.csv
+
+# Fan chart + calibration plot
+python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --plot --output-dir results/
+
+# List registered canonical specialists
+python3 -m inference --list-models
+```
+
+## Visualizacion probabilistica
+
+The inference CLI can generate:
+
+- Fan chart: p10-p90 band, p50 median, and ground truth.
+- Calibration plot: reliability view and PIT histogram for probabilistic quality checks.
+- Output files: `results/fan_chart_{ticker}.png` and `results/calibration_{ticker}.png`.
+
+In headless environments, prefer `MPLBACKEND=Agg` and `--no-show` for training runs.
 
 ## 🗃️ Data Format
 
@@ -219,7 +284,7 @@ config = FEDformerConfig(
 
 - Status: distributed multi-GPU training is not enabled yet in this repository.
 - Alternatives today:
-  - Use "gradient checkpointing" with `--use-checkpointing` to reduce memory.
+  - Use gradient checkpointing with `--use-checkpointing` to reduce memory.
   - Increase effective batch size with `--grad-accum-steps <N>`.
   - Run multiple independent processes (e.g., different seeds/datasets) to parallelize experiments.
 
@@ -240,28 +305,50 @@ expected_shortfall = risk_sim.calculate_expected_shortfall()
   - `--seed 123 --deterministic`
 - DataLoader workers are seeded for consistent shuffling.
 - cuDNN deterministic may reduce speed; disable with `--deterministic` off.
+- Canonical seed for repository benchmarks is `7`.
 
 ## 📈 Visualization
 
 - Use `--save-fig path.png` to save plots instead of showing them.
 - Use `--no-show` in headless environments.
+- For canonical Linux runs, prefer `MPLBACKEND=Agg`.
 
-## 🧪 Testing (local smoke tests)
+## 🧪 Testing
 
-- Training/backtest smoke test (CPU/GPU):
-  ```powershell
-  python main.py \
-      --csv data/your_data.csv \
-      --targets "price" \
-      --pred-len 8 \
-      --seq-len 32 \
-      --label-len 16 \
-      --epochs 1 \
-      --batch-size 8 \
-      --splits 2 \
-      --seed 123 \
-      --no-show
-  ```
+```bash
+# Fast local CI shard
+pytest -q -m "not slow"
+
+# Full project validation
+pytest -q
+
+# Lint + format parity with CI
+ruff check .
+ruff format --check .
+
+# Pre-commit shorthand
+make ci-check
+# Equivalent to:
+# ruff check . --fix && ruff format . && \
+# pylint --errors-only models/ training/ data/ utils/ inference/ && \
+# pytest -q -m "not slow"
+```
+
+### Local smoke test
+
+```bash
+MPLBACKEND=Agg python3 main.py \
+    --csv data/your_data.csv \
+    --targets "price" \
+    --pred-len 8 \
+    --seq-len 32 \
+    --label-len 16 \
+    --epochs 1 \
+    --batch-size 8 \
+    --splits 2 \
+    --seed 123 \
+    --no-show
+```
 
 ## ⚠️ Notes & Limitations
 

@@ -938,6 +938,11 @@ def _build_config_dict(config: FEDformerConfig, n_splits: int | None = None) -> 
     Args:
         config: Configuración del modelo entrenado.
         n_splits: Número de splits walk-forward (opcional, de args.splits).
+
+    Returns:
+        Diccionario JSON-serializable con los hiperparametros minimos
+        necesarios para reconstruir el modelo y la configuracion de inferencia
+        del especialista canónico.
     """
     d = {
         "seq_len": config.seq_len,

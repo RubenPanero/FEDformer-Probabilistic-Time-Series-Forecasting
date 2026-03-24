@@ -36,7 +36,13 @@ class _IdentityScaler:
 
 
 class PreprocessingPipeline:
-    """Configuración de preprocesado validando esquemas y ajuste seguro ante fugas (leakage-safe)."""
+    """Pipeline reusable de preprocesamiento leakage-safe para train e inferencia.
+
+    El pipeline encapsula inferencia de schema, tratamiento de valores ausentes,
+    clipping de outliers, transformacion opcional a retornos, escalado e
+    inversion de targets. Tambien puede persistir y restaurar artefactos
+    ajustados para reutilizarlos en inferencia sin re-fit.
+    """
 
     VERSION = "1.0"
     _SERIALIZED_SETTINGS = (
@@ -61,6 +67,16 @@ class PreprocessingPipeline:
         date_column: str | None = None,
         strict_mode: bool | None = None,
     ) -> None:
+        """Inicializa un pipeline de preprocesamiento aislado del config compartido.
+
+        Args:
+            config: Configuracion raiz del experimento.
+            target_features: Columnas objetivo que deben preservarse para
+                inversion de escala y chequeos de schema.
+            date_column: Nombre de la columna temporal, si existe.
+            strict_mode: Override explicito del modo estricto. Si es `None`,
+                se usa el valor de `config.sections.preprocessing.strict_mode`.
+        """
         self.config = config
         # Keep pipeline-local preprocessing settings isolated from the shared config object.
         self.settings = copy.deepcopy(config.sections.preprocessing)
@@ -124,6 +140,17 @@ class PreprocessingPipeline:
         date_column: str | None = None,
         strict_mode: bool | None = None,
     ) -> "PreprocessingPipeline":
+        """Construye un pipeline desde un `FEDformerConfig`.
+
+        Args:
+            config: Configuracion raiz del experimento.
+            target_features: Columnas objetivo del problema.
+            date_column: Nombre de la columna temporal, si aplica.
+            strict_mode: Override opcional para el modo estricto.
+
+        Returns:
+            Instancia nueva de `PreprocessingPipeline`.
+        """
         return cls(
             config, target_features, date_column=date_column, strict_mode=strict_mode
         )
@@ -415,7 +442,17 @@ class PreprocessingPipeline:
     def validate_input_schema(
         self, df: pd.DataFrame, feature_df: pd.DataFrame | None = None
     ) -> None:
-        """Chequea deriva en los datos ingresando validadores heurísticos parametrizables."""
+        """Valida schema y deriva estadistica respecto al bloque de ajuste.
+
+        Args:
+            df: DataFrame original recibido por el pipeline.
+            feature_df: Marco de features ya transformado, si el llamador quiere
+                evitar reconstruirlo internamente.
+
+        Raises:
+            ValueError: Si faltan columnas obligatorias o si los checks
+                heurísticos se ejecutan en modo estricto y detectan drift grave.
+        """
         self._validate_required_columns(df)
         if not self.fitted:
             return
@@ -470,7 +507,18 @@ class PreprocessingPipeline:
     def fit(
         self, df: pd.DataFrame, fit_end_idx: int | None = None
     ) -> "PreprocessingPipeline":
-        """Precomputa y entabla el sistema de transformado matemático."""
+        """Ajusta estadisticas y transformaciones sobre el bloque de entrenamiento.
+
+        Args:
+            df: DataFrame completo sobre el que se infieren columnas y
+                estadisticas.
+            fit_end_idx: Indice final exclusivo del bloque usado para ajuste.
+                Si es `None`, se ajusta con todas las filas disponibles tras la
+                transformacion de retornos.
+
+        Returns:
+            La propia instancia del pipeline ya ajustada.
+        """
         raw_features = self._build_feature_frame(df, fit=True)
 
         # Aplicar transformada de retornos antes de escalar
@@ -516,7 +564,21 @@ class PreprocessingPipeline:
         return self
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Devuelve el pipeline normalizado, escalado y blindado sobre el input validado."""
+        """Transforma un DataFrame usando el estado previamente ajustado.
+
+        Args:
+            df: DataFrame de entrada con las columnas requeridas por el schema
+                ajustado durante `fit()`.
+
+        Returns:
+            DataFrame escalado con el mismo orden de columnas que
+            `self.feature_columns`.
+
+        Raises:
+            RuntimeError: Si el pipeline aun no ha sido ajustado.
+            ValueError: Si faltan columnas obligatorias o el schema es
+                incompatible con el estado guardado.
+        """
         if not self.fitted:
             raise RuntimeError(
                 "PreprocessingPipeline obliga realizar fit() antes de cualquier transform()."
@@ -548,7 +610,22 @@ class PreprocessingPipeline:
     def inverse_transform_targets(
         self, y: np.ndarray, target_names: list[str]
     ) -> np.ndarray:
-        """Invierte la normalización de la salida predictiva devolviéndola a escala original."""
+        """Invierte la escala de targets predichos o reales.
+
+        Args:
+            y: Array con shape `(..., n_targets)` en espacio escalado.
+            target_names: Nombres de las columnas objetivo en el mismo orden que
+                la ultima dimension de `y`.
+
+        Returns:
+            Array con la misma shape de entrada, pero desescalado al espacio
+            original.
+
+        Raises:
+            RuntimeError: Si el pipeline aun no ha sido ajustado.
+            ValueError: Si las dimensiones no coinciden o falta alguna target en
+                el schema restaurado.
+        """
         if not self.fitted:
             raise RuntimeError(
                 "PreprocessingPipeline obliga realizar fit() antes de aplicar transformadas inversas."
@@ -577,7 +654,19 @@ class PreprocessingPipeline:
         return out.reshape(*arr.shape[:-1], len(target_names))
 
     def save_artifacts(self, path: str | Path) -> None:
-        """Consolida las métricas inferidas, límites de umbrales y escaladores robustamente."""
+        """Serializa el estado ajustado del pipeline en disco.
+
+        Guarda el schema, metadata analitica y el scaler ajustado. El contenido
+        serializado es suficiente para reconstruir el pipeline en inferencia sin
+        volver a ajustar estadisticas con datos nuevos.
+
+        Args:
+            path: Directorio destino donde se escribiran `schema.json`,
+                `metadata.json` y `scaler.pkl`.
+
+        Raises:
+            RuntimeError: Si el pipeline aun no ha sido ajustado.
+        """
         if not self.fitted:
             raise RuntimeError(
                 "No hay transformaciones estadísticas que serializar (unfitted state)."
@@ -631,7 +720,19 @@ class PreprocessingPipeline:
             pickle.dump(self.scaler, file)
 
     def load_artifacts(self, path: str | Path) -> "PreprocessingPipeline":
-        """Sobreescribe iteradores vacíos reinyectando memoria analítica de JSONs."""
+        """Restaura artefactos de preprocesamiento serializados.
+
+        El metodo reconstruye schema, metadata, scaler y settings ajustados. Si
+        el constructor recibio overrides explicitos, esos valores conservan
+        precedencia sobre los valores restaurados desde disco.
+
+        Args:
+            path: Directorio que contiene los artefactos exportados por
+                `save_artifacts()`.
+
+        Returns:
+            La instancia actual del pipeline con su estado restaurado.
+        """
         in_dir = Path(path)
         schema = json.loads((in_dir / "schema.json").read_text(encoding="utf-8"))
         metadata = json.loads((in_dir / "metadata.json").read_text(encoding="utf-8"))
