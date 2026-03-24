@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import json
 from pathlib import Path
 
 import numpy as np
@@ -175,17 +176,67 @@ def test_preprocessor_artifacts_roundtrip(
     np.testing.assert_array_equal(original_scaled, loaded_scaled)
 
 
+@pytest.mark.parametrize(
+    "saved_strict_mode,default_strict_mode", [(False, True), (True, False)]
+)
+def test_strict_mode_from_artifacts_when_not_explicit(
+    tiny_config: FEDformerConfig,
+    synthetic_csv: Path,
+    tmp_path: Path,
+    saved_strict_mode: bool,
+    default_strict_mode: bool,
+) -> None:
+    """Sin override explícito en constructor, load_artifacts debe restaurar strict_mode desde disco."""
+    tiny_config.sections.preprocessing.strict_mode = saved_strict_mode
+
+    df = pd.read_csv(synthetic_csv)
+    pipeline = PreprocessingPipeline(
+        config=tiny_config,
+        target_features=TARGET,
+        date_column="date",
+    )
+    assert pipeline.strict_mode == saved_strict_mode
+    pipeline.fit(df)
+
+    artifacts_dir = tmp_path / "preprocessing_no_override"
+    pipeline.save_artifacts(artifacts_dir)
+
+    # Cargar sin strict_mode explícito para cubrir la ruta _strict_mode_explicit=False.
+    fresh_config = FEDformerConfig(
+        target_features=TARGET,
+        file_path=str(tiny_config.file_path),
+        **TINY,
+    )
+    fresh_config.enc_in = N_FEATURES
+    fresh_config.dec_in = N_FEATURES
+    fresh_config.sections.preprocessing.strict_mode = default_strict_mode
+    loaded = PreprocessingPipeline(
+        config=fresh_config,
+        target_features=TARGET,
+        date_column="date",
+    )
+    loaded.load_artifacts(artifacts_dir)
+
+    assert loaded.strict_mode == saved_strict_mode
+    assert loaded.settings.strict_mode == saved_strict_mode
+
+    # Una serialización posterior debe preservar el valor restaurado desde disco.
+    resaved_dir = tmp_path / "preprocessing_resave"
+    loaded.save_artifacts(resaved_dir)
+    resaved_meta = json.loads((resaved_dir / "metadata.json").read_text())
+    assert resaved_meta["settings"]["strict_mode"] == saved_strict_mode
+
+
+@pytest.mark.parametrize("override,default_strict_mode", [(False, True), (True, False)])
 def test_strict_mode_override_survives_load_artifacts(
     tiny_config: FEDformerConfig,
     synthetic_csv: Path,
     tmp_path: Path,
+    override: bool,
+    default_strict_mode: bool,
 ) -> None:
-    """Override explícito de strict_mode mantiene settings y comportamiento consistentes tras load_artifacts."""
-    import json
-
-    # El default del config es True; el override es el opuesto
-    assert tiny_config.sections.preprocessing.strict_mode is True
-    override = False
+    """Override explícito de strict_mode debe prevalecer tras load_artifacts en ambas direcciones."""
+    tiny_config.sections.preprocessing.strict_mode = default_strict_mode
 
     df = pd.read_csv(synthetic_csv)
     pipeline = PreprocessingPipeline(
@@ -200,7 +251,6 @@ def test_strict_mode_override_survives_load_artifacts(
     artifacts_dir = tmp_path / "preprocessing_override"
     pipeline.save_artifacts(artifacts_dir)
 
-    # Cargar con el mismo override explícito en el constructor
     fresh_config = FEDformerConfig(
         target_features=TARGET,
         file_path=str(tiny_config.file_path),
@@ -208,6 +258,7 @@ def test_strict_mode_override_survives_load_artifacts(
     )
     fresh_config.enc_in = N_FEATURES
     fresh_config.dec_in = N_FEATURES
+    fresh_config.sections.preprocessing.strict_mode = default_strict_mode
     loaded = PreprocessingPipeline(
         config=fresh_config,
         target_features=TARGET,
@@ -216,16 +267,99 @@ def test_strict_mode_override_survives_load_artifacts(
     )
     loaded.load_artifacts(artifacts_dir)
 
-    # self.strict_mode (comportamiento runtime) debe respetar el override
+    # self.strict_mode (comportamiento runtime) debe respetar el override.
     assert loaded.strict_mode == override
-    # self.settings.strict_mode debe concordar — sin el fix del P2 sería True
+    # self.settings.strict_mode debe concordar con el override explícito.
     assert loaded.settings.strict_mode == override
 
-    # Una serialización posterior debe propagar el override, no el valor del disco
-    resaved_dir = tmp_path / "preprocessing_resave"
+    # Una serialización posterior debe propagar el override, no el valor del disco.
+    resaved_dir = tmp_path / "preprocessing_resave_override"
     loaded.save_artifacts(resaved_dir)
     resaved_meta = json.loads((resaved_dir / "metadata.json").read_text())
     assert resaved_meta["settings"]["strict_mode"] == override
+
+
+def test_load_artifacts_override_does_not_mutate_shared_config(
+    tiny_config: FEDformerConfig,
+    synthetic_csv: Path,
+    tmp_path: Path,
+) -> None:
+    """El pipeline cargado debe aislar sus settings locales del config compartido."""
+    tiny_config.sections.preprocessing.strict_mode = True
+
+    df = pd.read_csv(synthetic_csv)
+    pipeline = PreprocessingPipeline(
+        config=tiny_config,
+        target_features=TARGET,
+        date_column="date",
+        strict_mode=False,
+    )
+    pipeline.fit(df)
+
+    artifacts_dir = tmp_path / "preprocessing_isolated"
+    pipeline.save_artifacts(artifacts_dir)
+
+    fresh_config = FEDformerConfig(
+        target_features=TARGET,
+        file_path=str(tiny_config.file_path),
+        **TINY,
+    )
+    fresh_config.enc_in = N_FEATURES
+    fresh_config.dec_in = N_FEATURES
+    fresh_config.sections.preprocessing.strict_mode = True
+    loaded = PreprocessingPipeline(
+        config=fresh_config,
+        target_features=TARGET,
+        date_column="date",
+        strict_mode=False,
+    )
+    loaded.load_artifacts(artifacts_dir)
+
+    assert fresh_config.sections.preprocessing.strict_mode is True
+    assert loaded.settings.strict_mode is False
+    assert loaded.strict_mode is False
+
+
+def test_load_artifacts_with_null_settings_keeps_constructor_defaults(
+    tiny_config: FEDformerConfig,
+    fitted_preprocessor: PreprocessingPipeline,
+    tmp_path: Path,
+) -> None:
+    """Artifacts corruptos con settings=null no deben dejar estado parcialmente restaurado."""
+    artifacts_dir = tmp_path / "preprocessing_null_settings"
+    fitted_preprocessor.save_artifacts(artifacts_dir)
+
+    metadata_path = artifacts_dir / "metadata.json"
+    metadata = json.loads(metadata_path.read_text())
+    metadata["settings"] = None
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    fresh_config = FEDformerConfig(
+        target_features=TARGET,
+        file_path=str(tiny_config.file_path),
+        **TINY,
+    )
+    fresh_config.enc_in = N_FEATURES
+    fresh_config.dec_in = N_FEATURES
+    fresh_config.sections.preprocessing.scaling_strategy = "minmax"
+    fresh_config.sections.preprocessing.strict_mode = False
+    fresh_config.sections.preprocessing.fit_scope = "global_train"
+    fresh_config.sections.preprocessing.artifact_dir = "reports/custom-prep"
+
+    loaded = PreprocessingPipeline(
+        config=fresh_config,
+        target_features=TARGET,
+        date_column="date",
+    )
+    loaded.load_artifacts(artifacts_dir)
+
+    assert loaded.settings.scaling_strategy == "minmax"
+    assert loaded.settings.strict_mode is False
+    assert loaded.settings.fit_scope == "global_train"
+    assert loaded.settings.artifact_dir == "reports/custom-prep"
+    assert loaded.strict_mode is False
+    assert loaded.fit_scope == "global_train"
+    assert loaded.artifact_dir == Path("reports/custom-prep")
 
 
 # ── T3: Model state_dict roundtrip ───────────────────────────────────

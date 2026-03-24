@@ -6,6 +6,7 @@ Refactorizado a Python 3.10+ para garantizar typing nativo purificado, eficienci
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import pickle
@@ -38,6 +39,20 @@ class PreprocessingPipeline:
     """Configuración de preprocesado validando esquemas y ajuste seguro ante fugas (leakage-safe)."""
 
     VERSION = "1.0"
+    _SERIALIZED_SETTINGS = (
+        "feature_roles",
+        "scaling_strategy",
+        "missing_policy",
+        "outlier_policy",
+        "fit_scope",
+        "persist_artifacts",
+        "drift_checks",
+        "strict_mode",
+        "categorical_encoding",
+        "time_features",
+        "artifact_dir",
+        "return_transform",
+    )
 
     def __init__(
         self,
@@ -47,15 +62,16 @@ class PreprocessingPipeline:
         strict_mode: bool | None = None,
     ) -> None:
         self.config = config
-        self.settings = config.sections.preprocessing
+        # Keep pipeline-local preprocessing settings isolated from the shared config object.
+        self.settings = copy.deepcopy(config.sections.preprocessing)
         self.target_features = list(target_features)
         self.date_column = date_column
-        self._strict_mode_explicit = strict_mode is not None
-        self.strict_mode = (
-            self.settings.strict_mode if strict_mode is None else strict_mode
+        self._constructor_setting_overrides = (
+            self._collect_constructor_setting_overrides(strict_mode=strict_mode)
         )
-        self.fit_scope = self.settings.fit_scope
 
+        self.strict_mode = self.settings.strict_mode
+        self.fit_scope = self.settings.fit_scope
         self.return_transform: str = self.settings.return_transform
         self.last_prices: dict[str, float] = {}
         # Alias de target_cols para compatibilidad con métodos de retorno
@@ -79,6 +95,26 @@ class PreprocessingPipeline:
 
         self.artifact_dir = Path(self.settings.artifact_dir)
         self.scaler: Any = _IdentityScaler()
+        self._apply_constructor_setting_overrides()
+        self._sync_cached_settings()
+
+    def _collect_constructor_setting_overrides(
+        self, **overrides: Any
+    ) -> dict[str, Any]:
+        """Collect explicit constructor overrides that should win over artifact settings."""
+        return {name: value for name, value in overrides.items() if value is not None}
+
+    def _apply_constructor_setting_overrides(self) -> None:
+        """Apply explicit constructor overrides to the pipeline-local settings copy."""
+        for name, value in self._constructor_setting_overrides.items():
+            setattr(self.settings, name, value)
+
+    def _sync_cached_settings(self) -> None:
+        """Keep cached runtime fields aligned with the current settings object."""
+        self.strict_mode = self.settings.strict_mode
+        self.fit_scope = self.settings.fit_scope
+        self.artifact_dir = Path(self.settings.artifact_dir)
+        self.return_transform = self.settings.return_transform
 
     @classmethod
     def from_config(
@@ -625,55 +661,19 @@ class PreprocessingPipeline:
         self.last_prices = metadata.get("last_prices", {})
 
         # Restaurar settings de preprocessing serializados
-        saved_settings = metadata.get("settings", {})
-        if saved_settings:
-            self.settings.feature_roles = saved_settings.get(
-                "feature_roles", self.settings.feature_roles
-            )
-            self.settings.scaling_strategy = saved_settings.get(
-                "scaling_strategy", self.settings.scaling_strategy
-            )
-            self.settings.missing_policy = saved_settings.get(
-                "missing_policy", self.settings.missing_policy
-            )
-            self.settings.outlier_policy = saved_settings.get(
-                "outlier_policy", self.settings.outlier_policy
-            )
-            self.settings.fit_scope = saved_settings.get(
-                "fit_scope", self.settings.fit_scope
-            )
-            self.settings.persist_artifacts = saved_settings.get(
-                "persist_artifacts", self.settings.persist_artifacts
-            )
-            self.settings.drift_checks = saved_settings.get(
-                "drift_checks", self.settings.drift_checks
-            )
-            self.settings.strict_mode = saved_settings.get(
-                "strict_mode", self.settings.strict_mode
-            )
-            self.settings.categorical_encoding = saved_settings.get(
-                "categorical_encoding", self.settings.categorical_encoding
-            )
-            self.settings.time_features = saved_settings.get(
-                "time_features", self.settings.time_features
-            )
-            self.settings.artifact_dir = saved_settings.get(
-                "artifact_dir", self.settings.artifact_dir
-            )
-            self.settings.return_transform = saved_settings.get(
-                "return_transform", self.settings.return_transform
-            )
+        saved_settings = metadata.get("settings")
+        if isinstance(saved_settings, dict):
+            for name in self._SERIALIZED_SETTINGS:
+                setattr(
+                    self.settings,
+                    name,
+                    saved_settings.get(name, getattr(self.settings, name)),
+                )
 
-        # Sincronizar campos cacheados en __init__ con los settings restaurados
-        # (respetar strict_mode si fue overrideado explícitamente en el constructor)
-        if not self._strict_mode_explicit:
-            self.strict_mode = self.settings.strict_mode
-        else:
-            # Mantener settings en sintonía con el override explícito del constructor
-            # para que save_artifacts() serialice el valor correcto
-            self.settings.strict_mode = self.strict_mode
-        self.fit_scope = self.settings.fit_scope
-        self.artifact_dir = Path(self.settings.artifact_dir)
+        # Reapply explicit constructor overrides after restoring artifacts so the
+        # precedence rule stays symmetric for every supported constructor override.
+        self._apply_constructor_setting_overrides()
+        self._sync_cached_settings()
 
         self.fitted = True
 
