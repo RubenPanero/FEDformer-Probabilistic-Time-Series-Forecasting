@@ -23,7 +23,7 @@ FEDformer (Frequency Enhanced Decomposed Transformer) + Normalizing Flows para p
 ## Stack
 
 Python 3.10+ · PyTorch 2.0+ · pandas · scikit-learn · Optuna · W&B (opcional)
-Linting: `ruff` (88 chars) · Tests: `pytest` (342 fast + 7 @slow)
+Linting: `ruff` (88 chars) · Tests: `pytest` (350 fast + 7 @slow)
 Entorno: `.venv/` · Linux Mint 22.3 → **usar `python3`** (nunca `python`)
 
 ## Navegación de código
@@ -158,12 +158,14 @@ Historial multi-ticker y resultados → auto-memory `MEMORY.md` (cargado automá
   - NO tiene `--targets` ni `--study-name`
   - **Siempre** pasar `--compile-mode ""` (default `max-autotune` causa compilación en cada trial)
   - `--seed 7` obligatorio. Trials fallidos retornan `-1.0` (no contaminan TPE)
-  - Espacio: 76 combinaciones válidas. Con ≤12 trials, TPE ≈ random search
+  - **Phase 6 P2**: 10 HPs — `seq_len, pred_len, batch_size, clip, e_layers, d_layers, n_flow_layers, flow_hidden_dim, label_len, dropout`. Espacio: 31,104 combinaciones válidas.
+  - **Restricciones estructurales** (via `TrialPruned`): `seq_len >= pred_len * 3` y `label_len <= seq_len`
+  - Al extender el espacio con nuevos HPs: backfill con `CANONICAL_TRIAL_PARAMS` para compatibilidad con estudios legacy
 - **`torch.compile` guard** (`trainer.py`): degrada `max-autotune→""` en GPUs <40 SMs. RTX 4050 (20 SMs) → sin compile. T4 (40 SMs) → NO degrada → timeouts.
 - **`run_manifest_*.json`**: métricas en `manifest["metrics"]`, NO en raíz.
 - **`scripts/__init__.py` obligatorio**: sin él, tests lanzan `ModuleNotFoundError`.
 - **Scripts bash**: NUNCA usar `Write` tool → produce CRLF. Usar `Bash` + `cat > file << 'EOF'`.
-- **Bash paths con espacios**: `ls "path con espacio"/glob*` falla silenciosamente. Usar `python3 -c "glob.glob(...)"` para listar/leer archivos con paths con espacios. En scripts, usar `PROJDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"` en vez de hardcodear el path.
+- **Bash paths con espacios**: `ls "path con espacio"/glob*` falla silenciosamente. Usar `python3 -c "glob.glob(...)"` para listar/leer. **PROJDIR en scripts bash**: `cd "$(dirname "${BASH_SOURCE[0]}")/.."` falla con rutas con espacios — usar walk-up Python: arrancar en `os.path.realpath(BASH_SOURCE[0])` y subir directorios buscando marker file (e.g. `tune_hyperparams.py`). Patrón verificado en `archivos auxiliares/smoke_phase6_p2.sh`.
 - **Bash scripts — `set -u`**: obligatorio para detectar variables vacías (e.g. PROJDIR="" → `mkdir /logs` en vez de error claro).
 - **`.ipynb` en CI**: nunca commitear a `main` — ruff los parsea y rompe Actions.
 - **Kaggle notebooks**: generar con `Bash` + `python3 << 'PYEOF'` (hooks bloquean Write/Read sobre .ipynb). Usar `#` comentarios, nunca `"""..."""` en celdas PYEOF.
