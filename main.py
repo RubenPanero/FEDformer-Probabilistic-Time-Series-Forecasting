@@ -354,28 +354,38 @@ def _create_config(
     args: argparse.Namespace, targets: List[str], csv_path: str
 ) -> FEDformerConfig:
     """Preinstala instancias de comportamiento dictadas externamente al manifest nativo."""
+    # Solo parámetros estructurales en el constructor — no tienen equivalente en presets
     config = FEDformerConfig(
         file_path=csv_path,
         target_features=targets,
-        pred_len=args.pred_len,
-        seq_len=args.seq_len,
-        label_len=args.label_len,
-        batch_size=args.batch_size,
-        use_gradient_checkpointing=args.use_checkpointing,
-        gradient_accumulation_steps=args.grad_accum_steps,
-        finetune_from=args.finetune_from,
-        freeze_backbone=args.freeze_backbone,
-        finetune_lr=args.finetune_lr,
         wandb_project=args.wandb_project,
         wandb_entity=args.wandb_entity,
         date_column=args.date_col,
         wandb_run_name=f"Modular-Flow-FEDformer_{int(time.time())}",
-        seed=args.seed,
-        deterministic=args.deterministic,
-        return_transform=args.return_transform,
-        metric_space=args.metric_space,
     )
 
+    # Orden correcto: config_base → apply_preset() → flags_CLI
+    if args.preset is not None:
+        apply_preset(config, args.preset)
+
+    # Parámetros CLI que siempre se aplican (tienen defaults no-None en argparse)
+    config.pred_len = args.pred_len
+    config.seq_len = args.seq_len
+    config.label_len = args.label_len
+    config.batch_size = args.batch_size
+    config.seed = args.seed
+    config.deterministic = args.deterministic
+    config.return_transform = args.return_transform
+    config.metric_space = args.metric_space
+    config.use_gradient_checkpointing = args.use_checkpointing
+    config.gradient_accumulation_steps = args.grad_accum_steps
+    config.freeze_backbone = args.freeze_backbone
+
+    # Parámetros opcionales (default=None en argparse)
+    if args.finetune_from is not None:
+        config.finetune_from = args.finetune_from
+    if args.finetune_lr is not None:
+        config.finetune_lr = args.finetune_lr
     if args.e_layers is not None:
         config.e_layers = args.e_layers
     if args.d_layers is not None:
@@ -411,10 +421,6 @@ def _create_config(
         config.rehearsal_lr_mult = args.rehearsal_lr_mult
     if args.compile_mode is not None:
         config.compile_mode = args.compile_mode
-
-    # Aplicar preset si se especificó (prioridad: defaults < preset < CLI)
-    if args.preset is not None:
-        apply_preset(config, args.preset)
 
     logger.info("Transmisión paramétrica asimilada de manera segura")
     logger.info(

@@ -369,6 +369,65 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
     assert cfg.metric_space == "prices"
 
 
+def test_create_config_cli_wins_over_preset() -> None:
+    """CLI flags siempre tienen prioridad sobre --preset (orden: config_base → preset → flags_CLI)."""
+    import argparse
+
+    import main as main_module
+
+    # preset 'debug' establece seq_len=32, pred_len=8, batch_size=16
+    # Los valores CLI (96, 20, 64) deben ganar
+    args = argparse.Namespace(
+        seq_len=96,
+        pred_len=20,
+        batch_size=64,
+        label_len=48,
+        preset="debug",
+        e_layers=None,
+        d_layers=None,
+        n_flow_layers=None,
+        flow_hidden_dim=None,
+        epochs=None,
+        dropout=None,
+        weight_decay=None,
+        learning_rate=None,
+        scheduler_type=None,
+        warmup_epochs=None,
+        patience=None,
+        min_delta=None,
+        gradient_clip_norm=None,
+        rehearsal_k=None,
+        rehearsal_epochs=None,
+        rehearsal_lr_mult=None,
+        compile_mode=None,
+        use_checkpointing=False,
+        grad_accum_steps=1,
+        finetune_from=None,
+        freeze_backbone=False,
+        finetune_lr=None,
+        wandb_project=None,
+        wandb_entity=None,
+        date_col=None,
+        seed=7,
+        deterministic=False,
+        return_transform="log_return",
+        metric_space="returns",
+        conformal_calibration=False,
+        cp_walkforward=False,
+    )
+    config = main_module._create_config(args, targets=["Close"], csv_path=FIXTURE_CSV)
+
+    assert config.seq_len == 96, (
+        f"CLI seq_len=96 debe ganar sobre preset debug seq_len=32, got {config.seq_len}"
+    )
+    assert config.pred_len == 20, (
+        f"CLI pred_len=20 debe ganar sobre preset debug pred_len=8, got {config.pred_len}"
+    )
+    assert config.batch_size == 64, (
+        f"CLI batch_size=64 debe ganar sobre preset debug batch_size=16, got {config.batch_size}"
+    )
+
+
 def test_save_results_to_csv_generates_fallback_target_names(tmp_path: Path) -> None:
     """_save_results_to_csv exporta filas aunque ForecastOutput no traiga target_names."""
     import main as main_module
