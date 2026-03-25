@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import Subset
 
@@ -256,6 +257,63 @@ def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_create_config_wires_architecture_flags() -> None:
+    """_create_config propaga flags de arquitectura al FEDformerConfig."""
+    import argparse
+
+    import main as main_module
+
+    args = argparse.Namespace(
+        pred_len=20,
+        seq_len=96,
+        label_len=48,
+        batch_size=8,
+        use_checkpointing=False,
+        grad_accum_steps=1,
+        finetune_from=None,
+        freeze_backbone=False,
+        finetune_lr=None,
+        wandb_project="test",
+        wandb_entity=None,
+        date_col=None,
+        seed=42,
+        deterministic=False,
+        epochs=None,
+        return_transform="log_return",
+        metric_space="prices",
+        dropout=None,
+        weight_decay=None,
+        learning_rate=None,
+        scheduler_type=None,
+        warmup_epochs=None,
+        patience=None,
+        min_delta=None,
+        gradient_clip_norm=None,
+        rehearsal_k=None,
+        rehearsal_epochs=None,
+        rehearsal_lr_mult=None,
+        preset=None,
+        conformal_calibration=False,
+        cp_walkforward=False,
+        compile_mode=None,
+        e_layers=5,
+        d_layers=3,
+        n_flow_layers=4,
+        flow_hidden_dim=128,
+    )
+
+    cfg = main_module._create_config(
+        args,
+        targets=["Close"],
+        csv_path=FIXTURE_CSV,
+    )
+
+    assert cfg.e_layers == 5
+    assert cfg.d_layers == 3
+    assert cfg.n_flow_layers == 4
+    assert cfg.flow_hidden_dim == 128
+
+
 def test_create_config_wires_return_transform_and_metric_space() -> None:
     """_create_config propaga --return-transform y --metric-space a FEDformerConfig."""
     import argparse
@@ -295,6 +353,10 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
         conformal_calibration=False,
         cp_walkforward=False,
         compile_mode=None,
+        e_layers=None,
+        d_layers=None,
+        n_flow_layers=None,
+        flow_hidden_dim=None,
     )
 
     cfg = main_module._create_config(
@@ -305,3 +367,32 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
 
     assert cfg.return_transform == "log_return"
     assert cfg.metric_space == "prices"
+
+
+def test_save_results_to_csv_generates_fallback_target_names(tmp_path: Path) -> None:
+    """_save_results_to_csv exporta filas aunque ForecastOutput no traiga target_names."""
+    import main as main_module
+
+    forecast = ForecastOutput(
+        preds_scaled=np.zeros((1, 2, 1)),
+        gt_scaled=np.zeros((1, 2, 1)),
+        samples_scaled=np.zeros((1, 1, 2, 1)),
+        preds_real=np.array([[[1.0], [2.0]]]),
+        gt_real=np.array([[[1.5], [2.5]]]),
+        samples_real=np.zeros((1, 1, 2, 1)),
+        metric_space="returns",
+        return_transform="none",
+        target_names=None,
+    )
+
+    main_module._save_results_to_csv(
+        forecast=forecast,
+        risk_metrics={},
+        portfolio_metrics={},
+        results_dir=tmp_path,
+        timestamp="20260324_000000",
+    )
+
+    exported = pd.read_csv(tmp_path / "predictions_20260324_000000.csv")
+    assert len(exported) == 2
+    assert set(exported["target"]) == {"target_0"}

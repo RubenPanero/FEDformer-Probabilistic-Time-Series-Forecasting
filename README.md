@@ -154,6 +154,11 @@ MPLBACKEND=Agg python3 main.py \
     --pred-len 24 \
     --seq-len 96 \
     --label-len 48 \
+    --e-layers 3 \
+    --d-layers 1 \
+    --n-flow-layers 4 \
+    --flow-hidden-dim 64 \
+    --dropout 0.1 \
     --epochs 15 \
     --batch-size 64 \
     --splits 5 \
@@ -166,6 +171,41 @@ MPLBACKEND=Agg python3 main.py \
     --save-fig results/portfolio.png \
     --no-show
 ```
+
+Arquitectura y regularizacion opcionales expuestas por CLI:
+
+- `--e-layers`: profundidad del encoder.
+- `--d-layers`: profundidad del decoder.
+- `--n-flow-layers`: numero de coupling layers del normalizing flow.
+- `--flow-hidden-dim`: dimension interna del conditioner del flow.
+- `--label-len`: contexto de solape del decoder.
+- `--dropout`: regularizacion global del modelo.
+
+### Optuna search space (Fase 6)
+
+`tune_hyperparams.py` explora 10 HPs:
+
+- Base: `seq_len`, `pred_len`, `batch_size`, `gradient_clip_norm`
+- Arquitectura: `e_layers`, `d_layers`, `n_flow_layers`, `flow_hidden_dim`
+- Decoder / regularizacion: `label_len`, `dropout`
+
+Valores actuales:
+
+- `seq_len`: `[48, 64, 96, 128]`
+- `pred_len`: `[4, 6, 8, 10, 20]`
+- `batch_size`: `[32, 64]`
+- `gradient_clip_norm`: `[0.3, 0.5]`
+- `e_layers`: `[1, 2, 3]`
+- `d_layers`: `[1, 2]`
+- `n_flow_layers`: `[2, 4, 6]`
+- `flow_hidden_dim`: `[32, 64, 128]`
+- `label_len`: `[24, 48, 96]`
+- `dropout`: `[0.05, 0.1, 0.2]`
+
+Restricciones estructurales activas durante la optimizacion:
+
+- `seq_len >= pred_len * 3`
+- `label_len <= seq_len`
 
 ## Resultados canonicos (seed=7)
 

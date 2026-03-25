@@ -30,13 +30,16 @@ Uso:
 """
 
 import argparse
+import itertools
 import logging
 import math
 import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import optuna
 import pandas as pd
@@ -57,6 +60,48 @@ SEQ_LENS = [48, 64, 96, 128]
 PRED_LENS = [4, 6, 8, 10, 20]  # todos pares (requisito del affine coupling)
 BATCH_SIZES = [32, 64]
 CLIP_NORMS = [0.3, 0.5]
+E_LAYERS = [1, 2, 3]
+D_LAYERS = [1, 2]
+N_FLOW_LAYERS = [2, 4, 6]
+FLOW_HIDDEN_DIMS = [32, 64, 128]
+LABEL_LENS = [24, 48, 96]
+DROPOUTS = [0.05, 0.1, 0.2]
+
+
+@dataclass(frozen=True)
+class SearchParameter:
+    """Representa un hiperparámetro tuneable del estudio de Optuna."""
+
+    name: str
+    choices: tuple[Any, ...]
+    cli_flag: str
+
+
+SEARCH_PARAMETERS: tuple[SearchParameter, ...] = (
+    SearchParameter("seq_len", tuple(SEQ_LENS), "--seq-len"),
+    SearchParameter("pred_len", tuple(PRED_LENS), "--pred-len"),
+    SearchParameter("batch_size", tuple(BATCH_SIZES), "--batch-size"),
+    SearchParameter("gradient_clip_norm", tuple(CLIP_NORMS), "--gradient-clip-norm"),
+    SearchParameter("e_layers", tuple(E_LAYERS), "--e-layers"),
+    SearchParameter("d_layers", tuple(D_LAYERS), "--d-layers"),
+    SearchParameter("n_flow_layers", tuple(N_FLOW_LAYERS), "--n-flow-layers"),
+    SearchParameter("flow_hidden_dim", tuple(FLOW_HIDDEN_DIMS), "--flow-hidden-dim"),
+    SearchParameter("label_len", tuple(LABEL_LENS), "--label-len"),
+    SearchParameter("dropout", tuple(DROPOUTS), "--dropout"),
+)
+
+CANONICAL_TRIAL_PARAMS: dict[str, Any] = {
+    "seq_len": 96,
+    "pred_len": 20,
+    "batch_size": 64,
+    "gradient_clip_norm": 0.5,
+    "e_layers": 2,
+    "d_layers": 1,
+    "n_flow_layers": 4,
+    "flow_hidden_dim": 64,
+    "label_len": 48,
+    "dropout": 0.1,
+}
 
 # Tickers adicionales para alcanzar 12 activos — cobertura sectorial diversa:
 #   Semiconductores:  AMD, INTC  (peers directos de NVDA)
@@ -296,6 +341,53 @@ def _compose_trial_score(
     return score if math.isfinite(score) else 0.0
 
 
+def _suggest_search_parameters(trial: optuna.Trial) -> dict[str, Any]:
+    """Sugiere el espacio de búsqueda completo para un trial."""
+    params: dict[str, Any] = {}
+    for parameter in SEARCH_PARAMETERS:
+        params[parameter.name] = trial.suggest_categorical(
+            parameter.name, list(parameter.choices)
+        )
+    return params
+
+
+def _extend_cmd_with_search_parameters(
+    cmd: list[str],
+    params: dict[str, Any],
+) -> None:
+    """Añade al comando los flags del espacio de búsqueda centralizado."""
+    params = {**CANONICAL_TRIAL_PARAMS, **params}
+    for parameter in SEARCH_PARAMETERS:
+        cmd.extend([parameter.cli_flag, str(params[parameter.name])])
+
+
+def _count_search_space_combinations() -> int:
+    """Cuenta solo combinaciones válidas tras aplicar las restricciones estructurales."""
+    total = 0
+    for seq_len, pred_len, label_len in itertools.product(
+        SEQ_LENS, PRED_LENS, LABEL_LENS
+    ):
+        if seq_len < pred_len * 3 or label_len > seq_len:
+            continue
+        total += 1
+
+    for parameter in SEARCH_PARAMETERS:
+        if parameter.name in {"seq_len", "pred_len", "label_len"}:
+            continue
+        total *= len(parameter.choices)
+    return total
+
+
+def _build_trial_env() -> dict[str, str]:
+    """Construye un entorno seguro para trials y reruns lanzados por Optuna."""
+    env = os.environ.copy()
+    env["MPLBACKEND"] = "Agg"
+    env["MPLCONFIGDIR"] = str(Path("/tmp") / "matplotlib")
+    env["WANDB_MODE"] = "disabled"
+    env["WANDB_DISABLED"] = "true"
+    return env
+
+
 # ---------------------------------------------------------------------------
 # Función objetivo
 # ---------------------------------------------------------------------------
@@ -328,14 +420,25 @@ def objective(
     Returns:
         Score penalizado, o -1.0 si el trial falló.
     """
-    seq_len = trial.suggest_categorical("seq_len", SEQ_LENS)
-    pred_len = trial.suggest_categorical("pred_len", PRED_LENS)
-    batch_size = trial.suggest_categorical("batch_size", BATCH_SIZES)
-    clip_norm = trial.suggest_categorical("gradient_clip_norm", CLIP_NORMS)
+    params = _suggest_search_parameters(trial)
+    seq_len = params["seq_len"]
+    pred_len = params["pred_len"]
+    batch_size = params["batch_size"]
+    clip_norm = params["gradient_clip_norm"]
+    e_layers = params["e_layers"]
+    d_layers = params["d_layers"]
+    n_flow_layers = params["n_flow_layers"]
+    flow_hidden_dim = params["flow_hidden_dim"]
+    label_len = params["label_len"]
+    dropout = params["dropout"]
 
     # Restricción estructural: el contexto debe ser al menos 3× la predicción
     # para que el encoder tenga suficiente señal temporal
     if seq_len < pred_len * 3:
+        raise optuna.TrialPruned()
+
+    # Restricción estructural nueva: label_len no puede superar seq_len.
+    if label_len > seq_len:
         raise optuna.TrialPruned()
 
     ticker_stem = Path(csv_path).stem
@@ -347,26 +450,19 @@ def objective(
         csv_path,
         "--targets",
         "Close",
-        "--seq-len",
-        str(seq_len),
-        "--pred-len",
-        str(pred_len),
-        "--batch-size",
-        str(batch_size),
         "--splits",
         str(n_splits),
         "--return-transform",
         "log_return",
         "--metric-space",
         "returns",
-        "--gradient-clip-norm",
-        str(clip_norm),
         "--save-results",
         "--no-show",
         "--seed",
         str(seed),
         # Sin --save-canonical: los trials no tocan el model_registry
     ]
+    _extend_cmd_with_search_parameters(cmd, params)
 
     # Siempre pasar --compile-mode explícitamente al subprocess.
     # CRÍTICO: config.py default es "max-autotune" — omitir el flag activa compilación
@@ -376,19 +472,28 @@ def objective(
     # _effective_compile_mode para reconocer "none" → "" (evita pasar string vacío como arg CLI).
     cmd.extend(["--compile-mode", compile_mode])
 
-    env = os.environ.copy()
-    env["MPLBACKEND"] = "Agg"
+    env = _build_trial_env()
 
     # Registrar timestamp de inicio como string para parsear CSVs probabilísticos
     ts_before = _current_time()
     ts_before_str = time.strftime("%Y%m%d_%H%M%S", time.localtime(ts_before))
     logger.info(
-        "Trial %d | seq=%d pred=%d batch=%d clip=%.1f | objective=%s",
+        (
+            "Trial %d | seq=%d pred=%d batch=%d clip=%.1f e_layers=%d "
+            "d_layers=%d n_flow_layers=%d flow_hidden_dim=%d label_len=%d "
+            "dropout=%.2f | objective=%s"
+        ),
         trial.number,
         seq_len,
         pred_len,
         batch_size,
         clip_norm,
+        e_layers,
+        d_layers,
+        n_flow_layers,
+        flow_hidden_dim,
+        label_len,
+        dropout,
         study_objective,
     )
 
@@ -535,33 +640,25 @@ def _run_best_params(
         csv_path,
         "--targets",
         "Close",
-        "--seq-len",
-        str(best_params["seq_len"]),
-        "--pred-len",
-        str(best_params["pred_len"]),
-        "--batch-size",
-        str(best_params["batch_size"]),
         "--splits",
         str(n_splits),
         "--return-transform",
         "log_return",
         "--metric-space",
         "returns",
-        "--gradient-clip-norm",
-        str(best_params["gradient_clip_norm"]),
         "--save-results",
         "--no-show",
         "--seed",
         str(seed),
     ]
+    _extend_cmd_with_search_parameters(cmd, best_params)
     if save_canonical:
         cmd.append("--save-canonical")
     # Ver comentario en objective(): siempre pasar explícitamente para neutralizar
     # el default "max-autotune" de config.py.
     cmd.extend(["--compile-mode", compile_mode])
 
-    env = os.environ.copy()
-    env["MPLBACKEND"] = "Agg"
+    env = _build_trial_env()
     logger.info("Ejecutando run final con mejores parámetros (seed=%d)...", seed)
     subprocess.run(cmd, env=env)
 
@@ -739,22 +836,15 @@ def main() -> None:
 
     # Encolar configuración canónica como primer trial garantizado (AR #4)
     if args.enqueue_canonical:
-        study.enqueue_trial(
-            {
-                "seq_len": 96,
-                "pred_len": 20,
-                "batch_size": 64,
-                "gradient_clip_norm": 0.5,
-            }
-        )
+        study.enqueue_trial(dict(CANONICAL_TRIAL_PARAMS))
         logger.info("Config canónica encolada como primer trial")
 
     logger.info(
-        "Iniciando búsqueda para %s — %d trials, espacio: %d combinaciones posibles, "
-        "objetivo: %s.",
+        "Iniciando búsqueda para %s — %d trials, espacio válido: %d combinaciones "
+        "tras restricciones estructurales, objetivo: %s.",
         ticker_stem,
         args.n_trials,
-        len(SEQ_LENS) * len(PRED_LENS) * len(BATCH_SIZES) * len(CLIP_NORMS),
+        _count_search_space_combinations(),
         args.study_objective,
     )
 

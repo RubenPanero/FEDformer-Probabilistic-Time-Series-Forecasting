@@ -177,11 +177,24 @@ def _mock_trial(
 ) -> MagicMock:
     """Construye un trial mock con suggest_categorical predefinido.
 
-    El orden de llamadas en objective es: seq_len, pred_len, batch_size, gradient_clip_norm.
+    El orden de llamadas en objective es:
+    seq_len, pred_len, batch_size, gradient_clip_norm, e_layers, d_layers,
+    n_flow_layers, flow_hidden_dim, label_len, dropout.
     """
     trial = MagicMock(spec=optuna.Trial)
     trial.number = 0
-    trial.suggest_categorical.side_effect = [seq_len, pred_len, batch_size, clip]
+    trial.suggest_categorical.side_effect = [
+        seq_len,
+        pred_len,
+        batch_size,
+        clip,
+        2,
+        1,
+        4,
+        64,
+        48,
+        0.05,
+    ]
     trial.set_user_attr = MagicMock()
     return trial
 
@@ -192,6 +205,34 @@ def test_objective_prunes_when_seq_len_too_short() -> None:
     trial = _mock_trial(seq_len=48, pred_len=20)
 
     with pytest.raises(optuna.TrialPruned):
+        th.objective(trial, "data/MSFT_features.csv", 4, Path("results"))
+
+
+def test_objective_prunes_when_label_len_exceeds_seq_len() -> None:
+    """objective lanza TrialPruned si label_len supera seq_len."""
+    trial = MagicMock(spec=optuna.Trial)
+    trial.number = 0
+    trial.suggest_categorical.side_effect = [
+        96,
+        20,
+        64,
+        0.5,
+        2,
+        1,
+        4,
+        64,
+        128,
+        0.1,
+    ]
+    trial.set_user_attr = MagicMock()
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+
+    with (
+        patch("subprocess.run", return_value=mock_proc),
+        pytest.raises(optuna.TrialPruned),
+    ):
         th.objective(trial, "data/MSFT_features.csv", 4, Path("results"))
 
 
@@ -272,6 +313,53 @@ def test_objective_cmd_excludes_save_canonical(tmp_path: Path) -> None:
     assert "--save-canonical" not in captured_cmd
 
 
+def test_objective_cmd_includes_fase6_hp_flags(tmp_path: Path) -> None:
+    """El subprocess recibe los 6 flags nuevos de la fase 6."""
+    ts_before = time.time() - 1
+    _write_portfolio_csv(tmp_path, "MSFT_features", sharpe=0.7, sortino=1.0)
+    _write_risk_csv(tmp_path, "MSFT_features", var_95=0.05)
+
+    trial = MagicMock(spec=optuna.Trial)
+    trial.number = 0
+    trial.suggest_categorical.side_effect = [
+        96,
+        20,
+        64,
+        0.5,
+        2,
+        1,
+        4,
+        64,
+        48,
+        0.1,
+    ]
+    trial.set_user_attr = MagicMock()
+    captured_cmd: list[str] = []
+
+    def mock_run(cmd, **kwargs):  # noqa: ANN001
+        captured_cmd.extend(cmd)
+        m = MagicMock()
+        m.returncode = 0
+        return m
+
+    with (
+        patch("subprocess.run", side_effect=mock_run),
+        patch("tune_hyperparams._current_time", return_value=ts_before),
+    ):
+        th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+
+    expected_flags = [
+        "--e-layers",
+        "--d-layers",
+        "--n-flow-layers",
+        "--flow-hidden-dim",
+        "--label-len",
+        "--dropout",
+    ]
+    for flag in expected_flags:
+        assert flag in captured_cmd
+
+
 def test_objective_cmd_includes_seed_and_compile_mode(tmp_path: Path) -> None:
     """El subprocess recibe --seed y --compile-mode cuando se pasan a objective()."""
     ts_before = time.time() - 1
@@ -309,6 +397,69 @@ def test_objective_cmd_includes_seed_and_compile_mode(tmp_path: Path) -> None:
     assert captured_cmd[cm_idx + 1] == ""
 
 
+def test_objective_disables_wandb_in_subprocess_env(tmp_path: Path) -> None:
+    """objective desactiva wandb para evitar bloqueos de red en trials."""
+    ts_before = time.time() - 1
+    _write_portfolio_csv(tmp_path, "MSFT_features", sharpe=0.5, sortino=0.8)
+    _write_risk_csv(tmp_path, "MSFT_features", var_95=0.03)
+
+    trial = _mock_trial(seq_len=96, pred_len=20)
+    captured_env: dict[str, str] = {}
+
+    def mock_run(cmd, **kwargs):  # noqa: ANN001
+        captured_env.update(kwargs["env"])
+        m = MagicMock()
+        m.returncode = 0
+        return m
+
+    with (
+        patch("subprocess.run", side_effect=mock_run),
+        patch("tune_hyperparams._current_time", return_value=ts_before),
+    ):
+        th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+
+    assert captured_env["WANDB_MODE"] == "disabled"
+    assert captured_env["WANDB_DISABLED"] == "true"
+    assert captured_env["MPLBACKEND"] == "Agg"
+    assert "MPLCONFIGDIR" in captured_env
+
+
+def test_objective_logs_expanded_search_space(tmp_path: Path, caplog) -> None:
+    """objective registra los HPs nuevos en el log del trial."""
+    ts_before = time.time() - 1
+    _write_portfolio_csv(tmp_path, "MSFT_features", sharpe=0.5, sortino=0.8)
+    _write_risk_csv(tmp_path, "MSFT_features", var_95=0.03)
+
+    trial = MagicMock(spec=optuna.Trial)
+    trial.number = 0
+    trial.suggest_categorical.side_effect = [
+        96,
+        20,
+        64,
+        0.5,
+        2,
+        1,
+        4,
+        64,
+        48,
+        0.1,
+    ]
+    trial.set_user_attr = MagicMock()
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+
+    with (
+        patch("subprocess.run", return_value=mock_proc),
+        patch("tune_hyperparams._current_time", return_value=ts_before),
+        caplog.at_level("INFO", logger="tune_hyperparams"),
+    ):
+        th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+
+    assert any("label_len" in record.message for record in caplog.records)
+    assert any("e_layers" in record.message for record in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # Tests del resumen de trials
 # ---------------------------------------------------------------------------
@@ -330,6 +481,11 @@ def test_build_completed_trials_dataframe_includes_state() -> None:
     assert not completed_df.empty
     assert completed_df.iloc[0]["state"] == "COMPLETE"
     assert completed_df.iloc[0]["value"] == pytest.approx(0.42)
+
+
+def test_count_search_space_combinations_reflects_phase6_space() -> None:
+    """El cálculo del espacio total refleja solo combinaciones válidas tras poda."""
+    assert th._count_search_space_combinations() == 31104
 
 
 # ---------------------------------------------------------------------------
@@ -702,8 +858,52 @@ def test_enqueue_canonical_calls_enqueue_trial(tmp_path: Path, monkeypatch) -> N
         th.main()
 
     mock_study.enqueue_trial.assert_called_once_with(
-        {"seq_len": 96, "pred_len": 20, "batch_size": 64, "gradient_clip_norm": 0.5}
+        {
+            "seq_len": 96,
+            "pred_len": 20,
+            "batch_size": 64,
+            "gradient_clip_norm": 0.5,
+            "e_layers": 2,
+            "d_layers": 1,
+            "n_flow_layers": 4,
+            "flow_hidden_dim": 64,
+            "label_len": 48,
+            "dropout": 0.1,
+        }
     )
+
+
+def test_run_best_params_backfills_phase6_defaults_for_legacy_studies(
+    tmp_path: Path,
+) -> None:
+    """_run_best_params rellena HPs Fase 6 ausentes para estudios legacy."""
+    captured_cmd: list[str] = []
+
+    def mock_run(cmd, **kwargs):  # noqa: ANN001
+        captured_cmd.extend(cmd)
+        result = MagicMock()
+        result.returncode = 0
+        return result
+
+    with patch("subprocess.run", side_effect=mock_run):
+        th._run_best_params(
+            csv_path=str(tmp_path / "MSFT_features.csv"),
+            best_params={
+                "seq_len": 96,
+                "pred_len": 20,
+                "batch_size": 64,
+                "gradient_clip_norm": 0.5,
+            },
+            n_splits=4,
+            save_canonical=False,
+        )
+
+    assert captured_cmd[captured_cmd.index("--e-layers") + 1] == "2"
+    assert captured_cmd[captured_cmd.index("--d-layers") + 1] == "1"
+    assert captured_cmd[captured_cmd.index("--n-flow-layers") + 1] == "4"
+    assert captured_cmd[captured_cmd.index("--flow-hidden-dim") + 1] == "64"
+    assert captured_cmd[captured_cmd.index("--label-len") + 1] == "48"
+    assert captured_cmd[captured_cmd.index("--dropout") + 1] == "0.1"
 
 
 def test_no_enqueue_canonical_skips_enqueue_trial(tmp_path: Path, monkeypatch) -> None:

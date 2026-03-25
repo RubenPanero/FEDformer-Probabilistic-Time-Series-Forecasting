@@ -111,6 +111,30 @@ def _parse_arguments() -> argparse.Namespace:
         "--label-len", type=int, default=48, help="Token histórico decoder overlap"
     )
     parser.add_argument(
+        "--e-layers",
+        type=int,
+        default=None,
+        help="Número de capas del encoder transformer (default: config 2).",
+    )
+    parser.add_argument(
+        "--d-layers",
+        type=int,
+        default=None,
+        help="Número de capas del decoder transformer (default: config 1).",
+    )
+    parser.add_argument(
+        "--n-flow-layers",
+        type=int,
+        default=None,
+        help="Número de capas del normalizing flow (default: config 4).",
+    )
+    parser.add_argument(
+        "--flow-hidden-dim",
+        type=int,
+        default=None,
+        help="Dimensión oculta del normalizing flow (default: config 64).",
+    )
+    parser.add_argument(
         "--epochs",
         type=int,
         default=None,
@@ -352,6 +376,14 @@ def _create_config(
         metric_space=args.metric_space,
     )
 
+    if args.e_layers is not None:
+        config.e_layers = args.e_layers
+    if args.d_layers is not None:
+        config.d_layers = args.d_layers
+    if args.n_flow_layers is not None:
+        config.n_flow_layers = args.n_flow_layers
+    if args.flow_hidden_dim is not None:
+        config.flow_hidden_dim = args.flow_hidden_dim
     if args.epochs is not None:
         config.n_epochs_per_fold = args.epochs
     if args.dropout is not None:
@@ -604,7 +636,14 @@ def _save_results_to_csv(
     preds = forecast.preds_for_metrics  # (n_windows, pred_len, n_targets)
     gt = forecast.gt_for_metrics  # (n_windows, pred_len, n_targets)
     n_windows, pred_len, n_targets = preds.shape
-    target_names = forecast.target_names
+    target_names = forecast.target_names or [
+        f"target_{target_idx}" for target_idx in range(n_targets)
+    ]
+    if len(target_names) != n_targets:
+        raise ValueError(
+            "forecast.target_names debe tener la misma longitud que n_targets. "
+            f"Recibido: {len(target_names)} nombres para {n_targets} targets."
+        )
 
     fold_ids = forecast.window_fold_ids  # (n_windows,) int32 o None
     rows: list[dict[str, Any]] = []
