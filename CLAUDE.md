@@ -173,6 +173,10 @@ Historial multi-ticker y resultados → auto-memory `MEMORY.md` (cargado automá
 - **`mc_dropout_inference` falla silenciosamente**: shapes incompatibles (e.g. `label_len` erróneo → x_dec size wrong) no lanzan excepción — retorna ceros y loguea WARNING. Verificar siempre que `label_len` se propaga explícitamente en configs de inferencia.
 - **`TimeSeriesDataset._fit_and_transform`**: re-fittea si `fit_scope == "fold_train_only"` aunque `preprocessor.fitted=True` — las tres condiciones de `should_refit` son OR independientes.
 - **Hooks bash (`.claude/hooks/`)**: drenar stdin con `cat > /dev/null 2>&1 || true` al inicio — Claude Code envía JSON por stdin y sin drenarlo el hook falla con pipe error en cada invocación.
+- **Worktrees — setup de hooks y venv**: `git worktree add` crea `.claude/hooks/` vacío (solo `post_python_quality.py`). Crear symlink: `ln -s {repo}/.claude/hooks/pre_protect_edits.py {worktree}/.claude/hooks/pre_protect_edits.py`. También `.venv` symlink: `ln -s {repo}/.venv {worktree}/.venv` (el pre-commit hook usa `git rev-parse --show-toplevel` que apunta al worktree).
+- **pytest en worktrees activos**: sin scopear a `tests/`, pytest recoge tests duplicados desde `.worktrees/` → errores de colección. Siempre usar `python3 -m pytest tests/ -m "not slow"`.
+- **Reproducción de trials Optuna**: al reproducir un trial desde CSV, leer TODAS las columnas (`params_label_len`, `params_flow_hidden_dim`, etc.) — los resúmenes en texto omiten HPs. `label_len` omitida en sesión 26 costó 3 runs (~1h).
+- **HP transfer entre GPUs**: params optimizados en Kaggle T4 (Turing, 40 SMs) no transfieren al RTX 4050 (Ampere, 20 SMs) — diferencias FP en kernels CUDA producen convergencia a mínimos distintos. Los HPs canónicos locales son los mejores para inferencia local.
 
 → Lista completa con contexto: auto-memory `memory/gotchas.md` (cargado automáticamente en cada sesión)
 

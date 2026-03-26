@@ -677,6 +677,7 @@ def test_cli_plot_generates_pngs(mock_registry, tmp_path, monkeypatch):
     csv_data = mock_registry.parent.parent / "NVDA_features.csv"
 
     # Ejecutar main con --plot
+    # --output apunta a tmp_path para no contaminar results/ real
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -690,6 +691,8 @@ def test_cli_plot_generates_pngs(mock_registry, tmp_path, monkeypatch):
             "--plot",
             "--output-dir",
             str(output_dir),
+            "--output",
+            str(tmp_path / "inference_nvda.csv"),
         ],
     )
 
