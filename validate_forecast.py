@@ -144,10 +144,10 @@ def print_report(metrics: dict[str, float], ticker: str, target: str) -> None:
     cov = metrics["coverage_p10_p90"]
     print(f"\n{'=' * 55}")
     print(f"  Validación probabilística — {ticker} / {target}")
-    print(f"{'=' * 55}")
+    print("=" * 55)
     print(f"  Ventanas evaluadas : {metrics['n_windows']:,}")
     print(f"  Observaciones      : {metrics['n_obs']:,}")
-    print(f"{'-' * 55}")
+    print("-" * 55)
     print(f"  Cobertura p10-p90  : {cov:.1%}  (nominal: 80%)")
     gap = cov - 0.80
     tag = (
@@ -156,13 +156,13 @@ def print_report(metrics: dict[str, float], ticker: str, target: str) -> None:
         else ("▲ sobreestimado" if gap > 0 else "▼ subestimado")
     )
     print(f"    → gap vs nominal : {gap:+.1%}  {tag}")
-    print(f"{'-' * 55}")
+    print("-" * 55)
     print(f"  Pinball p10        : {metrics['pinball_p10']:.4f}")
     print(f"  Pinball p50        : {metrics['pinball_p50']:.4f}")
     print(f"  Pinball p90        : {metrics['pinball_p90']:.4f}")
     print(f"  MAE p50            : {metrics['mae_p50']:.4f}")
     print(f"  Interval Score 80% : {metrics['interval_score_80']:.4f}  (menor = mejor)")
-    print(f"{'-' * 55}")
+    print("-" * 55)
     print(f"  Exactitud direccional (step 1): {metrics['directional_acc_step1']:.1%}")
     print(f"{'=' * 55}\n")
 
