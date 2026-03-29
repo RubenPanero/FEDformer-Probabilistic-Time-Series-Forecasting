@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from validate_forecast import (
+from scripts.validate_forecast import (
     compute_coverage,
     directional_accuracy,
     interval_score,

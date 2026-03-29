@@ -1,16 +1,18 @@
-"""Validación probabilística del modelo FEDformer sobre el CSV de inferencia.
+"""Probabilistic validation of FEDformer model on inference CSV output.
 
-Métricas calculadas:
-  - Cobertura empírica p10-p90   (nominal: 80%)
-  - Pinball loss en p10, p50, p90
-  - MAE sobre p50
+Metrics computed:
+  - Empirical coverage p10-p90   (nominal: 80%)
+  - Pinball loss at p10, p50, p90
+  - MAE on p50 predictions
   - Interval Score 80% (Winkler)
-  - Exactitud direccional en step=1
+  - Directional accuracy at step 1
 
-Uso:
-    python3 validate_forecast.py \\
-        --pred  results/predictions_NVDA.csv \\
-        --features data/NVDA_features.csv \\
+Example:
+    # Evaluate GOOGL predictions vs GOOGL ground truth
+    python3 scripts/validate_forecast.py \\
+        --pred results/inference_googl.csv \\
+        --features data/GOOGL_features.csv \\
+        --ticker GOOGL \\
         --seq-len 96
 """
 
@@ -26,12 +28,12 @@ import pandas as pd
 
 
 def compute_coverage(gt: pd.Series, lower: pd.Series, upper: pd.Series) -> float:
-    """Fracción de valores GT que caen dentro del intervalo [lower, upper]."""
+    """Fraction of GT values that fall within the interval [lower, upper]."""
     return float(((gt >= lower) & (gt <= upper)).mean())
 
 
 def pinball_loss(gt: np.ndarray, q_hat: np.ndarray, q: float) -> float:
-    """Pinball loss (quantile loss) en el cuantil q."""
+    """Pinball loss (quantile loss) at quantile q."""
     gt = np.asarray(gt, dtype=float)
     q_hat = np.asarray(q_hat, dtype=float)
     e = gt - q_hat
@@ -39,7 +41,7 @@ def pinball_loss(gt: np.ndarray, q_hat: np.ndarray, q: float) -> float:
 
 
 def mae(gt: np.ndarray, p50: np.ndarray) -> float:
-    """MAE sobre la predicción mediana p50."""
+    """MAE on median p50 predictions."""
     return float(
         np.abs(np.asarray(gt, dtype=float) - np.asarray(p50, dtype=float)).mean()
     )
@@ -51,7 +53,7 @@ def interval_score(
     upper: np.ndarray,
     alpha: float,
 ) -> float:
-    """Winkler Interval Score para un intervalo (1-alpha)*100 %.
+    """Winkler Interval Score for a (1-alpha)*100% interval.
 
     IS = (upper-lower) + (2/alpha)*max(lower-gt, 0) + (2/alpha)*max(gt-upper, 0)
     """
@@ -69,7 +71,7 @@ def directional_accuracy(
     p50_next: np.ndarray,
     last_price: np.ndarray,
 ) -> float:
-    """Fracción de veces que el signo de (p50-last) coincide con el de (gt-last)."""
+    """Fraction of times the sign of (p50-last) matches the sign of (gt-last)."""
     gt_dir = np.sign(
         np.asarray(gt_next, dtype=float) - np.asarray(last_price, dtype=float)
     )
@@ -88,29 +90,29 @@ def compute_all_metrics(
     target: str = "Close",
     seq_len: int = 96,
 ) -> dict[str, float]:
-    """Calcula todas las métricas de validación.
+    """Computes all validation metrics.
 
     Args:
-        pred_df:     DataFrame del CSV de inferencia exportado por la Inference API.
-        features_df: DataFrame de features original (columna 'date' + target).
-        target:      Nombre del target (default 'Close').
-        seq_len:     Longitud de la secuencia de entrada del modelo.
+        pred_df:     DataFrame from inference CSV exported by the Inference API.
+        features_df: Original features DataFrame ('date' column + target).
+        target:      Target column name (default 'Close').
+        seq_len:     Input sequence length of the model.
 
     Returns:
-        Diccionario con todas las métricas.
+        Dictionary with all computed metrics.
     """
     gt = pred_df[f"gt_{target}"]
     p10 = pred_df[f"p10_{target}"]
     p50 = pred_df[f"p50_{target}"]
     p90 = pred_df[f"p90_{target}"]
 
-    # Exactitud direccional: primer step de cada ventana (puede ser 0 o 1)
+    # Directional accuracy: first step of each window (can be 0 or 1)
     first_step = int(pred_df["step"].min())
     step1 = pred_df[pred_df["step"] == first_step].reset_index(drop=True)
 
-    # En espacio de returns, la referencia para la dirección es 0 (return neutro).
-    # En espacio de precios, es el último precio conocido de la secuencia de entrada.
-    predictions_are_returns = gt.abs().max() < 5.0  # heurística: returns << precios
+    # In returns space, the reference for direction is 0 (neutral return).
+    # In prices space, it's the last known price from the input sequence.
+    predictions_are_returns = gt.abs().max() < 5.0  # heuristic: returns << prices
     if predictions_are_returns:
         last_prices = np.zeros(len(step1))
     else:
@@ -140,20 +142,20 @@ def compute_all_metrics(
 
 
 def print_report(metrics: dict[str, float], ticker: str, target: str) -> None:
-    """Imprime el reporte de validación en formato legible."""
+    """Prints validation report in human-readable format."""
     cov = metrics["coverage_p10_p90"]
     print(f"\n{'=' * 55}")
-    print(f"  Validación probabilística — {ticker} / {target}")
+    print(f"  Probabilistic Validation — {ticker} / {target}")
     print("=" * 55)
-    print(f"  Ventanas evaluadas : {metrics['n_windows']:,}")
-    print(f"  Observaciones      : {metrics['n_obs']:,}")
+    print(f"  Windows evaluated  : {metrics['n_windows']:,}")
+    print(f"  Observations       : {metrics['n_obs']:,}")
     print("-" * 55)
-    print(f"  Cobertura p10-p90  : {cov:.1%}  (nominal: 80%)")
+    print(f"  Coverage p10-p90   : {cov:.1%}  (nominal: 80%)")
     gap = cov - 0.80
     tag = (
-        "✓ calibrado"
+        "✓ calibrated"
         if abs(gap) < 0.05
-        else ("▲ sobreestimado" if gap > 0 else "▼ subestimado")
+        else ("▲ overestimated" if gap > 0 else "▼ underestimated")
     )
     print(f"    → gap vs nominal : {gap:+.1%}  {tag}")
     print("-" * 55)
@@ -161,9 +163,9 @@ def print_report(metrics: dict[str, float], ticker: str, target: str) -> None:
     print(f"  Pinball p50        : {metrics['pinball_p50']:.4f}")
     print(f"  Pinball p90        : {metrics['pinball_p90']:.4f}")
     print(f"  MAE p50            : {metrics['mae_p50']:.4f}")
-    print(f"  Interval Score 80% : {metrics['interval_score_80']:.4f}  (menor = mejor)")
+    print(f"  Interval Score 80% : {metrics['interval_score_80']:.4f}  (lower = better)")
     print("-" * 55)
-    print(f"  Exactitud direccional (step 1): {metrics['directional_acc_step1']:.1%}")
+    print(f"  Directional accuracy (step 1): {metrics['directional_acc_step1']:.1%}")
     print(f"{'=' * 55}\n")
 
 
@@ -171,18 +173,18 @@ def print_report(metrics: dict[str, float], ticker: str, target: str) -> None:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validación probabilística FEDformer")
+    parser = argparse.ArgumentParser(description="FEDformer Probabilistic Validation")
     parser.add_argument(
-        "--pred", required=True, help="CSV de predicciones (inference output)"
+        "--pred", required=True, help="Predictions CSV (inference output)"
     )
-    parser.add_argument("--features", required=True, help="CSV de features original")
+    parser.add_argument("--features", required=True, help="Original features CSV")
     parser.add_argument(
-        "--target", default="Close", help="Columna target (default: Close)"
+        "--target", default="Close", help="Target column (default: Close)"
     )
     parser.add_argument(
-        "--seq-len", type=int, default=96, help="seq_len del modelo (default: 96)"
+        "--seq-len", type=int, default=96, help="Model seq_len (default: 96)"
     )
-    parser.add_argument("--ticker", default="NVDA", help="Ticker para el reporte")
+    parser.add_argument("--ticker", default="NVDA", help="Ticker for report")
     return parser.parse_args()
 
 

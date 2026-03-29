@@ -14,6 +14,7 @@ indent-style = "space"
 # Ver .github/workflows/pylint.yml para la configuración completa.
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 addopts = "-q --ignore=reports"
 python_files = ["test_*.py", "*_test.py"]
 markers = [

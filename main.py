@@ -73,226 +73,241 @@ class SimulationData:
 
 
 def _parse_arguments() -> argparse.Namespace:
-    """Consolida la inyección de comandos desde CLI de manera fuertemente tipada."""
+    """Parses CLI arguments for the FEDformer training pipeline."""
     parser = argparse.ArgumentParser(
-        description="Monitor Vanguard: Motor Algorítmico Flow FEDformer"
+        description="Flow FEDformer: Probabilistic Time-Series Forecasting Engine"
     )
     parser.add_argument(
         "--csv",
         required=True,
         nargs="+",
-        help="Ruta(s) de acceso directa al CSV (uno o varios tickers)",
+        help="Path(s) to input CSV file(s), one per ticker.",
     )
     parser.add_argument(
         "--targets",
         required=True,
-        help="Lista csv concatenada por una coma representando features analíticas",
+        help="Comma-separated list of target column names to predict.",
     )
     parser.add_argument(
         "--date-col",
         default=None,
-        help="Índice de serie temporal a mitigar como feature",
+        help="Name of the date/timestamp column to exclude from features.",
     )
     parser.add_argument(
         "--wandb-project",
         default="vanguard-fedformer-flow",
-        help="Cámara de telemetría W&B",
+        help="Weights & Biases project name for experiment tracking.",
     )
     parser.add_argument(
-        "--wandb-entity", default=None, help="Organización receptora de métricas (W&B)"
+        "--wandb-entity",
+        default=None,
+        help="Weights & Biases team/entity for metric logging.",
     )
     parser.add_argument(
-        "--pred-len", type=int, default=24, help="Ventana predictiva máxima inyectada"
+        "--pred-len",
+        type=int,
+        default=24,
+        help="Prediction horizon length; must be even (default: 24).",
     )
     parser.add_argument(
-        "--seq-len", type=int, default=96, help="Tamaño de memoria de tensores empírica"
+        "--seq-len",
+        type=int,
+        default=96,
+        help="Input sequence length for the encoder (default: 96).",
     )
     parser.add_argument(
-        "--label-len", type=int, default=48, help="Token histórico decoder overlap"
+        "--label-len",
+        type=int,
+        default=48,
+        help="Decoder start-token overlap with encoder (default: 48).",
     )
     parser.add_argument(
         "--e-layers",
         type=int,
         default=None,
-        help="Número de capas del encoder transformer (default: config 2).",
+        help="Number of encoder transformer layers (default: config 2).",
     )
     parser.add_argument(
         "--d-layers",
         type=int,
         default=None,
-        help="Número de capas del decoder transformer (default: config 1).",
+        help="Number of decoder transformer layers (default: config 1).",
     )
     parser.add_argument(
         "--n-flow-layers",
         type=int,
         default=None,
-        help="Número de capas del normalizing flow (default: config 4).",
+        help="Number of normalizing flow coupling layers (default: config 4).",
     )
     parser.add_argument(
         "--flow-hidden-dim",
         type=int,
         default=None,
-        help="Dimensión oculta del normalizing flow (default: config 64).",
+        help="Hidden dimension inside normalizing flow conditioner (default: config 64).",
     )
     parser.add_argument(
         "--epochs",
         type=int,
         default=None,
-        help="Sub-ciclos epocales forzados en walk-forwards (default: LoopSettings.n_epochs_per_fold = 20)",
+        help="Training epochs per walk-forward fold (default: config 20).",
     )
     parser.add_argument(
         "--splits",
         type=int,
         default=5,
-        help="Fraccionamiento perimetral cross-fold (K)",
+        help="Number of walk-forward cross-validation splits (default: 5).",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=32,
-        help="Densidad iterativa escalar paralela (Batch Size)",
+        help="Training batch size (default: 32).",
     )
     parser.add_argument(
         "--use-checkpointing",
         action="store_true",
-        help="Dispara Gradient Checkpointing sacrificando CPU por VRAM",
+        help="Enable gradient checkpointing to reduce GPU memory at the cost of speed.",
     )
     parser.add_argument(
         "--grad-accum-steps",
         type=int,
         default=1,
-        help="Escalones virtuales permitidos para reventar gradientes",
+        help="Gradient accumulation steps for effective larger batch size (default: 1).",
     )
     parser.add_argument(
         "--finetune-from",
         default=None,
-        help="Directorio relativo de memoria .pt para transbordo warm-start.",
+        help="Path to a .pt checkpoint for warm-start fine-tuning.",
     )
     parser.add_argument(
         "--freeze-backbone",
         action="store_true",
-        help="Inhibe el reajuste convolucional y se limita a redes normalizadoras exclusivas.",
+        help="Freeze encoder/decoder backbone; train only the normalizing flow head.",
     )
     parser.add_argument(
         "--finetune-lr",
         type=float,
         default=None,
-        help="Ratio paramétrico inespecífico de convergencia descendiente del warm-start.",
+        help="Learning rate override for fine-tuning (default: same as --learning-rate).",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=42,
-        help="Hash natural anclado para evitar pseudo-azar",
+        help="Random seed for reproducibility (default: 42).",
     )
     parser.add_argument(
         "--deterministic",
         action="store_true",
-        help="Exige CUDNN bloqueante matemático purista (Muerte al Benchmark)",
+        help="Enable fully deterministic cuDNN mode (may reduce performance).",
     )
     parser.add_argument(
         "--save-fig",
         default=None,
-        help="Directorio destino del render gráfico de retornos del portafolio",
+        help="File path to save the portfolio performance plot (e.g., results/portfolio.png).",
     )
     parser.add_argument(
         "--no-show",
         action="store_true",
-        help="Anula explícitamente despliegues de render X11 (Bloqueos en head-less server).",
+        help="Suppress interactive plot display (use in headless environments).",
     )
     parser.add_argument(
         "--save-results",
         action="store_true",
-        help="Exporta predicciones y métricas de riesgo/portafolio como CSVs en results/.",
+        help="Export predictions and risk/portfolio metrics as CSVs to results/.",
     )
     parser.add_argument(
         "--save-canonical",
         action="store_true",
         default=False,
         help=(
-            "Guarda el checkpoint del último fold como {ticker}_canonical.pt "
-            "y registra el especialista en checkpoints/model_registry.json."
+            "Save the last fold checkpoint as {ticker}_canonical.pt "
+            "and register the specialist in checkpoints/model_registry.json."
         ),
     )
     parser.add_argument(
         "--return-transform",
         default="none",
         choices=["none", "log_return", "simple_return"],
-        help="Transformación de retorno aplicada antes del escalado: 'none' (precios absolutos), "
-        "'log_return' (log(P_t/P_{t-1})), 'simple_return' ((P_t-P_{t-1})/P_{t-1}).",
+        help=(
+            "Return transform applied before scaling: 'none' (raw prices), "
+            "'log_return' (log(P_t/P_{t-1})), 'simple_return' ((P_t-P_{t-1})/P_{t-1})."
+        ),
     )
     parser.add_argument(
         "--metric-space",
         default="returns",
         choices=["returns", "prices"],
-        help="Espacio en que se reportan métricas y muestras: 'returns' (default) o 'prices' "
-        "(reconstruye precios desde retornos acumulados usando last_prices del fold).",
+        help=(
+            "Space for reporting metrics and samples: 'returns' (default) or 'prices' "
+            "(reconstructs prices from cumulative returns using fold last_prices)."
+        ),
     )
     parser.add_argument(
         "--dropout",
         type=float,
         default=None,
-        help="Probabilidad de dropout en embeddings, conv y atención (default: config 0.1).",
+        help="Dropout probability for embeddings, conv, and attention (default: config 0.1).",
     )
     parser.add_argument(
         "--weight-decay",
         type=float,
         default=None,
-        help="Regularización L2 en AdamW (default: config 1e-5).",
+        help="L2 weight decay for AdamW optimizer (default: config 1e-5).",
     )
     parser.add_argument(
         "--learning-rate",
         type=float,
         default=None,
-        help="Learning rate del optimizador AdamW (default: config 1e-4).",
+        help="AdamW optimizer learning rate (default: config 1e-4).",
     )
     parser.add_argument(
         "--scheduler-type",
         default=None,
         choices=["none", "cosine", "cosine_warmup"],
-        help="Scheduler de learning rate: none, cosine o cosine_warmup (default: config none).",
+        help="Learning rate scheduler: none, cosine, or cosine_warmup (default: config none).",
     )
     parser.add_argument(
         "--warmup-epochs",
         type=int,
         default=None,
-        help="Épocas de warmup lineal para cosine_warmup (default: config 0).",
+        help="Linear warmup epochs for cosine_warmup scheduler (default: config 0).",
     )
     parser.add_argument(
         "--patience",
         type=int,
         default=None,
-        help="Paciencia de early stopping en épocas (default: config 5).",
+        help="Early stopping patience in epochs (default: config 5).",
     )
     parser.add_argument(
         "--min-delta",
         type=float,
         default=None,
-        help="Mejora mínima de val_loss para early stopping (default: config 5e-3).",
+        help="Minimum val_loss improvement for early stopping (default: config 5e-3).",
     )
     parser.add_argument(
         "--gradient-clip-norm",
         type=float,
         default=None,
-        help="Norma máxima para gradient clipping (default: config 1.0). 0 desactiva el clipping.",
+        help="Max gradient norm for clipping (default: config 1.0). Set 0 to disable.",
     )
     parser.add_argument(
         "--rehearsal-k",
         type=int,
         default=None,
-        help="Tamaño del rehearsal buffer (nº ventanas). Activa el continual learning.",
+        help="Rehearsal buffer size (number of windows). Enables continual learning.",
     )
     parser.add_argument(
         "--rehearsal-epochs",
         type=int,
         default=None,
-        help="Pasos de replay por época de entrenamiento (default: config 1).",
+        help="Replay steps per training epoch (default: config 1).",
     )
     parser.add_argument(
         "--rehearsal-lr-mult",
         type=float,
         default=None,
-        help="Multiplicador de LR para pasos de rehearsal (default: config 0.1).",
+        help="Learning rate multiplier for rehearsal replay steps (default: config 0.1).",
     )
     parser.add_argument(
         "--preset",
@@ -300,8 +315,8 @@ def _parse_arguments() -> argparse.Namespace:
         default=None,
         choices=list(TRAINING_PRESETS.keys()),
         help=(
-            "Preset de entrenamiento: debug, cpu_safe, gpu_research, "
-            "probabilistic_eval. Los flags CLI explícitos tienen precedencia."
+            "Training preset: debug, cpu_safe, gpu_research, "
+            "probabilistic_eval. Explicit CLI flags take precedence."
         ),
     )
     parser.add_argument(
@@ -309,8 +324,8 @@ def _parse_arguments() -> argparse.Namespace:
         action="store_true",
         default=False,
         help=(
-            "Aplica Conformal Prediction post-hoc sobre las predicciones "
-            "(Enfoque 2: global)."
+            "Apply post-hoc Conformal Prediction on aggregated predictions "
+            "(Approach 2: global calibration)."
         ),
     )
     parser.add_argument(
@@ -318,8 +333,8 @@ def _parse_arguments() -> argparse.Namespace:
         action="store_true",
         default=False,
         help=(
-            "Aplica Conformal Prediction walk-forward fold-aware "
-            "(Enfoque 1: sin data leakage temporal)."
+            "Apply walk-forward fold-aware Conformal Prediction "
+            "(Approach 1: no temporal data leakage)."
         ),
     )
     parser.add_argument(
@@ -327,8 +342,8 @@ def _parse_arguments() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "Modo de torch.compile: 'max-autotune', 'default', '' (desactivado). "
-            "Si no se especifica, usa el default de FEDformerConfig ('max-autotune')."
+            "torch.compile mode: 'max-autotune', 'default', or '' (disabled). "
+            "If not specified, uses FEDformerConfig default ('max-autotune')."
         ),
     )
     return parser.parse_args()
