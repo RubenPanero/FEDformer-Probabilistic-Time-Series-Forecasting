@@ -193,14 +193,12 @@ def run_training(args: argparse.Namespace) -> int:
 
 def load_latest_manifest(results_dir: Path) -> tuple[Path, dict[str, Any]] | None:
     """Carga el run_manifest más reciente del directorio indicado."""
-    manifests = sorted(
-        results_dir.glob("run_manifest_*.json"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
+    manifests = [
+        (path, path.stat()) for path in results_dir.glob("run_manifest_*.json")
+    ]
     if not manifests:
         return None
-    manifest_path = manifests[0]
+    manifest_path, _ = max(manifests, key=lambda pair: pair[1].st_mtime_ns)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     return manifest_path, manifest
 

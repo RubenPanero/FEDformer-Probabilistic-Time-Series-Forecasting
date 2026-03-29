@@ -163,7 +163,9 @@ def print_report(metrics: dict[str, float], ticker: str, target: str) -> None:
     print(f"  Pinball p50        : {metrics['pinball_p50']:.4f}")
     print(f"  Pinball p90        : {metrics['pinball_p90']:.4f}")
     print(f"  MAE p50            : {metrics['mae_p50']:.4f}")
-    print(f"  Interval Score 80% : {metrics['interval_score_80']:.4f}  (lower = better)")
+    print(
+        f"  Interval Score 80% : {metrics['interval_score_80']:.4f}  (lower = better)"
+    )
     print("-" * 55)
     print(f"  Directional accuracy (step 1): {metrics['directional_acc_step1']:.1%}")
     print(f"{'=' * 55}\n")

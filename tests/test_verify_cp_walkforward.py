@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -83,11 +85,10 @@ def test_load_latest_manifest_picks_most_recent(tmp_path: Path) -> None:
     old_path.write_text(json.dumps({"metrics": {"cp_wf_coverage_80": 0.75}}))
     new_path.write_text(json.dumps({"metrics": {"cp_wf_coverage_80": 0.82}}))
 
-    old_mtime = old_path.stat().st_mtime
-    new_path.touch()
-    old_path.touch()
-    new_path.touch()
-    assert new_path.stat().st_mtime >= old_mtime
+    base_time = time.time()
+    os.utime(old_path, (base_time, base_time))
+    os.utime(new_path, (base_time + 1.0, base_time + 1.0))
+    assert new_path.stat().st_mtime > old_path.stat().st_mtime
 
     loaded = cpwf.load_latest_manifest(tmp_path)
     assert loaded is not None
@@ -183,7 +184,9 @@ def test_run_training_invokes_subprocess_with_agg_backend(
     mock_proc = MagicMock()
     mock_proc.returncode = 0
 
-    with patch("scripts.verify_cp_walkforward.subprocess.run", return_value=mock_proc) as run_mock:
+    with patch(
+        "scripts.verify_cp_walkforward.subprocess.run", return_value=mock_proc
+    ) as run_mock:
         code = cpwf.run_training(args)
 
     captured = capsys.readouterr()
