@@ -131,6 +131,7 @@ class RuntimeSettings:
 
     use_amp: bool = True
     use_gradient_checkpointing: bool = False
+    mc_dropout_eval_samples: int = 20
     pin_memory: bool = False
     num_workers: Optional[int] = None
     compile_mode: str = "max-autotune"
@@ -258,6 +259,7 @@ class FEDformerConfig:
         "batch_size",
         "use_amp",
         "use_gradient_checkpointing",
+        "mc_dropout_eval_samples",
         "pin_memory",
         "num_workers",
         "gradient_accumulation_steps",
@@ -416,6 +418,11 @@ class FEDformerConfig:
             raise ValueError(f"Batch size must be positive, got {self.batch_size}")
         if self.num_workers is not None and self.num_workers < 0:
             raise ValueError(f"num_workers must be >= 0, got {self.num_workers}")
+        if self.mc_dropout_eval_samples <= 0:
+            raise ValueError(
+                "mc_dropout_eval_samples must be positive, got "
+                f"{self.mc_dropout_eval_samples}"
+            )
         if self.gradient_accumulation_steps <= 0:
             raise ValueError(
                 "Gradient accumulation steps must be positive, got "
@@ -649,6 +656,14 @@ class FEDformerConfig:
     @use_gradient_checkpointing.setter
     def use_gradient_checkpointing(self, value: bool) -> None:
         self.sections.training.runtime.use_gradient_checkpointing = value
+
+    @property
+    def mc_dropout_eval_samples(self) -> int:
+        return self.sections.training.runtime.mc_dropout_eval_samples
+
+    @mc_dropout_eval_samples.setter
+    def mc_dropout_eval_samples(self, value: int) -> None:
+        self.sections.training.runtime.mc_dropout_eval_samples = value
 
     @property
     def pin_memory(self) -> bool:
@@ -1029,6 +1044,10 @@ TRAINING_PRESETS: dict[str, dict] = {
         "num_workers": 4,
         "pin_memory": True,
     },
+    "fourier_optimized": {
+        # Perfil de optimización Phase 1 para comparar 64 vs 48 modos
+        "modes": 48,
+    },
     "probabilistic_eval": {
         # Monitor por pinball_p50, paciencia mayor
         # Para evaluación probabilística rigurosa
@@ -1045,9 +1064,11 @@ _PRESET_KEY_SETTERS: dict[str, str] = {
     "batch_size": "batch_size",
     "n_epochs_per_fold": "n_epochs_per_fold",
     "use_amp": "use_amp",
+    "mc_dropout_eval_samples": "mc_dropout_eval_samples",
     "compile_mode": "compile_mode",
     "num_workers": "num_workers",
     "pin_memory": "pin_memory",
+    "modes": "modes",
     "monitor_metric": "monitor_metric",
     "monitor_mode": "monitor_mode",
     "patience": "patience",

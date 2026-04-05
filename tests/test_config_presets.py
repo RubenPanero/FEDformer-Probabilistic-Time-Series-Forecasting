@@ -144,6 +144,13 @@ def test_probabilistic_eval_preset_increases_patience() -> None:
     assert cfg.patience == 10
 
 
+def test_fourier_optimized_preset_sets_modes() -> None:
+    """apply_preset con 'fourier_optimized' fija modes=48."""
+    cfg = _base_config()
+    apply_preset(cfg, "fourier_optimized")
+    assert cfg.modes == 48
+
+
 # ---------------------------------------------------------------------------
 # Tests de comportamiento de apply_preset
 # ---------------------------------------------------------------------------
@@ -209,8 +216,14 @@ def test_all_preset_values_are_dicts() -> None:
 
 
 def test_expected_presets_present() -> None:
-    """Los cuatro presets requeridos están presentes en TRAINING_PRESETS."""
-    expected = {"debug", "cpu_safe", "gpu_research", "probabilistic_eval"}
+    """Los presets requeridos están presentes en TRAINING_PRESETS."""
+    expected = {
+        "debug",
+        "cpu_safe",
+        "gpu_research",
+        "probabilistic_eval",
+        "fourier_optimized",
+    }
     assert expected.issubset(set(TRAINING_PRESETS.keys()))
 
 

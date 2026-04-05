@@ -296,6 +296,7 @@ def test_create_config_wires_architecture_flags() -> None:
         conformal_calibration=False,
         cp_walkforward=False,
         compile_mode=None,
+        mc_dropout_eval_samples=None,
         e_layers=5,
         d_layers=3,
         n_flow_layers=4,
@@ -353,6 +354,7 @@ def test_create_config_wires_return_transform_and_metric_space() -> None:
         conformal_calibration=False,
         cp_walkforward=False,
         compile_mode=None,
+        mc_dropout_eval_samples=None,
         e_layers=None,
         d_layers=None,
         n_flow_layers=None,
@@ -400,6 +402,7 @@ def test_create_config_cli_wins_over_preset() -> None:
         rehearsal_epochs=None,
         rehearsal_lr_mult=None,
         compile_mode=None,
+        mc_dropout_eval_samples=None,
         use_checkpointing=False,
         grad_accum_steps=1,
         finetune_from=None,
@@ -426,6 +429,61 @@ def test_create_config_cli_wins_over_preset() -> None:
     assert config.batch_size == 64, (
         f"CLI batch_size=64 debe ganar sobre preset debug batch_size=16, got {config.batch_size}"
     )
+
+
+def test_create_config_wires_mc_dropout_eval_samples() -> None:
+    """_create_config propaga el knob trainer-only de MC Dropout."""
+    import argparse
+
+    import main as main_module
+
+    args = argparse.Namespace(
+        pred_len=20,
+        seq_len=96,
+        label_len=48,
+        batch_size=8,
+        use_checkpointing=False,
+        grad_accum_steps=1,
+        finetune_from=None,
+        freeze_backbone=False,
+        finetune_lr=None,
+        wandb_project="test",
+        wandb_entity=None,
+        date_col=None,
+        seed=42,
+        deterministic=False,
+        epochs=None,
+        return_transform="log_return",
+        metric_space="prices",
+        dropout=None,
+        weight_decay=None,
+        learning_rate=None,
+        scheduler_type=None,
+        warmup_epochs=None,
+        patience=None,
+        min_delta=None,
+        gradient_clip_norm=None,
+        rehearsal_k=None,
+        rehearsal_epochs=None,
+        rehearsal_lr_mult=None,
+        preset=None,
+        conformal_calibration=False,
+        cp_walkforward=False,
+        compile_mode=None,
+        mc_dropout_eval_samples=11,
+        e_layers=None,
+        d_layers=None,
+        n_flow_layers=None,
+        flow_hidden_dim=None,
+    )
+
+    cfg = main_module._create_config(
+        args,
+        targets=["Close"],
+        csv_path=FIXTURE_CSV,
+    )
+
+    assert cfg.mc_dropout_eval_samples == 11
 
 
 def test_save_results_to_csv_generates_fallback_target_names(tmp_path: Path) -> None:

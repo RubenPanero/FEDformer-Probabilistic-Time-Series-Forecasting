@@ -694,7 +694,11 @@ class WalkForwardTrainer:
             for batch in test_loader:
                 try:
                     samples = mc_dropout_inference(
-                        model, batch, n_samples=50, use_flow_sampling=True
+                        model,
+                        batch,
+                        n_samples=self.config.mc_dropout_eval_samples,
+                        use_flow_sampling=True,
+                        mc_batch_size=10,
                     )
                     # Agregar cuantiles en CPU evita la ruta no determinista de
                     # torch.median(..., dim=0) en CUDA cuando los tests fuerzan

@@ -379,7 +379,7 @@ Useful CLI groups:
 - Optimization: `--learning-rate`, `--weight-decay`, `--scheduler-type`,
   `--warmup-epochs`, `--patience`, `--min-delta`, `--gradient-clip-norm`
 - Runtime: `--use-checkpointing`, `--grad-accum-steps`, `--deterministic`,
-  `--compile-mode`
+  `--compile-mode`, `--mc-dropout-eval-samples`
 - Fine-tuning: `--finetune-from`, `--freeze-backbone`, `--finetune-lr`
 - Output: `--save-fig`, `--save-results`, `--save-canonical`, `--no-show`
 - Probabilistic evaluation: `--return-transform`, `--metric-space`,
@@ -392,8 +392,11 @@ Defaults worth calling out:
 - Direct `FEDformerConfig` defaults: `seq_len=10`, `label_len=5`, `pred_len=5`
 - CLI default for `--grad-accum-steps`: `1`
 - Direct `FEDformerConfig` default for `gradient_accumulation_steps`: `2`
+- Direct `FEDformerConfig` default for `mc_dropout_eval_samples`: `20`
 - Odd `pred_len` values are accepted, but even values are strongly recommended
   for affine coupling stability
+- Preset `fourier_optimized` keeps defaults intact but provides `modes=48` for
+  opt-in performance experiments
 
 Authoritative help:
 

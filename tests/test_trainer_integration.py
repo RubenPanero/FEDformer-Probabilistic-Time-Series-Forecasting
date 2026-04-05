@@ -155,6 +155,25 @@ def test_run_backtest_returns_forecast_output(tmp_path: Path) -> None:
 
 
 @pytest.mark.slow
+def test_run_backtest_respects_mc_dropout_eval_samples(tmp_path: Path) -> None:
+    """run_backtest usa el knob trainer-only de MC Dropout sin romper ForecastOutput."""
+    from training import WalkForwardTrainer
+
+    csv_path = tmp_path / "data_sintetico.csv"
+    _crear_csv_sintetico(csv_path, n_filas=120)
+    config = _crear_config_minima(str(csv_path))
+    config.mc_dropout_eval_samples = 4
+    dataset = _crear_dataset(config)
+
+    trainer = WalkForwardTrainer(config=config, full_dataset=dataset)
+    resultado = trainer.run_backtest(n_splits=2)
+
+    assert resultado.samples_scaled.shape[0] == 4
+    assert resultado.quantiles_scaled is not None
+    assert np.allclose(resultado.preds_scaled, resultado.quantiles_scaled[1])
+
+
+@pytest.mark.slow
 def test_forecast_output_properties(tmp_path: Path) -> None:
     """
     Verifica que las propiedades de ForecastOutput devuelven numpy arrays
