@@ -22,11 +22,15 @@ def mc_dropout_inference(
     use_flow_sampling: bool = True,
     mc_batch_size: int = 1,
 ) -> torch.Tensor:
-    """Inferencia formal MC Dropout con manejo asertivo de gradientes.
+    """Ejecuta muestreo MC Dropout y acumula las trayectorias resultantes.
 
-    Si use_flow_sampling es True y el modelo expone una distribución capaz
-    de muestrear (.sample()), extraeremos simulaciones finitas del ruido.
+    Si ``use_flow_sampling`` es True y el modelo expone una distribución capaz
+    de muestrear (``.sample()``), extraemos simulaciones finitas del ruido.
     De otro modo, el sistema recae predictivamente en la media esperada.
+
+    ``mc_batch_size`` solo trocea el bucle Python que acumula ``n_samples``.
+    La implementación actual sigue ejecutando un forward del modelo por muestra,
+    por lo que no realiza vectorización real ni batching adicional en GPU.
     """
 
     def enable_dropout(m: nn.Module) -> None:
