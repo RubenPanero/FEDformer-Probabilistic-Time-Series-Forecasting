@@ -2,7 +2,7 @@ name: Pylint
 
 on:
   push:
-    branches: [ main, master, develop, feature/optuna, feat/inference-api ]
+    branches: [ main, master, develop, feature/optuna, feat/inference-api, optimize-critical-bottlenecks ]
   pull_request:
   workflow_dispatch:
 

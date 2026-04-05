@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master, develop, feature/optuna, feat/probabilistic-metrics-pipeline, feat/inference-api]
+    branches: [main, master, develop, feature/optuna, feat/probabilistic-metrics-pipeline, feat/inference-api, optimize-critical-bottlenecks]
   pull_request:
-    branches: [main, master, develop, feature/optuna]
+    branches: [main, master, develop, feature/optuna, optimize-critical-bottlenecks]
   workflow_dispatch:
 
 jobs:
