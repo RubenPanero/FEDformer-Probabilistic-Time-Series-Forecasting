@@ -152,5 +152,5 @@ archive/
 # === Optuna study databases (binarios, no versionar) ===
 optuna_studies/
 
-# === Simulations (locales, no core del repo) ===
-simulations/
+# === Simulations (core — RiskSimulator & PortfolioSimulator used by main.py) ===
+# (no gitignore — keep tracked)
