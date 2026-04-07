@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "jcodemunch": {
-      "command": "uvx",
-      "args": ["jcodemunch-mcp"]
-    }
-  }
-}
