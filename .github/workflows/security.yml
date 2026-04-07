@@ -2,9 +2,9 @@ name: Security & Code Quality
 
 on:
   push:
-    branches: [main, master, develop, feature/optuna, feat/inference-api]
+    branches: [main, master, develop, feature/optuna, feat/inference-api, optimize-critical-bottlenecks]
   pull_request:
-    branches: [main, master, develop, feature/optuna, feat/inference-api]
+    branches: [main, master, develop, feature/optuna, feat/inference-api, optimize-critical-bottlenecks]
   schedule:
     - cron: "0 0 * * 0"
   workflow_dispatch:

@@ -105,6 +105,9 @@ Thumbs.db
 desktop.ini
 $RECYCLE.BIN/
 
+# === Kilo Code AI context (local AI rules & skills — no compartir en el repositorio) ===
+.kilocode/
+
 # === Claude Code (local AI context — no compartir en el repositorio) ===
 # CLAUDE.md re-indexado para control de versiones (2026-03-09)
 .superpowers/
@@ -144,3 +147,4 @@ spec/
 _bmad/
 _bmad-output/
 AGENTS.md
+QWEN.md

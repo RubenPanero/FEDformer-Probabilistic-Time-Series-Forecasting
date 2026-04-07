@@ -2,9 +2,9 @@ name: Regression Guards
 
 on:
   push:
-    branches: [main, master, develop, feature/optuna, feat/inference-api]
+    branches: [main, master, develop, feature/optuna, feat/inference-api, optimize-critical-bottlenecks]
   pull_request:
-    branches: [main, master, develop, feature/optuna, feat/inference-api]
+    branches: [main, master, develop, feature/optuna, feat/inference-api, optimize-critical-bottlenecks]
   workflow_dispatch:
 
 jobs:

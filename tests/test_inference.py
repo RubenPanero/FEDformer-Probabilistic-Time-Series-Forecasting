@@ -220,6 +220,56 @@ def test_predict_preserves_label_len(mock_registry):
     )
 
 
+def test_predict_uses_inference_default_mc_samples(
+    mock_registry, monkeypatch: pytest.MonkeyPatch
+):
+    """predict() conserva 50 muestras por defecto y no hereda el knob del trainer."""
+    from inference.loader import load_specialist
+    from inference.predictor import predict
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+    config.mc_dropout_eval_samples = 7
+
+    captured: list[int] = []
+
+    def fake_mc_dropout_inference(
+        model, batch, n_samples, use_flow_sampling, mc_batch_size=1
+    ):
+        del model, use_flow_sampling, mc_batch_size
+        captured.append(n_samples)
+        batch_size = batch["x_enc"].shape[0]
+        return torch.ones(
+            n_samples,
+            batch_size,
+            config.pred_len,
+            len(config.target_features),
+        )
+
+    monkeypatch.setattr(
+        "inference.predictor.mc_dropout_inference", fake_mc_dropout_inference
+    )
+
+    rng = np.random.default_rng(99)
+    n_rows = config.seq_len + config.pred_len + 10
+    csv_path = mock_registry.parent / "test_default_samples.csv"
+    pd.DataFrame(
+        {
+            "Close": np.cumsum(rng.standard_normal(n_rows)) + 100,
+            "Volume": rng.integers(1000, 10000, n_rows).astype(float),
+        }
+    ).to_csv(csv_path, index=False)
+
+    _ = predict(
+        model=model,
+        config=config,
+        preprocessor=preprocessor,
+        csv_path=str(csv_path),
+    )
+
+    assert captured
+    assert all(sample_count == 50 for sample_count in captured)
+
+
 def test_predict_does_not_refit_preprocessor(mock_registry, monkeypatch):
     """predict() no re-fittea el preprocessor — usa artefactos de entrenamiento."""
     from inference.loader import load_specialist

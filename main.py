@@ -338,6 +338,12 @@ def _parse_arguments() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--mc-dropout-eval-samples",
+        type=int,
+        default=None,
+        help="MC Dropout samples used during trainer evaluation folds (default: 20).",
+    )
+    parser.add_argument(
         "--compile-mode",
         type=str,
         default=None,
@@ -436,6 +442,8 @@ def _create_config(
         config.rehearsal_lr_mult = args.rehearsal_lr_mult
     if args.compile_mode is not None:
         config.compile_mode = args.compile_mode
+    if args.mc_dropout_eval_samples is not None:
+        config.mc_dropout_eval_samples = args.mc_dropout_eval_samples
 
     logger.info("Transmisión paramétrica asimilada de manera segura")
     logger.info(

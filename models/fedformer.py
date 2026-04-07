@@ -242,7 +242,13 @@ class Flow_FEDformer(nn.Module):
         feature_context = flow_conditioned.mean(dim=1)
         mean_pred = final_trend[:, -self.config.pred_len :, : self.config.c_out]
 
-        return NormalizingFlowDistribution(mean_pred, self.flows, feature_context)
+        return NormalizingFlowDistribution(
+            mean_pred,
+            self.flows,
+            feature_context,
+            use_gradient_checkpointing=self.config.use_gradient_checkpointing,
+            training=self.training,
+        )
 
 
 class NormalizingFlowDistribution:
@@ -254,12 +260,19 @@ class NormalizingFlowDistribution:
     """
 
     def __init__(
-        self, means: torch.Tensor, flows: nn.ModuleList, contexts: torch.Tensor
+        self,
+        means: torch.Tensor,
+        flows: nn.ModuleList,
+        contexts: torch.Tensor,
+        use_gradient_checkpointing: bool = False,
+        training: bool = False,
     ) -> None:
         """Store flow distribution parameters."""
         self.means = means
         self.flows = flows
         self.contexts = contexts
+        self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.training = training
 
     @property
     def mean(self) -> torch.Tensor:
@@ -287,9 +300,20 @@ class NormalizingFlowDistribution:
             ctx_feature = self.contexts[:, feature_idx, :]
 
             flow = self.flows[feature_idx]
-            lp_feature = flow.log_prob(
-                y_feature, base_mean=mu_feature, context=ctx_feature
-            )
+            if self.use_gradient_checkpointing and self.training:
+                lp_feature = torch.utils.checkpoint.checkpoint(
+                    lambda y, mu, ctx: flow.log_prob(  # noqa: B023
+                        y, base_mean=mu, context=ctx
+                    ),
+                    y_feature,
+                    mu_feature,
+                    ctx_feature,
+                    use_reentrant=False,
+                )
+            else:
+                lp_feature = flow.log_prob(
+                    y_feature, base_mean=mu_feature, context=ctx_feature
+                )
             total_lp = total_lp + lp_feature
 
         if mask is not None:
