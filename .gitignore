@@ -148,3 +148,18 @@ _bmad/
 _bmad-output/
 AGENTS.md
 QWEN.md
+
+# === Claude Code (local AI context — no compartir) ===
+.claude/
+.claude/hooks/
+
+# === Kilo Code AI context (local rules & skills — no compartir) ===
+.kilo/
+.kilo/plans/
+
+# === Project internal documentation & tooling (local only) ===
+docs/
+.codex
+.mcp.json
+CLAUDE.md
+Makefile
