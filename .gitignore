@@ -40,6 +40,7 @@ coverage.xml
 
 # === Plans, specs & brainstorming (locales — no compartir) ===
 plans/
+tasks/
 spec/
 .superpowers/
 _bmad/
