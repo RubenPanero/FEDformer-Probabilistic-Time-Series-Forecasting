@@ -45,6 +45,8 @@ jobs:
             tests/test_dataset.py \
             tests/test_encoder_decoder.py \
             tests/test_fedformer_basic.py \
+            tests/test_financial_dataset_builder.py \
+            tests/test_finetune.py \
             tests/test_flows.py \
             tests/test_forecast_output.py \
             tests/test_reproducibility.py \
