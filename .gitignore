@@ -48,11 +48,13 @@ _bmad-output/
 
 # === Project internal documentation & tooling (local only) ===
 .codex
+.agents/
 .mcp.json
 CLAUDE.md
 Makefile
 AGENTS.md
 QWEN.md
+scripts/install_git_hooks.sh
 docs/
 docs/superpowers/plans/
 docs/plans/
@@ -127,8 +129,10 @@ desktop.ini
 $RECYCLE.BIN/
 
 # === Documentation (personal/internal) ===
+ARCHITECTURE.md
 CRITICAL_FIXES.md
 IMPLEMENTATION_SUMMARY.md
+QUICK_REFERENCE.md
 VERIFICATION.md
 COMPLETION_REPORT.txt
 GITHUB_PUSH_GUIDE.md
@@ -139,6 +143,7 @@ push_to_github.sh
 # === Internal tests (use GitHub Actions workflows instead) ===
 tests/test_critical_fixes.py
 tests/test_critical_fixes_simple.py
+tests/test_regime_detector.py
 tests/validate_fixes.py
 
 # === Archivos auxiliares (locales) ===
