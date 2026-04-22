@@ -45,16 +45,12 @@ def _normalize_ohlcv_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
 
     normalized = df.loc[:, REQUIRED_OHLCV_COLUMNS].copy()
     if normalized.isnull().any().any():
-        raise ValueError(
-            f"NaN detectados en columnas OHLCV requeridas para {symbol}."
-        )
+        raise ValueError(f"NaN detectados en columnas OHLCV requeridas para {symbol}.")
 
     return normalized
 
 
-def build_financial_dataset(
-    symbol: str, output_dir: str
-) -> str:
+def build_financial_dataset(symbol: str, output_dir: str) -> str:
     """Construye y guarda el dataset financiero con 11 features para FEDformer.
 
     Args:
