@@ -191,17 +191,6 @@ Recommended prerequisites:
 - a working C or C++ build toolchain if a dependency needs compilation
 - optional CUDA-capable GPU for faster training
 
-### Environment variables
-
-For Alpha Vantage-backed dataset downloads, export:
-
-```bash
-export ALPHA_VANTAGE_API_KEY="your_api_key"
-```
-
-The runtime reads `ALPHA_VANTAGE_API_KEY` directly from the environment. `.env`
-files are not auto-loaded by the code.
-
 ## Usage
 
 ### Canonical training runs
@@ -356,11 +345,10 @@ date,close_price,volume,volatility,rsi
 To build a market dataset:
 
 ```bash
-python3 -m data.financial_dataset_builder --symbol NVDA --output_dir data --use_mock
+python3 -m data.financial_dataset_builder --symbol NVDA --output_dir data
 ```
 
-Without `--use_mock`, the dataset builder uses Alpha Vantage and expects
-`ALPHA_VANTAGE_API_KEY` to be set first.
+The builder uses `yfinance` as the active OHLCV source.
 
 ## Configuration
 

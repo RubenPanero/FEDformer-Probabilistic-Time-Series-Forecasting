@@ -145,6 +145,9 @@ tests/test_critical_fixes.py
 tests/test_critical_fixes_simple.py
 tests/test_regime_detector.py
 tests/validate_fixes.py
+tests/test_financial_dataset_builder.py
+tests/test_finetune.py
+tests/test_tune_hyperparams.py
 
 # === Archivos auxiliares (locales) ===
 archivos auxiliares/

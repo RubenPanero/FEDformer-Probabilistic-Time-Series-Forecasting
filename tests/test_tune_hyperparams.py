@@ -531,6 +531,32 @@ def test_download_extra_tickers_skips_existing(tmp_path: Path, monkeypatch) -> N
             assert ticker in called_for
 
 
+def test_download_extra_tickers_invokes_builder_without_legacy_cli_flag(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """download_extra_tickers no debe propagar --use_mock al subprocess."""
+    monkeypatch.chdir(tmp_path)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    captured_cmds: list[list[str]] = []
+
+    def mock_run(cmd, **kwargs):  # noqa: ANN001
+        captured_cmds.append(list(cmd))
+        ticker = cmd[cmd.index("--symbol") + 1]
+        (data_dir / f"{ticker}_features.csv").write_text("date,Close\n2024-01-01,1\n")
+        m = MagicMock()
+        m.returncode = 0
+        return m
+
+    with patch("subprocess.run", side_effect=mock_run):
+        th.download_extra_tickers()
+
+    assert captured_cmds, "Se esperaba al menos una invocación al builder"
+    for cmd in captured_cmds:
+        assert "--use_mock" not in cmd
+
+
 def test_download_extra_tickers_continues_when_csv_is_not_generated(
     tmp_path: Path, monkeypatch
 ) -> None:

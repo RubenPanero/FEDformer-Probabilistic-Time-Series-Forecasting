@@ -5,29 +5,61 @@ Features de salida (11):
 """
 
 import argparse
-import os
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
-import pandas_ta as ta  # noqa: F401
+import pandas_ta_classic  # noqa: F401
 
-from data.alpha_vantage_client import AlphaVantageClient
 from data.vix_data import VixDataFetcher
 
 logger = logging.getLogger(__name__)
+REQUIRED_OHLCV_COLUMNS = ["Open", "High", "Low", "Close", "Volume"]
+
+
+def _normalize_ohlcv_frame(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """Normaliza una respuesta OHLCV externa al contrato interno del builder."""
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+
+    df = df.sort_index()
+
+    if df.empty:
+        raise ValueError(f"No se obtuvieron datos OHLCV para {symbol} con yfinance.")
+
+    missing_columns = [
+        column for column in REQUIRED_OHLCV_COLUMNS if column not in df.columns
+    ]
+    if missing_columns:
+        raise ValueError(
+            f"Faltan columnas OHLCV requeridas para {symbol}: {missing_columns}"
+        )
+
+    normalized = df.loc[:, REQUIRED_OHLCV_COLUMNS].copy()
+    if normalized.isnull().any().any():
+        raise ValueError(
+            f"NaN detectados en columnas OHLCV requeridas para {symbol}."
+        )
+
+    return normalized
 
 
 def build_financial_dataset(
-    symbol: str, output_dir: str, use_mock: bool = False
+    symbol: str, output_dir: str
 ) -> str:
     """Construye y guarda el dataset financiero con 11 features para FEDformer.
 
     Args:
         symbol:     Ticker, e.g. "NVDA"
         output_dir: Directorio de salida para el CSV
-        use_mock:   Si True, usa yfinance en lugar de Alpha Vantage
 
     Returns:
         Ruta absoluta al CSV generado.
@@ -35,7 +67,7 @@ def build_financial_dataset(
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. Obtener OHLCV (7 años)
-    df = _fetch_ohlcv(symbol, use_mock)
+    df = _fetch_ohlcv(symbol)
 
     # Filtrar a los últimos 7 años — calculado en tiempo de llamada para evitar drift por import
     seven_years_ago = (datetime.now() - timedelta(days=7 * 365)).strftime("%Y-%m-%d")
@@ -134,30 +166,20 @@ def validate_dataset(df: pd.DataFrame, symbol: str) -> dict[str, Any]:
     return report
 
 
-def _fetch_ohlcv(symbol: str, use_mock: bool) -> pd.DataFrame:
-    """Descarga OHLCV desde yfinance (mock) o Alpha Vantage (real).
+def _fetch_ohlcv(symbol: str) -> pd.DataFrame:
+    """Descarga OHLCV diario desde yfinance y normaliza su contrato.
 
     Args:
         symbol:   Ticker a descargar.
-        use_mock: Si True, usa yfinance.
 
     Returns:
         DataFrame con índice DatetimeIndex y columnas OHLCV.
     """
-    if use_mock:
-        import yfinance as yf
+    import yfinance as yf
 
-        logger.info("Usando yfinance (mock) para %s", symbol)
-        df = yf.download(symbol, period="7y", progress=False)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.droplevel(1)
-        if df.index.tz is not None:  # guard: yfinance moderno retorna índice tz-naive
-            df.index = df.index.tz_localize(None)
-    else:
-        av_client = AlphaVantageClient()
-        df = av_client.get_daily_data(symbol, outputsize="full")
-
-    return df
+    logger.info("Descargando OHLCV con yfinance para %s", symbol)
+    df = yf.download(symbol, period="7y", progress=False)
+    return _normalize_ohlcv_frame(df, symbol)
 
 
 if __name__ == "__main__":
@@ -168,10 +190,5 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_dir", type=str, default="data", help="Directorio de salida"
     )
-    parser.add_argument(
-        "--use_mock",
-        action="store_true",
-        help="Usa yfinance en lugar de Alpha Vantage (no requiere API key)",
-    )
     args = parser.parse_args()
-    build_financial_dataset(args.symbol, args.output_dir, args.use_mock)
+    build_financial_dataset(args.symbol, args.output_dir)

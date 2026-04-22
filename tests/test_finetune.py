@@ -214,6 +214,49 @@ def test_finetune_sequence_wires_rehearsal_settings(tmp_path: Path) -> None:
     assert cfg.sections.training.rehearsal.rehearsal_epochs == 2
 
 
+def test_finetune_sequence_builds_missing_dataset_without_legacy_provider_flag(
+    tmp_path: Path,
+) -> None:
+    """Si falta el CSV, finetune_sequence debe invocar el builder sin use_mock."""
+    base_ckpt = tmp_path / "base.pt"
+    base_ckpt.touch()
+    ckpt_dir = tmp_path / "out" / "MOCK"
+    ckpt_dir.mkdir(parents=True)
+    (ckpt_dir / "best_model_fold_2.pt").touch()
+
+    build_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def fake_build(*args: object, **kwargs: object) -> str:
+        build_calls.append((args, kwargs))
+        return str(tmp_path / "data" / "MOCK_features.csv")
+
+    exists_side_effect = [True, False]
+
+    with (
+        patch(
+            "training.sequential_finetuner.FEDformerConfig",
+            return_value=MagicMock(),
+        ),
+        patch("training.sequential_finetuner.TimeSeriesDataset"),
+        patch("training.sequential_finetuner.WalkForwardTrainer") as MockTrainer,
+        patch("data.financial_dataset_builder.build_financial_dataset", side_effect=fake_build),
+        patch("os.path.exists", side_effect=exists_side_effect),
+    ):
+        mock_trainer = MagicMock()
+        mock_trainer.checkpoint_dir = ckpt_dir
+        mock_trainer.run_backtest.return_value = _make_forecast_output()
+        MockTrainer.return_value = mock_trainer
+
+        finetune_sequence(
+            symbols=["MOCK"],
+            base_checkpoint=str(base_ckpt),
+            output_dir=str(tmp_path / "out"),
+            n_splits=3,
+        )
+
+    assert build_calls == [(("MOCK", "data"), {})]
+
+
 def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
     """El checkpoint propagado al siguiente ticker usa el índice del último fold."""
     for n_splits in [2, 3, 5]:
