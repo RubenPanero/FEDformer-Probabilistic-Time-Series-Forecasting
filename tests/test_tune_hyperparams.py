@@ -545,6 +545,27 @@ def test_download_extra_tickers_continues_when_csv_is_not_generated(
         th.download_extra_tickers()
 
 
+def test_download_extra_tickers_omits_legacy_use_mock_flag(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """download_extra_tickers no debe pasar el alias heredado `--use_mock`."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+
+    captured_commands: list[list[str]] = []
+
+    def mock_run(cmd, **kwargs):  # noqa: ANN001
+        captured_commands.append(cmd)
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=mock_run):
+        th.download_extra_tickers()
+
+    assert captured_commands, "Se esperaba al menos una invocación al builder"
+    for cmd in captured_commands:
+        assert "--use_mock" not in cmd
+
+
 # ---------------------------------------------------------------------------
 # Tests de _parse_probabilistic_csv (Épica 6)
 # ---------------------------------------------------------------------------

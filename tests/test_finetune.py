@@ -214,6 +214,44 @@ def test_finetune_sequence_wires_rehearsal_settings(tmp_path: Path) -> None:
     assert cfg.sections.training.rehearsal.rehearsal_epochs == 2
 
 
+def test_finetune_sequence_builds_missing_dataset_without_provider_flag(
+    tmp_path: Path,
+) -> None:
+    """Si falta el CSV, finetune_sequence invoca el builder sin `use_mock`."""
+    base_ckpt = tmp_path / "base.pt"
+    base_ckpt.touch()
+    ckpt_dir = tmp_path / "out" / "NVDA"
+    ckpt_dir.mkdir(parents=True)
+    (ckpt_dir / "best_model_fold_2.pt").touch()
+
+    def fake_exists(path: str) -> bool:
+        return path == str(base_ckpt)
+
+    with (
+        patch(
+            "training.sequential_finetuner.FEDformerConfig",
+            return_value=MagicMock(),
+        ),
+        patch("training.sequential_finetuner.TimeSeriesDataset"),
+        patch("training.sequential_finetuner.WalkForwardTrainer") as MockTrainer,
+        patch("data.financial_dataset_builder.build_financial_dataset") as mock_build,
+        patch("training.sequential_finetuner.os.path.exists", side_effect=fake_exists),
+    ):
+        mock_trainer = MagicMock()
+        mock_trainer.checkpoint_dir = ckpt_dir
+        mock_trainer.run_backtest.return_value = _make_forecast_output()
+        MockTrainer.return_value = mock_trainer
+
+        finetune_sequence(
+            symbols=["NVDA"],
+            base_checkpoint=str(base_ckpt),
+            output_dir=str(tmp_path / "out"),
+            n_splits=3,
+        )
+
+    mock_build.assert_called_once_with("NVDA", "data")
+
+
 def test_dynamic_fold_checkpoint(tmp_path: Path) -> None:
     """El checkpoint propagado al siguiente ticker usa el índice del último fold."""
     for n_splits in [2, 3, 5]:
