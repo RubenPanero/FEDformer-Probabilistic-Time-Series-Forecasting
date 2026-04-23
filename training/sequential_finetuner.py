@@ -85,7 +85,7 @@ def finetune_sequence(
             logger.info("Generando dataset financiero para %s...", symbol)
             from data.financial_dataset_builder import build_financial_dataset  # noqa: PLC0415
 
-            build_financial_dataset(symbol, "data", use_mock=True)
+            build_financial_dataset(symbol, "data")
 
         # 2. Configurar entrenamiento
         config = FEDformerConfig(

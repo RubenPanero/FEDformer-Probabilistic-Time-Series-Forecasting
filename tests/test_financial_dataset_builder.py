@@ -5,7 +5,11 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-from data.financial_dataset_builder import build_financial_dataset, validate_dataset
+from data.financial_dataset_builder import (
+    _normalize_ohlcv_frame,
+    build_financial_dataset,
+    validate_dataset,
+)
 
 EXPECTED_FEATURES = [
     "Open",
@@ -54,6 +58,26 @@ def _make_ohlcv_df(n_days: int = 1900) -> pd.DataFrame:
     )
 
 
+def _make_multiindex_ohlcv_df() -> pd.DataFrame:
+    """Crea una respuesta estilo yfinance con MultiIndex por ticker."""
+    base = _make_ohlcv_df(n_days=10)
+    columns = pd.MultiIndex.from_product(
+        [list(base.columns) + ["Adj Close"], ["NVDA"]],
+        names=["Price", "Ticker"],
+    )
+    values = np.column_stack(
+        [
+            base["Open"].to_numpy(),
+            base["High"].to_numpy(),
+            base["Low"].to_numpy(),
+            base["Close"].to_numpy(),
+            base["Volume"].to_numpy(),
+            base["Close"].to_numpy(),
+        ]
+    )
+    return pd.DataFrame(values, index=base.index, columns=columns)
+
+
 @pytest.fixture
 def nvda_df(tmp_path):
     """Construye dataset NVDA con mocks de red (yfinance y VIX)."""
@@ -69,7 +93,7 @@ def nvda_df(tmp_path):
             return_value=vix_mock,
         ),
     ):
-        output_path = build_financial_dataset("NVDA", str(tmp_path), use_mock=True)
+        output_path = build_financial_dataset("NVDA", str(tmp_path))
     return pd.read_csv(output_path, index_col="date", parse_dates=True)
 
 
@@ -138,3 +162,63 @@ def test_validate_dataset_detects_price_inconsistency():
     )
     report = validate_dataset(df, "TEST")
     assert report["price_inconsistencies"] == 1
+
+
+def test_normalize_ohlcv_frame_flattens_multiindex_columns() -> None:
+    """_normalize_ohlcv_frame debe extraer solo OHLCV desde MultiIndex."""
+    normalized = _normalize_ohlcv_frame(_make_multiindex_ohlcv_df())
+
+    assert list(normalized.columns) == ["Open", "High", "Low", "Close", "Volume"]
+
+
+def test_normalize_ohlcv_frame_makes_timezone_naive() -> None:
+    """_normalize_ohlcv_frame elimina timezone del índice."""
+    df = _make_ohlcv_df(n_days=5)
+    df.index = df.index.tz_localize("UTC")
+
+    normalized = _normalize_ohlcv_frame(df)
+
+    assert normalized.index.tz is None
+
+
+def test_normalize_ohlcv_frame_drops_extra_columns() -> None:
+    """_normalize_ohlcv_frame no debe propagar columnas ajenas al contrato."""
+    df = _make_ohlcv_df(n_days=5).assign(Dividends=0.0, Stock_Splits=0.0)
+
+    normalized = _normalize_ohlcv_frame(df)
+
+    assert list(normalized.columns) == ["Open", "High", "Low", "Close", "Volume"]
+
+
+def test_normalize_ohlcv_frame_sorts_index_ascending() -> None:
+    """_normalize_ohlcv_frame ordena el índice cronológicamente."""
+    df = _make_ohlcv_df(n_days=5).sort_index(ascending=False)
+
+    normalized = _normalize_ohlcv_frame(df)
+
+    assert normalized.index.is_monotonic_increasing
+
+
+def test_normalize_ohlcv_frame_rejects_empty_frame() -> None:
+    """_normalize_ohlcv_frame falla con DataFrames vacíos."""
+    empty = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+
+    with pytest.raises(ValueError, match="vacio"):
+        _normalize_ohlcv_frame(empty)
+
+
+def test_normalize_ohlcv_frame_rejects_missing_required_columns() -> None:
+    """_normalize_ohlcv_frame falla si falta alguna columna OHLCV requerida."""
+    df = _make_ohlcv_df(n_days=5).drop(columns=["Volume"])
+
+    with pytest.raises(ValueError, match="Volume"):
+        _normalize_ohlcv_frame(df)
+
+
+def test_normalize_ohlcv_frame_rejects_nan_on_required_columns() -> None:
+    """_normalize_ohlcv_frame falla si OHLCV contiene NaN."""
+    df = _make_ohlcv_df(n_days=5)
+    df.iloc[0, df.columns.get_loc("Close")] = np.nan
+
+    with pytest.raises(ValueError, match="NaN"):
+        _normalize_ohlcv_frame(df)

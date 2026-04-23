@@ -5,37 +5,39 @@ Features de salida (11):
 """
 
 import argparse
-import os
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import pandas_ta as ta  # noqa: F401
 
-from data.alpha_vantage_client import AlphaVantageClient
+try:
+    import pandas_ta as ta  # noqa: F401
+except ModuleNotFoundError:  # pragma: no cover - entorno Windows usa pandas-ta-classic
+    import pandas_ta_classic as ta  # noqa: F401
+
 from data.vix_data import VixDataFetcher
 
 logger = logging.getLogger(__name__)
+REQUIRED_OHLCV_COLUMNS = ["Open", "High", "Low", "Close", "Volume"]
 
 
-def build_financial_dataset(
-    symbol: str, output_dir: str, use_mock: bool = False
-) -> str:
+def build_financial_dataset(symbol: str, output_dir: str) -> str:
     """Construye y guarda el dataset financiero con 11 features para FEDformer.
 
     Args:
         symbol:     Ticker, e.g. "NVDA"
         output_dir: Directorio de salida para el CSV
-        use_mock:   Si True, usa yfinance en lugar de Alpha Vantage
 
     Returns:
         Ruta absoluta al CSV generado.
     """
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
 
     # 1. Obtener OHLCV (7 años)
-    df = _fetch_ohlcv(symbol, use_mock)
+    df = _fetch_ohlcv(symbol)
 
     # Filtrar a los últimos 7 años — calculado en tiempo de llamada para evitar drift por import
     seven_years_ago = (datetime.now() - timedelta(days=7 * 365)).strftime("%Y-%m-%d")
@@ -66,12 +68,12 @@ def build_financial_dataset(
     df.dropna(inplace=True)
 
     # 4. Guardar
-    output_path = os.path.join(output_dir, f"{symbol}_features.csv")
+    output_path = output_dir_path / f"{symbol}_features.csv"
     df.index.name = "date"
     df.to_csv(output_path)
     logger.info("Dataset guardado: %s — forma %s", output_path, df.shape)
 
-    return output_path
+    return str(output_path)
 
 
 def validate_dataset(df: pd.DataFrame, symbol: str) -> dict[str, Any]:
@@ -134,30 +136,50 @@ def validate_dataset(df: pd.DataFrame, symbol: str) -> dict[str, Any]:
     return report
 
 
-def _fetch_ohlcv(symbol: str, use_mock: bool) -> pd.DataFrame:
-    """Descarga OHLCV desde yfinance (mock) o Alpha Vantage (real).
+def _normalize_ohlcv_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Normaliza la respuesta OHLCV de yfinance al contrato interno estable."""
+    if df.empty:
+        raise ValueError("yfinance devolvio un DataFrame vacio")
+
+    normalized = df.copy()
+
+    if isinstance(normalized.columns, pd.MultiIndex):
+        normalized.columns = normalized.columns.get_level_values(0)
+
+    missing = [col for col in REQUIRED_OHLCV_COLUMNS if col not in normalized.columns]
+    if missing:
+        missing_cols = ", ".join(missing)
+        raise ValueError(f"Faltan columnas OHLCV requeridas: {missing_cols}")
+
+    normalized = normalized[REQUIRED_OHLCV_COLUMNS]
+
+    if not isinstance(normalized.index, pd.DatetimeIndex):
+        normalized.index = pd.to_datetime(normalized.index)
+    if normalized.index.tz is not None:
+        normalized.index = normalized.index.tz_localize(None)
+
+    normalized = normalized.sort_index()
+
+    if normalized[REQUIRED_OHLCV_COLUMNS].isnull().any().any():
+        raise ValueError("OHLCV contiene NaN tras la normalizacion")
+
+    return normalized
+
+
+def _fetch_ohlcv(symbol: str) -> pd.DataFrame:
+    """Descarga OHLCV desde yfinance y lo adapta al contrato esperado.
 
     Args:
         symbol:   Ticker a descargar.
-        use_mock: Si True, usa yfinance.
 
     Returns:
         DataFrame con índice DatetimeIndex y columnas OHLCV.
     """
-    if use_mock:
-        import yfinance as yf
+    import yfinance as yf
 
-        logger.info("Usando yfinance (mock) para %s", symbol)
-        df = yf.download(symbol, period="7y", progress=False)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.droplevel(1)
-        if df.index.tz is not None:  # guard: yfinance moderno retorna índice tz-naive
-            df.index = df.index.tz_localize(None)
-    else:
-        av_client = AlphaVantageClient()
-        df = av_client.get_daily_data(symbol, outputsize="full")
-
-    return df
+    logger.info("Descargando OHLCV con yfinance para %s", symbol)
+    raw_df = yf.download(symbol, period="7y", progress=False)
+    return _normalize_ohlcv_frame(raw_df)
 
 
 if __name__ == "__main__":
@@ -168,10 +190,5 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_dir", type=str, default="data", help="Directorio de salida"
     )
-    parser.add_argument(
-        "--use_mock",
-        action="store_true",
-        help="Usa yfinance en lugar de Alpha Vantage (no requiere API key)",
-    )
     args = parser.parse_args()
-    build_financial_dataset(args.symbol, args.output_dir, args.use_mock)
+    build_financial_dataset(args.symbol, args.output_dir)

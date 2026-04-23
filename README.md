@@ -193,14 +193,9 @@ Recommended prerequisites:
 
 ### Environment variables
 
-For Alpha Vantage-backed dataset downloads, export:
-
-```bash
-export ALPHA_VANTAGE_API_KEY="your_api_key"
-```
-
-The runtime reads `ALPHA_VANTAGE_API_KEY` directly from the environment. `.env`
-files are not auto-loaded by the code.
+No API key is required for the active market-dataset builder flow. If you use
+optional third-party tools outside the default pipeline, configure their
+credentials separately.
 
 ## Usage
 
@@ -356,11 +351,8 @@ date,close_price,volume,volatility,rsi
 To build a market dataset:
 
 ```bash
-python3 -m data.financial_dataset_builder --symbol NVDA --output_dir data --use_mock
+python3 -m data.financial_dataset_builder --symbol NVDA --output_dir data
 ```
-
-Without `--use_mock`, the dataset builder uses Alpha Vantage and expects
-`ALPHA_VANTAGE_API_KEY` to be set first.
 
 ## Configuration
 

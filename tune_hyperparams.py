@@ -577,7 +577,7 @@ def objective(
 def download_extra_tickers() -> None:
     """Descarga los 8 tickers adicionales para alcanzar los 12 activos.
 
-    Usa financial_dataset_builder.py con --use_mock (yfinance real, 7 años).
+    Usa financial_dataset_builder.py con su interfaz activa basada en yfinance.
     Omite los que ya existen en data/.
     """
     for ticker in EXTRA_TICKERS:
@@ -594,7 +594,6 @@ def download_extra_tickers() -> None:
                 "data/financial_dataset_builder.py",
                 "--symbol",
                 ticker,
-                "--use_mock",
             ],
             capture_output=True,
             text=True,
