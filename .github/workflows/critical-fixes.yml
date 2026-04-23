@@ -47,6 +47,7 @@ jobs:
       - name: Run trainer and Optuna guards
         run: |
           pytest -q \
+            tests/test_financial_dataset_builder.py \
             tests/test_forecast_output.py \
             tests/test_trainer_scheduling.py \
             tests/test_trainer_integration.py \
