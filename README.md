@@ -442,6 +442,17 @@ Fast local validation:
 pytest -q -m "not slow"
 ```
 
+Focused semantic regression slice for the current optimization work:
+
+```bash
+pytest -q \
+  tests/test_critical_bottlenecks.py \
+  tests/test_trainer_scheduling.py \
+  tests/test_tune_hyperparams.py \
+  tests/test_inference.py \
+  tests/test_reproducibility.py
+```
+
 Full test suite:
 
 ```bash
@@ -453,8 +464,61 @@ Lint and CI-parity checks:
 ```bash
 ruff check .
 ruff format --check .
-make ci-check
+python main.py --help
+python tune_hyperparams.py --help
+python -m inference --help
+pytest -q -m "not slow"
 ```
+
+Windows hook entrypoints:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\hooks\pre-commit.ps1
+powershell -ExecutionPolicy Bypass -File scripts\hooks\pre-push.ps1
+```
+
+Current regression coverage for the optimization branch is wired through:
+
+- `scripts/hooks/pre-push.ps1`
+- `.github/workflows/ci.yml`
+- `.github/workflows/compatibility.yml`
+- `.github/workflows/critical-fixes.yml`
+
+Those fast slices include `tests/test_critical_bottlenecks.py` but keep
+`tests/test_critical_bottlenecks_benchmarks.py` opt-in as benchmark-only
+validation.
+
+Tracked technical documentation for the current repository state:
+
+- [docs/README.md](/abs/path/C:/Users/rbglz/Documents/PROYECTOS_PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/docs/README.md)
+- [docs/repository_technical_status.md](/abs/path/C:/Users/rbglz/Documents/PROYECTOS_PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/docs/repository_technical_status.md)
+
+Optimization guardrails:
+
+- contractual benchmark budgets currently exist only for
+  `tests/test_critical_bottlenecks_benchmarks.py`:
+  - `mc_dropout`: `time_delta_pct <= +5%`
+  - `fourier_modes`: `time_delta_pct <= +15%`
+- `flow_checkpointing` remains benchmarked for equivalence and observability,
+  but it is not a speed guardrail because its contract is memory/training
+  oriented, not CPU speed
+- synthetic benchmark output is useful for relative regressions in the harness;
+  it is not a substitute for canonical NVDA/GOOGL runs on your target hardware
+- structural optimizations in Task 4 stay behind explicit controls:
+  - `torch.compile` can be disabled explicitly with `--compile-mode ""` or
+    `--compile-mode none`
+  - preprocessing refit reuse is opt-in via
+    `allow_reuse_fitted_fold_preprocessor`
+  - Optuna still preserves the subprocess/public-contract path while reducing
+    redundant overhead
+
+Recent trainer-runtime hardening in the optimization work covers:
+
+- effective `DataLoader` runtime config (`spawn`, `prefetch_factor`,
+  `pin_memory`, seeded workers)
+- `_prepare_batch()` using `non_blocking` only when `pin_memory` is actually
+  effective
+- `_eval_epoch()` averaging only finite losses while discarding invalid batches
 
 Recommended smoke checks:
 
@@ -477,10 +541,13 @@ Contributions are welcome.
 
 Before opening a PR:
 
-1. Run `make ci-check`
+1. Run the explicit lint, CLI smoke, and pytest commands from the testing section
 2. Keep changes focused and documented
 3. Update `README.md` when changing public CLI behavior
 4. Add or update tests for runtime-facing changes
+
+For this repository, replace the old `make ci-check` habit with the explicit
+commands above or the versioned hooks under `scripts/hooks/`.
 
 Suggested PR contents:
 

@@ -46,6 +46,9 @@ from utils.probabilistic_metrics import (
 logger = logging.getLogger(__name__)
 device = get_device()
 DEFAULT_QUANTILE_LEVELS = np.array([0.1, 0.5, 0.9], dtype=np.float32)
+DEFAULT_QUANTILE_LEVELS_CPU = torch.tensor(
+    DEFAULT_QUANTILE_LEVELS.tolist(), dtype=torch.float32
+)
 
 
 class _SeedWorker:
@@ -171,6 +174,8 @@ class WalkForwardTrainer:
         En GPUs con pocos SMs (e.g. RTX 4050 Laptop: 20 SMs) el inductor
         genera kernels incorrectos que producen NaN en la loss.
         """
+        if requested_mode.strip().lower() in {"", "none", "off", "false", "disabled"}:
+            return ""
         if requested_mode != "max-autotune" or not torch.cuda.is_available():
             return requested_mode
         n_sms = torch.cuda.get_device_properties(0).multi_processor_count
@@ -291,11 +296,12 @@ class WalkForwardTrainer:
 
     def _prepare_batch(self, batch: dict[str, torch.Tensor]) -> BatchTensors:
         """Transborda el bloque de tensores al dispositivo hardware principal."""
+        non_blocking = self._pin_memory_enabled()
         return BatchTensors(
-            encoder=batch["x_enc"].to(device, non_blocking=True),
-            decoder=batch["x_dec"].to(device, non_blocking=True),
-            target=batch["y_true"].to(device, non_blocking=True),
-            regime=batch["x_regime"].to(device, non_blocking=True),
+            encoder=batch["x_enc"].to(device, non_blocking=non_blocking),
+            decoder=batch["x_dec"].to(device, non_blocking=non_blocking),
+            target=batch["y_true"].to(device, non_blocking=non_blocking),
+            regime=batch["x_regime"].to(device, non_blocking=non_blocking),
         )
 
     def _forward_and_compute_loss(
@@ -667,7 +673,8 @@ class WalkForwardTrainer:
         import math  # pylint: disable=import-outside-toplevel
 
         model.eval()
-        val_losses: list[float] = []
+        total_loss = 0.0
+        n_valid_batches = 0
         with torch.no_grad():
             for batch in val_loader:
                 try:
@@ -675,10 +682,11 @@ class WalkForwardTrainer:
                     dist = model(tensors.encoder, tensors.decoder, tensors.regime)
                     loss_val = float(self._nll_loss(dist, tensors.target).item())
                     if math.isfinite(loss_val):
-                        val_losses.append(loss_val)
+                        total_loss += loss_val
+                        n_valid_batches += 1
                 except (RuntimeError, ValueError) as exc:
                     logger.warning("Batch de validación descartado: %s", exc)
-        return float(np.mean(val_losses)) if val_losses else float("inf")
+        return total_loss / n_valid_batches if n_valid_batches else float("inf")
 
     def _evaluate_model(
         self, model: Flow_FEDformer, test_loader: DataLoader
@@ -706,9 +714,7 @@ class WalkForwardTrainer:
                     samples_cpu = samples.detach().to("cpu", dtype=torch.float32)
                     quantiles_cpu = torch.quantile(
                         samples_cpu,
-                        q=torch.tensor(
-                            DEFAULT_QUANTILE_LEVELS.tolist(), dtype=torch.float32
-                        ),
+                        q=DEFAULT_QUANTILE_LEVELS_CPU,
                         dim=0,
                     )
                     fold_samples.append(samples_cpu.numpy())

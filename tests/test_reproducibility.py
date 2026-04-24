@@ -87,3 +87,43 @@ def test_make_loader_uses_seeded_generator_and_disables_worker_init_without_work
     assert loader.generator is not None
     assert loader.generator.initial_seed() == 91
     assert loader.worker_init_fn is None
+
+
+def test_prepare_data_loaders_enable_spawn_prefetch_and_pin_memory_with_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Con workers activos, los loaders deben usar spawn, prefetch y pin_memory efectivo."""
+    config = _make_config(seed=33, num_workers=2, pin_memory=True)
+    trainer = WalkForwardTrainer(config, MagicMock())
+
+    dummy_x = torch.zeros(6, config.seq_len, config.enc_in)
+    subset = Subset(TensorDataset(dummy_x), list(range(6)))
+
+    monkeypatch.setattr("training.trainer.torch.cuda.is_available", lambda: True)
+
+    train_loader, test_loader = trainer._prepare_data_loaders(subset, subset)
+
+    for loader in (train_loader, test_loader):
+        assert loader.prefetch_factor == 2
+        assert loader.multiprocessing_context is not None
+        assert loader.multiprocessing_context.get_start_method() == "spawn"
+        assert loader.persistent_workers is False
+        assert loader.pin_memory is True
+        assert isinstance(loader.worker_init_fn, _SeedWorker)
+        assert loader.worker_init_fn.base_seed == 33
+
+
+def test_prepare_data_loaders_skip_prefetch_and_context_without_workers() -> None:
+    """Sin workers, el loader no debe activar prefetch ni contexto multiprocessing."""
+    config = _make_config(seed=21, num_workers=0, pin_memory=True)
+    trainer = WalkForwardTrainer(config, MagicMock())
+
+    dummy_x = torch.zeros(6, config.seq_len, config.enc_in)
+    subset = Subset(TensorDataset(dummy_x), list(range(6)))
+
+    train_loader, test_loader = trainer._prepare_data_loaders(subset, subset)
+
+    for loader in (train_loader, test_loader):
+        assert loader.prefetch_factor is None
+        assert loader.multiprocessing_context is None
+        assert loader.persistent_workers is False

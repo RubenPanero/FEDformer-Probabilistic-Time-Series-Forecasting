@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import torch
 
@@ -201,6 +202,42 @@ def test_trainer_evaluate_model_uses_configured_mc_dropout_eval_samples(
     assert gt.shape == (2, config.pred_len, config.c_out)
     assert samples.shape == (7, 2, config.pred_len, config.c_out)
     assert quantiles.shape == (3, 2, config.pred_len, config.c_out)
+
+
+def test_trainer_evaluate_model_reuses_cpu_quantile_levels_tensor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _make_config(mc_dropout_eval_samples=3, pred_len=4)
+    trainer = WalkForwardTrainer(config, full_dataset=SimpleNamespace())
+    batch = _make_batch(config, batch_size=2)
+    captured_quantile_level_ids: list[int] = []
+
+    def fake_mc_dropout_inference(
+        model, batch, n_samples, use_flow_sampling, mc_batch_size
+    ):
+        del model, batch, use_flow_sampling, mc_batch_size
+        return torch.ones(n_samples, 2, config.pred_len, config.c_out)
+
+    original_quantile = torch.quantile
+
+    def capturing_quantile(input, q, *args, **kwargs):
+        captured_quantile_level_ids.append(id(q))
+        assert q.device.type == "cpu"
+        assert q.dtype == torch.float32
+        return original_quantile(input, q, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "training.trainer.mc_dropout_inference", fake_mc_dropout_inference
+    )
+    monkeypatch.setattr(torch, "quantile", capturing_quantile)
+
+    preds, _gt, _samples, quantiles = trainer._evaluate_model(
+        model=Flow_FEDformer(config), test_loader=[batch, batch]
+    )
+
+    assert len(captured_quantile_level_ids) == 2
+    assert captured_quantile_level_ids[0] == captured_quantile_level_ids[1]
+    assert np.allclose(preds, quantiles[1])
 
 
 def test_flow_log_prob_checkpointing_matches_non_checkpointed() -> None:

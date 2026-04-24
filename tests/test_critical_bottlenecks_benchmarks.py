@@ -8,7 +8,6 @@ import pytest
 MODULE_PATH = (
     Path(__file__).resolve().parent.parent
     / "docs"
-    / "optimization"
     / "critical_bottlenecks_benchmark.py"
 )
 SPEC = importlib.util.spec_from_file_location(

@@ -392,9 +392,9 @@ def test_objective_cmd_includes_seed_and_compile_mode(tmp_path: Path) -> None:
     seed_idx = captured_cmd.index("--seed")
     assert captured_cmd[seed_idx + 1] == "7"
 
-    # --compile-mode "" debe estar en el comando
+    # --compile-mode none debe estar en el comando como sentinel explícito
     cm_idx = captured_cmd.index("--compile-mode")
-    assert captured_cmd[cm_idx + 1] == ""
+    assert captured_cmd[cm_idx + 1] == "none"
 
 
 def test_objective_disables_wandb_in_subprocess_env(tmp_path: Path) -> None:
@@ -958,7 +958,7 @@ def test_run_best_params_propagates_seed_compile_mode_and_save_canonical(
     seed_idx = captured_cmd.index("--seed")
     assert captured_cmd[seed_idx + 1] == "11"
     compile_mode_idx = captured_cmd.index("--compile-mode")
-    assert captured_cmd[compile_mode_idx + 1] == ""
+    assert captured_cmd[compile_mode_idx + 1] == "none"
     assert "--save-canonical" in captured_cmd
 
 
@@ -984,6 +984,43 @@ def test_no_enqueue_canonical_skips_enqueue_trial(tmp_path: Path, monkeypatch) -
                 "--n-trials",
                 "0",
                 "--no-enqueue-canonical",
+            ],
+        ),
+    ):
+        th.main()
+
+    mock_study.enqueue_trial.assert_not_called()
+
+
+def test_enqueue_canonical_skips_duplicate_for_resumed_study(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """No re-encola la config canónica si el estudio ya la contiene."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    csv_path = tmp_path / "data" / "MSFT_features.csv"
+    csv_path.write_text("date,Close\n2024-01-01,1\n")
+
+    existing_trial = MagicMock()
+    existing_trial.params = {}
+    existing_trial.system_attrs = {
+        "fixed_params": dict(th.CANONICAL_TRIAL_PARAMS),
+    }
+
+    mock_study = MagicMock()
+    mock_study.trials = [existing_trial]
+    mock_study.optimize = MagicMock()
+
+    with (
+        patch("optuna.create_study", return_value=mock_study),
+        patch(
+            "sys.argv",
+            [
+                "tune_hyperparams.py",
+                "--csv",
+                str(csv_path),
+                "--n-trials",
+                "0",
             ],
         ),
     ):

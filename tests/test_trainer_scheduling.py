@@ -193,6 +193,60 @@ def test_eval_epoch_empty_loader_returns_inf(config, model_factory) -> None:
     assert result == float("inf"), f"Con loader vacío se esperaba inf, got {result}"
 
 
+def test_eval_epoch_averages_only_finite_losses(config) -> None:
+    """_eval_epoch debe promediar sólo batches con loss finita."""
+    trainer = WalkForwardTrainer(config, MagicMock())
+    prepared_batches = iter(
+        [
+            MagicMock(encoder="enc1", decoder="dec1", regime="reg1", target="target1"),
+            MagicMock(encoder="enc2", decoder="dec2", regime="reg2", target="target2"),
+            MagicMock(encoder="enc3", decoder="dec3", regime="reg3", target="target3"),
+        ]
+    )
+
+    class DummyModel:
+        def eval(self) -> None:
+            return None
+
+        def __call__(self, *_args, **_kwargs) -> str:
+            return "dist"
+
+    losses = iter([torch.tensor(1.0), torch.tensor(float("nan")), torch.tensor(3.0)])
+
+    trainer._prepare_batch = MagicMock(
+        side_effect=lambda _batch: next(prepared_batches)
+    )  # type: ignore[method-assign]
+    trainer._nll_loss = MagicMock(side_effect=lambda _dist, _target: next(losses))  # type: ignore[method-assign]
+
+    result = trainer._eval_epoch(DummyModel(), [{"id": 1}, {"id": 2}, {"id": 3}])  # type: ignore[arg-type]
+
+    assert result == 2.0
+
+
+def test_eval_epoch_skips_batches_that_raise_runtime_errors(config) -> None:
+    """_eval_epoch debe descartar batches fallidos y seguir con los válidos."""
+    trainer = WalkForwardTrainer(config, MagicMock())
+
+    class DummyModel:
+        def eval(self) -> None:
+            return None
+
+        def __call__(self, *_args, **_kwargs) -> str:
+            return "dist"
+
+    valid_tensors = MagicMock(
+        encoder="enc-ok", decoder="dec-ok", regime="reg-ok", target="target-ok"
+    )
+    trainer._prepare_batch = MagicMock(  # type: ignore[method-assign]
+        side_effect=[RuntimeError("bad batch"), valid_tensors]
+    )
+    trainer._nll_loss = MagicMock(return_value=torch.tensor(2.5))  # type: ignore[method-assign]
+
+    result = trainer._eval_epoch(DummyModel(), [{"id": 1}, {"id": 2}])  # type: ignore[arg-type]
+
+    assert result == 2.5
+
+
 def test_val_fraction_zero_disables_split(config) -> None:
     """val_fraction=0 debe desactivar el split de validación intra-fold."""
     config.val_fraction = 0.0
@@ -244,6 +298,169 @@ def test_pin_memory_disabled_by_default(config) -> None:
     assert trainer._pin_memory_enabled() is False
 
 
+def test_effective_compile_mode_treats_none_as_disabled() -> None:
+    """El sentinel 'none' debe desactivar torch.compile de forma explícita."""
+    assert WalkForwardTrainer._effective_compile_mode("none") == ""
+
+
+def test_effective_compile_mode_disables_max_autotune_on_low_sm_gpu(
+    monkeypatch,
+) -> None:
+    """max-autotune debe degradarse a '' en GPUs con SMs insuficientes."""
+
+    class FakeCudaProps:
+        multi_processor_count = WalkForwardTrainer._MIN_SMS_FOR_MAX_AUTOTUNE - 1
+
+    monkeypatch.setattr("training.trainer.torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr(
+        "training.trainer.torch.cuda.get_device_properties",
+        lambda _index: FakeCudaProps(),
+    )
+
+    assert WalkForwardTrainer._effective_compile_mode("max-autotune") == ""
+
+
+def test_get_model_skips_compile_when_compile_mode_is_none(config, monkeypatch) -> None:
+    """compile_mode='none' no debe invocar torch.compile ni en path CUDA."""
+
+    class FakeModel:
+        def __init__(self, cfg) -> None:
+            self.config = cfg
+            self.to_calls: list[tuple[torch.device, bool]] = []
+
+        def to(self, target_device, non_blocking=False):
+            self.to_calls.append((target_device, non_blocking))
+            return self
+
+    compile_calls: list[str] = []
+
+    config.compile_mode = "none"
+    trainer = WalkForwardTrainer(config, MagicMock())
+
+    monkeypatch.setattr("training.trainer.Flow_FEDformer", FakeModel)
+    monkeypatch.setattr("training.trainer.device", torch.device("cuda"))
+    monkeypatch.setattr(
+        "training.trainer.torch.compile",
+        lambda *args, **kwargs: compile_calls.append("compile"),
+    )  # type: ignore[attr-defined]
+
+    model = trainer._get_model()
+
+    assert isinstance(model, FakeModel)
+    assert compile_calls == []
+
+
+def test_get_model_skips_compile_when_python_headers_are_missing(
+    config, monkeypatch
+) -> None:
+    """Sin Python.h, _get_model debe devolver el modelo base sin compilar."""
+
+    class FakeModel:
+        def __init__(self, cfg) -> None:
+            self.config = cfg
+            self.to_calls: list[tuple[torch.device, bool]] = []
+
+        def to(self, target_device, non_blocking=False):
+            self.to_calls.append((target_device, non_blocking))
+            return self
+
+    compile_calls: list[str] = []
+
+    config.compile_mode = "default"
+    trainer = WalkForwardTrainer(config, MagicMock())
+
+    monkeypatch.setattr("training.trainer.Flow_FEDformer", FakeModel)
+    monkeypatch.setattr("training.trainer.device", torch.device("cuda"))
+    monkeypatch.setattr(
+        "training.trainer.WalkForwardTrainer._python_headers_available",
+        staticmethod(lambda: False),
+    )
+    monkeypatch.setattr(
+        "training.trainer.torch.compile",
+        lambda *args, **kwargs: compile_calls.append("compile"),
+    )
+
+    model = trainer._get_model()
+
+    assert isinstance(model, FakeModel)
+    assert compile_calls == []
+
+
+def test_get_model_skips_compile_for_finetune_and_freeze_paths(
+    config, monkeypatch
+) -> None:
+    """Finetune/freeze deben devolver el modelo sin pasar por torch.compile."""
+
+    class FakeModel:
+        def __init__(self, cfg) -> None:
+            self.config = cfg
+            self.to_calls: list[tuple[torch.device, bool]] = []
+
+        def to(self, target_device, non_blocking=False):
+            self.to_calls.append((target_device, non_blocking))
+            return self
+
+    for finetune_from, freeze_backbone in [
+        ("checkpoints/mock.pt", False),
+        (None, True),
+    ]:
+        compile_calls: list[str] = []
+        config.compile_mode = "default"
+        config.finetune_from = finetune_from
+        config.freeze_backbone = freeze_backbone
+        trainer = WalkForwardTrainer(config, MagicMock())
+
+        monkeypatch.setattr("training.trainer.Flow_FEDformer", FakeModel)
+        monkeypatch.setattr("training.trainer.device", torch.device("cuda"))
+        monkeypatch.setattr(
+            "training.trainer.torch.compile",
+            lambda *args, **kwargs: compile_calls.append("compile"),
+        )
+
+        model = trainer._get_model()
+
+        assert isinstance(model, FakeModel)
+        assert compile_calls == []
+
+
+def test_get_model_falls_back_to_uncompiled_model_when_compile_raises(
+    config, monkeypatch
+) -> None:
+    """Si torch.compile falla, el trainer debe devolver un modelo utilizable."""
+
+    class FakeModel:
+        created: list["FakeModel"] = []
+
+        def __init__(self, cfg) -> None:
+            self.config = cfg
+            self.to_calls: list[tuple[torch.device, bool]] = []
+            FakeModel.created.append(self)
+
+        def to(self, target_device, non_blocking=False):
+            self.to_calls.append((target_device, non_blocking))
+            return self
+
+    def raising_compile(*_args, **_kwargs):
+        raise RuntimeError("compile boom")
+
+    config.compile_mode = "default"
+    trainer = WalkForwardTrainer(config, MagicMock())
+
+    monkeypatch.setattr("training.trainer.Flow_FEDformer", FakeModel)
+    monkeypatch.setattr("training.trainer.device", torch.device("cuda"))
+    monkeypatch.setattr(
+        "training.trainer.WalkForwardTrainer._python_headers_available",
+        staticmethod(lambda: True),
+    )
+    monkeypatch.setattr("training.trainer.torch.compile", raising_compile)
+
+    model = trainer._get_model()
+
+    assert isinstance(model, FakeModel)
+    assert model is FakeModel.created[-1]
+    assert len(FakeModel.created) == 2
+
+
 def test_pin_memory_respects_runtime_flag(config) -> None:
     """pin_memory solo debe activarse con flag explícito y CUDA disponible."""
     from training.trainer import WalkForwardTrainer
@@ -260,6 +477,72 @@ def test_num_workers_uses_runtime_override(config) -> None:
     config.num_workers = 0
     trainer = WalkForwardTrainer(config, MagicMock())
     assert trainer._num_workers() == 0
+
+
+def test_prepare_batch_disables_non_blocking_without_effective_pin_memory(
+    config,
+) -> None:
+    """_prepare_batch no debe pedir transferencias async sin pin_memory efectivo."""
+
+    class RecordingTensor:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.calls: list[tuple[torch.device, bool]] = []
+
+        def to(self, target_device, non_blocking=False):
+            self.calls.append((target_device, non_blocking))
+            return f"{self.name}-on-{target_device.type}-{non_blocking}"
+
+    trainer = WalkForwardTrainer(config, MagicMock())
+    batch = {
+        "x_enc": RecordingTensor("enc"),
+        "x_dec": RecordingTensor("dec"),
+        "y_true": RecordingTensor("target"),
+        "x_regime": RecordingTensor("regime"),
+    }
+
+    tensors = trainer._prepare_batch(batch)  # type: ignore[arg-type]
+
+    assert tensors.encoder.endswith("-False")
+    assert tensors.decoder.endswith("-False")
+    assert tensors.target.endswith("-False")
+    assert tensors.regime.endswith("-False")
+    for tensor in batch.values():
+        assert tensor.calls == [(torch.device("cpu"), False)]
+
+
+def test_prepare_batch_enables_non_blocking_with_effective_pin_memory(
+    config, monkeypatch
+) -> None:
+    """_prepare_batch debe propagar non_blocking cuando pin_memory es realmente usable."""
+
+    class RecordingTensor:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.calls: list[tuple[torch.device, bool]] = []
+
+        def to(self, target_device, non_blocking=False):
+            self.calls.append((target_device, non_blocking))
+            return f"{self.name}-on-{target_device.type}-{non_blocking}"
+
+    config.pin_memory = True
+    monkeypatch.setattr("training.trainer.torch.cuda.is_available", lambda: True)
+    trainer = WalkForwardTrainer(config, MagicMock())
+    batch = {
+        "x_enc": RecordingTensor("enc"),
+        "x_dec": RecordingTensor("dec"),
+        "y_true": RecordingTensor("target"),
+        "x_regime": RecordingTensor("regime"),
+    }
+
+    tensors = trainer._prepare_batch(batch)  # type: ignore[arg-type]
+
+    assert tensors.encoder.endswith("-True")
+    assert tensors.decoder.endswith("-True")
+    assert tensors.target.endswith("-True")
+    assert tensors.regime.endswith("-True")
+    for tensor in batch.values():
+        assert tensor.calls == [(torch.device("cpu"), True)]
 
 
 # ---------------------------------------------------------------------------
