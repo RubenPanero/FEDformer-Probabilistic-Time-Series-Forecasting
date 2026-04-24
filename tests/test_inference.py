@@ -310,6 +310,63 @@ def test_predict_does_not_refit_preprocessor(mock_registry, monkeypatch):
     )
 
 
+def test_predict_restores_fit_scope_after_success(mock_registry):
+    """predict() debe restaurar fit_scope tras forzarlo temporalmente a inference."""
+    from inference.loader import load_specialist
+    from inference.predictor import predict
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+    original_fit_scope = preprocessor.fit_scope
+
+    rng = np.random.default_rng(123)
+    n_rows = config.seq_len + config.pred_len + 10
+    csv_path = mock_registry.parent / "test_restore_fit_scope.csv"
+    pd.DataFrame(
+        {
+            "Close": np.cumsum(rng.standard_normal(n_rows)) + 100,
+            "Volume": rng.integers(1000, 10000, n_rows).astype(float),
+        }
+    ).to_csv(csv_path, index=False)
+
+    _ = predict(
+        model=model,
+        config=config,
+        preprocessor=preprocessor,
+        csv_path=str(csv_path),
+        n_samples=3,
+    )
+
+    assert preprocessor.fit_scope == original_fit_scope
+
+
+def test_predict_restores_fit_scope_after_dataset_construction_failure(
+    mock_registry, monkeypatch: pytest.MonkeyPatch
+):
+    """predict() debe restaurar fit_scope incluso si TimeSeriesDataset falla."""
+    from inference.loader import load_specialist
+    from inference.predictor import predict
+
+    model, config, preprocessor = load_specialist("NVDA", registry_path=mock_registry)
+    original_fit_scope = preprocessor.fit_scope
+
+    def exploding_dataset(*args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("dataset explosion")
+
+    monkeypatch.setattr("inference.predictor.TimeSeriesDataset", exploding_dataset)
+
+    with pytest.raises(RuntimeError, match="dataset explosion"):
+        predict(
+            model=model,
+            config=config,
+            preprocessor=preprocessor,
+            csv_path=str(mock_registry.parent.parent / "NVDA_features.csv"),
+            n_samples=3,
+        )
+
+    assert preprocessor.fit_scope == original_fit_scope
+
+
 def test_load_specialist_returns_model_config_preprocessor(mock_registry):
     """load_specialist retorna tupla (model, config, preprocessor)."""
     from inference.loader import load_specialist

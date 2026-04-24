@@ -363,6 +363,43 @@ def test_distribution_log_prob_uses_checkpoint_when_enabled(
     assert calls == ["checkpoint"]
 
 
+def test_distribution_log_prob_skips_checkpoint_outside_training(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = torch.nn.ModuleList([torch.nn.Identity()])
+    means = torch.zeros(2, 4, 1)
+    contexts = torch.zeros(2, 1, 1)
+    distribution = NormalizingFlowDistribution(
+        means=means,
+        flows=flow,
+        contexts=contexts,
+        use_gradient_checkpointing=True,
+        training=False,
+    )
+    checkpoint_calls: list[str] = []
+    log_prob_calls: list[str] = []
+
+    def fake_checkpoint(function, *args, **kwargs):
+        del function, args, kwargs
+        checkpoint_calls.append("checkpoint")
+        raise AssertionError("checkpoint no debe ejecutarse fuera de entrenamiento")
+
+    def fake_log_prob(y_feature, base_mean=None, context=None):
+        del context
+        log_prob_calls.append("log_prob")
+        centered = y_feature if base_mean is None else y_feature - base_mean
+        return -centered.square().sum(dim=-1)
+
+    monkeypatch.setattr(torch.utils.checkpoint, "checkpoint", fake_checkpoint)
+    monkeypatch.setattr(flow[0], "log_prob", fake_log_prob, raising=False)
+
+    y_true = torch.ones(2, 4, 1)
+    _ = distribution.log_prob(y_true)
+
+    assert checkpoint_calls == []
+    assert log_prob_calls == ["log_prob"]
+
+
 @pytest.mark.benchmark
 def test_fourier_modes_benchmark_smoke() -> None:
     from models.layers import FourierAttention

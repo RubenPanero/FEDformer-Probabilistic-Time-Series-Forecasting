@@ -70,6 +70,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           pytest -q \
+            tests/test_critical_bottlenecks.py \
             tests/test_forecast_output.py \
             tests/test_model_registry.py \
             tests/test_trainer_scheduling.py \
