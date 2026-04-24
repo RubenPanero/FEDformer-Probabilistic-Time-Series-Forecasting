@@ -447,6 +447,7 @@ Focused semantic regression slice for the current optimization work:
 ```bash
 pytest -q \
   tests/test_critical_bottlenecks.py \
+  tests/test_trainer_scheduling.py \
   tests/test_tune_hyperparams.py \
   tests/test_inference.py \
   tests/test_reproducibility.py
@@ -486,6 +487,14 @@ Current regression coverage for the optimization branch is wired through:
 Those fast slices include `tests/test_critical_bottlenecks.py` but keep
 `tests/test_critical_bottlenecks_benchmarks.py` opt-in as benchmark-only
 validation.
+
+Recent trainer-runtime hardening in the optimization work covers:
+
+- effective `DataLoader` runtime config (`spawn`, `prefetch_factor`,
+  `pin_memory`, seeded workers)
+- `_prepare_batch()` using `non_blocking` only when `pin_memory` is actually
+  effective
+- `_eval_epoch()` averaging only finite losses while discarding invalid batches
 
 Recommended smoke checks:
 
