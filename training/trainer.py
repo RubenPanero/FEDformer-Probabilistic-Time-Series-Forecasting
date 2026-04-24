@@ -671,7 +671,8 @@ class WalkForwardTrainer:
         import math  # pylint: disable=import-outside-toplevel
 
         model.eval()
-        val_losses: list[float] = []
+        total_loss = 0.0
+        n_valid_batches = 0
         with torch.no_grad():
             for batch in val_loader:
                 try:
@@ -679,10 +680,11 @@ class WalkForwardTrainer:
                     dist = model(tensors.encoder, tensors.decoder, tensors.regime)
                     loss_val = float(self._nll_loss(dist, tensors.target).item())
                     if math.isfinite(loss_val):
-                        val_losses.append(loss_val)
+                        total_loss += loss_val
+                        n_valid_batches += 1
                 except (RuntimeError, ValueError) as exc:
                     logger.warning("Batch de validación descartado: %s", exc)
-        return float(np.mean(val_losses)) if val_losses else float("inf")
+        return total_loss / n_valid_batches if n_valid_batches else float("inf")
 
     def _evaluate_model(
         self, model: Flow_FEDformer, test_loader: DataLoader

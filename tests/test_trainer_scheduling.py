@@ -193,6 +193,60 @@ def test_eval_epoch_empty_loader_returns_inf(config, model_factory) -> None:
     assert result == float("inf"), f"Con loader vacío se esperaba inf, got {result}"
 
 
+def test_eval_epoch_averages_only_finite_losses(config) -> None:
+    """_eval_epoch debe promediar sólo batches con loss finita."""
+    trainer = WalkForwardTrainer(config, MagicMock())
+    prepared_batches = iter(
+        [
+            MagicMock(encoder="enc1", decoder="dec1", regime="reg1", target="target1"),
+            MagicMock(encoder="enc2", decoder="dec2", regime="reg2", target="target2"),
+            MagicMock(encoder="enc3", decoder="dec3", regime="reg3", target="target3"),
+        ]
+    )
+
+    class DummyModel:
+        def eval(self) -> None:
+            return None
+
+        def __call__(self, *_args, **_kwargs) -> str:
+            return "dist"
+
+    losses = iter([torch.tensor(1.0), torch.tensor(float("nan")), torch.tensor(3.0)])
+
+    trainer._prepare_batch = MagicMock(
+        side_effect=lambda _batch: next(prepared_batches)
+    )  # type: ignore[method-assign]
+    trainer._nll_loss = MagicMock(side_effect=lambda _dist, _target: next(losses))  # type: ignore[method-assign]
+
+    result = trainer._eval_epoch(DummyModel(), [{"id": 1}, {"id": 2}, {"id": 3}])  # type: ignore[arg-type]
+
+    assert result == 2.0
+
+
+def test_eval_epoch_skips_batches_that_raise_runtime_errors(config) -> None:
+    """_eval_epoch debe descartar batches fallidos y seguir con los válidos."""
+    trainer = WalkForwardTrainer(config, MagicMock())
+
+    class DummyModel:
+        def eval(self) -> None:
+            return None
+
+        def __call__(self, *_args, **_kwargs) -> str:
+            return "dist"
+
+    valid_tensors = MagicMock(
+        encoder="enc-ok", decoder="dec-ok", regime="reg-ok", target="target-ok"
+    )
+    trainer._prepare_batch = MagicMock(  # type: ignore[method-assign]
+        side_effect=[RuntimeError("bad batch"), valid_tensors]
+    )
+    trainer._nll_loss = MagicMock(return_value=torch.tensor(2.5))  # type: ignore[method-assign]
+
+    result = trainer._eval_epoch(DummyModel(), [{"id": 1}, {"id": 2}])  # type: ignore[arg-type]
+
+    assert result == 2.5
+
+
 def test_val_fraction_zero_disables_split(config) -> None:
     """val_fraction=0 debe desactivar el split de validación intra-fold."""
     config.val_fraction = 0.0
