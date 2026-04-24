@@ -488,6 +488,30 @@ Those fast slices include `tests/test_critical_bottlenecks.py` but keep
 `tests/test_critical_bottlenecks_benchmarks.py` opt-in as benchmark-only
 validation.
 
+Tracked technical documentation for the current repository state:
+
+- [docs/README.md](/abs/path/C:/Users/rbglz/Documents/PROYECTOS_PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/docs/README.md)
+- [docs/repository_technical_status.md](/abs/path/C:/Users/rbglz/Documents/PROYECTOS_PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/docs/repository_technical_status.md)
+
+Optimization guardrails:
+
+- contractual benchmark budgets currently exist only for
+  `tests/test_critical_bottlenecks_benchmarks.py`:
+  - `mc_dropout`: `time_delta_pct <= +5%`
+  - `fourier_modes`: `time_delta_pct <= +15%`
+- `flow_checkpointing` remains benchmarked for equivalence and observability,
+  but it is not a speed guardrail because its contract is memory/training
+  oriented, not CPU speed
+- synthetic benchmark output is useful for relative regressions in the harness;
+  it is not a substitute for canonical NVDA/GOOGL runs on your target hardware
+- structural optimizations in Task 4 stay behind explicit controls:
+  - `torch.compile` can be disabled explicitly with `--compile-mode ""` or
+    `--compile-mode none`
+  - preprocessing refit reuse is opt-in via
+    `allow_reuse_fitted_fold_preprocessor`
+  - Optuna still preserves the subprocess/public-contract path while reducing
+    redundant overhead
+
 Recent trainer-runtime hardening in the optimization work covers:
 
 - effective `DataLoader` runtime config (`spawn`, `prefetch_factor`,

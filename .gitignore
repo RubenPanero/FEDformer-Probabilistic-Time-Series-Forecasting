@@ -157,8 +157,10 @@ QWEN.md
 .kilo/
 .kilo/plans/
 
-# === Project internal documentation & tooling (local only) ===
-docs/
+# === Project internal documentation & tooling ===
+docs/assets/
+docs/plans/
+docs/superpowers/
 .codex
 .mcp.json
 CLAUDE.md
