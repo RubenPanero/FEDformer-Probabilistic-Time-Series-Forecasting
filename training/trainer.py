@@ -294,11 +294,12 @@ class WalkForwardTrainer:
 
     def _prepare_batch(self, batch: dict[str, torch.Tensor]) -> BatchTensors:
         """Transborda el bloque de tensores al dispositivo hardware principal."""
+        non_blocking = self._pin_memory_enabled()
         return BatchTensors(
-            encoder=batch["x_enc"].to(device, non_blocking=True),
-            decoder=batch["x_dec"].to(device, non_blocking=True),
-            target=batch["y_true"].to(device, non_blocking=True),
-            regime=batch["x_regime"].to(device, non_blocking=True),
+            encoder=batch["x_enc"].to(device, non_blocking=non_blocking),
+            decoder=batch["x_dec"].to(device, non_blocking=non_blocking),
+            target=batch["y_true"].to(device, non_blocking=non_blocking),
+            regime=batch["x_regime"].to(device, non_blocking=non_blocking),
         )
 
     def _forward_and_compute_loss(

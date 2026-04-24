@@ -262,6 +262,72 @@ def test_num_workers_uses_runtime_override(config) -> None:
     assert trainer._num_workers() == 0
 
 
+def test_prepare_batch_disables_non_blocking_without_effective_pin_memory(
+    config,
+) -> None:
+    """_prepare_batch no debe pedir transferencias async sin pin_memory efectivo."""
+
+    class RecordingTensor:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.calls: list[tuple[torch.device, bool]] = []
+
+        def to(self, target_device, non_blocking=False):
+            self.calls.append((target_device, non_blocking))
+            return f"{self.name}-on-{target_device.type}-{non_blocking}"
+
+    trainer = WalkForwardTrainer(config, MagicMock())
+    batch = {
+        "x_enc": RecordingTensor("enc"),
+        "x_dec": RecordingTensor("dec"),
+        "y_true": RecordingTensor("target"),
+        "x_regime": RecordingTensor("regime"),
+    }
+
+    tensors = trainer._prepare_batch(batch)  # type: ignore[arg-type]
+
+    assert tensors.encoder.endswith("-False")
+    assert tensors.decoder.endswith("-False")
+    assert tensors.target.endswith("-False")
+    assert tensors.regime.endswith("-False")
+    for tensor in batch.values():
+        assert tensor.calls == [(torch.device("cpu"), False)]
+
+
+def test_prepare_batch_enables_non_blocking_with_effective_pin_memory(
+    config, monkeypatch
+) -> None:
+    """_prepare_batch debe propagar non_blocking cuando pin_memory es realmente usable."""
+
+    class RecordingTensor:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.calls: list[tuple[torch.device, bool]] = []
+
+        def to(self, target_device, non_blocking=False):
+            self.calls.append((target_device, non_blocking))
+            return f"{self.name}-on-{target_device.type}-{non_blocking}"
+
+    config.pin_memory = True
+    monkeypatch.setattr("training.trainer.torch.cuda.is_available", lambda: True)
+    trainer = WalkForwardTrainer(config, MagicMock())
+    batch = {
+        "x_enc": RecordingTensor("enc"),
+        "x_dec": RecordingTensor("dec"),
+        "y_true": RecordingTensor("target"),
+        "x_regime": RecordingTensor("regime"),
+    }
+
+    tensors = trainer._prepare_batch(batch)  # type: ignore[arg-type]
+
+    assert tensors.encoder.endswith("-True")
+    assert tensors.decoder.endswith("-True")
+    assert tensors.target.endswith("-True")
+    assert tensors.regime.endswith("-True")
+    for tensor in batch.values():
+        assert tensor.calls == [(torch.device("cpu"), True)]
+
+
 # ---------------------------------------------------------------------------
 # Tests para los nuevos defaults de LoopSettings
 # ---------------------------------------------------------------------------
