@@ -46,6 +46,9 @@ from utils.probabilistic_metrics import (
 logger = logging.getLogger(__name__)
 device = get_device()
 DEFAULT_QUANTILE_LEVELS = np.array([0.1, 0.5, 0.9], dtype=np.float32)
+DEFAULT_QUANTILE_LEVELS_CPU = torch.tensor(
+    DEFAULT_QUANTILE_LEVELS.tolist(), dtype=torch.float32
+)
 
 
 class _SeedWorker:
@@ -706,9 +709,7 @@ class WalkForwardTrainer:
                     samples_cpu = samples.detach().to("cpu", dtype=torch.float32)
                     quantiles_cpu = torch.quantile(
                         samples_cpu,
-                        q=torch.tensor(
-                            DEFAULT_QUANTILE_LEVELS.tolist(), dtype=torch.float32
-                        ),
+                        q=DEFAULT_QUANTILE_LEVELS_CPU,
                         dim=0,
                     )
                     fold_samples.append(samples_cpu.numpy())
