@@ -442,6 +442,16 @@ Fast local validation:
 pytest -q -m "not slow"
 ```
 
+Focused semantic regression slice for the current optimization work:
+
+```bash
+pytest -q \
+  tests/test_critical_bottlenecks.py \
+  tests/test_tune_hyperparams.py \
+  tests/test_inference.py \
+  tests/test_reproducibility.py
+```
+
 Full test suite:
 
 ```bash
@@ -453,8 +463,29 @@ Lint and CI-parity checks:
 ```bash
 ruff check .
 ruff format --check .
-make ci-check
+python main.py --help
+python tune_hyperparams.py --help
+python -m inference --help
+pytest -q -m "not slow"
 ```
+
+Windows hook entrypoints:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\hooks\pre-commit.ps1
+powershell -ExecutionPolicy Bypass -File scripts\hooks\pre-push.ps1
+```
+
+Current regression coverage for the optimization branch is wired through:
+
+- `scripts/hooks/pre-push.ps1`
+- `.github/workflows/ci.yml`
+- `.github/workflows/compatibility.yml`
+- `.github/workflows/critical-fixes.yml`
+
+Those fast slices include `tests/test_critical_bottlenecks.py` but keep
+`tests/test_critical_bottlenecks_benchmarks.py` opt-in as benchmark-only
+validation.
 
 Recommended smoke checks:
 
@@ -477,10 +508,13 @@ Contributions are welcome.
 
 Before opening a PR:
 
-1. Run `make ci-check`
+1. Run the explicit lint, CLI smoke, and pytest commands from the testing section
 2. Keep changes focused and documented
 3. Update `README.md` when changing public CLI behavior
 4. Add or update tests for runtime-facing changes
+
+For this repository, replace the old `make ci-check` habit with the explicit
+commands above or the versioned hooks under `scripts/hooks/`.
 
 Suggested PR contents:
 
