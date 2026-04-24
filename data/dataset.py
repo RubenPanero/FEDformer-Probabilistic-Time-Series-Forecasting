@@ -78,10 +78,12 @@ class TimeSeriesDataset(Dataset):
         fit_end_idx: int | None = None,
         strict: bool | None = None,
         preprocessor: PreprocessingPipeline | None = None,
+        allow_reuse_fitted_fold_preprocessor: bool = False,
     ) -> None:
         self.config = config
         self.flag = flag
         self.strict = config.strict_mode if strict is None else strict
+        self.allow_reuse_fitted_fold_preprocessor = allow_reuse_fitted_fold_preprocessor
         self.preprocessor = preprocessor or PreprocessingPipeline.from_config(
             config,
             target_features=config.target_features,
@@ -105,14 +107,22 @@ class TimeSeriesDataset(Dataset):
     def _fit_and_transform(self, fit_end_idx: int | None, force_refit: bool) -> None:
         """Ejecuta los protocolos de preprocesado numérico si corresponde."""
         fit_scope = self.preprocessor.fit_scope
+        default_cutoff = max(1, int(len(self.raw_df) * 0.7))
+        cutoff = fit_end_idx if fit_end_idx is not None else default_cutoff
+        can_reuse_same_fold_fit = (
+            self.allow_reuse_fitted_fold_preprocessor
+            and fit_scope == "fold_train_only"
+            and self.preprocessor.fitted
+            and self.preprocessor.fit_end_idx == cutoff
+        )
         should_refit = (
-            force_refit
+            (force_refit and not can_reuse_same_fold_fit)
             or fit_scope == "fold_train_only"
             or not self.preprocessor.fitted
         )
+        if can_reuse_same_fold_fit:
+            should_refit = False
         if should_refit:
-            default_cutoff = max(1, int(len(self.raw_df) * 0.7))
-            cutoff = fit_end_idx if fit_end_idx is not None else default_cutoff
             self.preprocessor.fit(self.raw_df, fit_end_idx=cutoff)
 
         transformed_df = self.preprocessor.transform(self.raw_df)

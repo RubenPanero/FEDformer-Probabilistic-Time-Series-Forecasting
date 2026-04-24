@@ -183,3 +183,92 @@ def test_split_view_sizes_and_no_overlap(sample_csv: str) -> None:
 
     # test comienza donde termina val (con overlap de seq_len para contexto)
     assert len(ds_test.data_x) == n_rows - (num_train + num_val) + config.seq_len
+
+
+def test_refit_for_same_cutoff_still_refits_by_default(sample_csv: str) -> None:
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=sample_csv,
+        date_column="date",
+        seq_len=10,
+        pred_len=4,
+        label_len=5,
+        fit_scope="fold_train_only",
+    )
+    dataset = TimeSeriesDataset(config=config, flag="all")
+
+    fit_calls: list[int] = []
+    original_fit = dataset.preprocessor.fit
+
+    def tracking_fit(*args, **kwargs):
+        fit_calls.append(1)
+        return original_fit(*args, **kwargs)
+
+    dataset.preprocessor.fit = tracking_fit
+
+    dataset.refit_for_cutoff(60)
+    dataset.refit_for_cutoff(60)
+
+    assert len(fit_calls) == 2
+
+
+def test_refit_for_same_cutoff_can_reuse_fitted_preprocessor(sample_csv: str) -> None:
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=sample_csv,
+        date_column="date",
+        seq_len=10,
+        pred_len=4,
+        label_len=5,
+        fit_scope="fold_train_only",
+    )
+    dataset = TimeSeriesDataset(
+        config=config,
+        flag="all",
+        allow_reuse_fitted_fold_preprocessor=True,
+    )
+
+    fit_calls: list[int] = []
+    original_fit = dataset.preprocessor.fit
+
+    def tracking_fit(*args, **kwargs):
+        fit_calls.append(1)
+        return original_fit(*args, **kwargs)
+
+    dataset.preprocessor.fit = tracking_fit
+
+    dataset.refit_for_cutoff(60)
+    dataset.refit_for_cutoff(60)
+
+    assert len(fit_calls) == 1
+
+
+def test_reuse_guard_does_not_skip_refit_when_cutoff_changes(sample_csv: str) -> None:
+    config = FEDformerConfig(
+        target_features=["Close"],
+        file_path=sample_csv,
+        date_column="date",
+        seq_len=10,
+        pred_len=4,
+        label_len=5,
+        fit_scope="fold_train_only",
+    )
+    dataset = TimeSeriesDataset(
+        config=config,
+        flag="all",
+        allow_reuse_fitted_fold_preprocessor=True,
+    )
+
+    fit_calls: list[int] = []
+    original_fit = dataset.preprocessor.fit
+
+    def tracking_fit(*args, **kwargs):
+        fit_calls.append(1)
+        return original_fit(*args, **kwargs)
+
+    dataset.preprocessor.fit = tracking_fit
+
+    dataset.refit_for_cutoff(60)
+    dataset.refit_for_cutoff(70)
+
+    assert len(fit_calls) == 2

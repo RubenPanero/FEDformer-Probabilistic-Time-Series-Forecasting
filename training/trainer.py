@@ -174,6 +174,8 @@ class WalkForwardTrainer:
         En GPUs con pocos SMs (e.g. RTX 4050 Laptop: 20 SMs) el inductor
         genera kernels incorrectos que producen NaN en la loss.
         """
+        if requested_mode.strip().lower() in {"", "none", "off", "false", "disabled"}:
+            return ""
         if requested_mode != "max-autotune" or not torch.cuda.is_available():
             return requested_mode
         n_sms = torch.cuda.get_device_properties(0).multi_processor_count

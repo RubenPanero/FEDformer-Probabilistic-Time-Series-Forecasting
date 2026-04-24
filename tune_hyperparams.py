@@ -388,6 +388,33 @@ def _build_trial_env() -> dict[str, str]:
     return env
 
 
+def _normalize_compile_mode_arg(compile_mode: str) -> str:
+    """Usa sentinels explícitos al propagar compile_mode por CLI."""
+    normalized = compile_mode.strip().lower()
+    if normalized in {"", "none", "off", "false", "disabled"}:
+        return "none"
+    return compile_mode
+
+
+def _trial_matches_params(trial: Any, params: dict[str, Any]) -> bool:
+    """Detecta trials ya materializados o encolados con una configuración dada."""
+    if getattr(trial, "params", None) == params:
+        return True
+
+    system_attrs = getattr(trial, "system_attrs", None) or {}
+    return system_attrs.get("fixed_params") == params
+
+
+def _study_contains_trial_params(study: optuna.Study, params: dict[str, Any]) -> bool:
+    """Evita re-encolar trials equivalentes al reanudar estudios persistentes."""
+    trials = None
+    if hasattr(study, "get_trials"):
+        trials = study.get_trials(deepcopy=False)
+    if not isinstance(trials, list):
+        trials = study.trials
+    return any(_trial_matches_params(trial, params) for trial in trials)
+
+
 # ---------------------------------------------------------------------------
 # Función objetivo
 # ---------------------------------------------------------------------------
@@ -467,10 +494,8 @@ def objective(
     # Siempre pasar --compile-mode explícitamente al subprocess.
     # CRÍTICO: config.py default es "max-autotune" — omitir el flag activa compilación
     # completa en todos los trials (causó timeouts masivos en T4/Kaggle, sesión 10).
-    # "" desactiva compilación vía guarda truthy en trainer.py (`if compile_mode and ...`).
-    # TODO: reemplazar "" por sentinel explícito "none" cuando se refactorice
-    # _effective_compile_mode para reconocer "none" → "" (evita pasar string vacío como arg CLI).
-    cmd.extend(["--compile-mode", compile_mode])
+    # Usamos un sentinel explícito para evitar depender de strings vacíos en CLI.
+    cmd.extend(["--compile-mode", _normalize_compile_mode_arg(compile_mode)])
 
     env = _build_trial_env()
 
@@ -655,7 +680,7 @@ def _run_best_params(
         cmd.append("--save-canonical")
     # Ver comentario en objective(): siempre pasar explícitamente para neutralizar
     # el default "max-autotune" de config.py.
-    cmd.extend(["--compile-mode", compile_mode])
+    cmd.extend(["--compile-mode", _normalize_compile_mode_arg(compile_mode)])
 
     env = _build_trial_env()
     logger.info("Ejecutando run final con mejores parámetros (seed=%d)...", seed)
@@ -834,9 +859,13 @@ def main() -> None:
     )
 
     # Encolar configuración canónica como primer trial garantizado (AR #4)
-    if args.enqueue_canonical:
+    if args.enqueue_canonical and not _study_contains_trial_params(
+        study, CANONICAL_TRIAL_PARAMS
+    ):
         study.enqueue_trial(dict(CANONICAL_TRIAL_PARAMS))
         logger.info("Config canónica encolada como primer trial")
+    elif args.enqueue_canonical:
+        logger.info("Config canónica ya presente en el estudio; no se re-encola")
 
     logger.info(
         "Iniciando búsqueda para %s — %d trials, espacio válido: %d combinaciones "
