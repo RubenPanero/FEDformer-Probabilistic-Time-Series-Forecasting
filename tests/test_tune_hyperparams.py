@@ -927,6 +927,41 @@ def test_run_best_params_backfills_phase6_defaults_for_legacy_studies(
     assert captured_cmd[captured_cmd.index("--dropout") + 1] == "0.1"
 
 
+def test_run_best_params_propagates_seed_compile_mode_and_save_canonical(
+    tmp_path: Path,
+) -> None:
+    """El rerun final debe pasar siempre --seed, --compile-mode y --save-canonical."""
+    captured_cmd: list[str] = []
+
+    def mock_run(cmd, **kwargs):  # noqa: ANN001
+        del kwargs
+        captured_cmd.extend(cmd)
+        result = MagicMock()
+        result.returncode = 0
+        return result
+
+    with patch("subprocess.run", side_effect=mock_run):
+        th._run_best_params(
+            csv_path=str(tmp_path / "MSFT_features.csv"),
+            best_params={
+                "seq_len": 96,
+                "pred_len": 20,
+                "batch_size": 64,
+                "gradient_clip_norm": 0.5,
+            },
+            n_splits=4,
+            save_canonical=True,
+            seed=11,
+            compile_mode="",
+        )
+
+    seed_idx = captured_cmd.index("--seed")
+    assert captured_cmd[seed_idx + 1] == "11"
+    compile_mode_idx = captured_cmd.index("--compile-mode")
+    assert captured_cmd[compile_mode_idx + 1] == ""
+    assert "--save-canonical" in captured_cmd
+
+
 def test_no_enqueue_canonical_skips_enqueue_trial(tmp_path: Path, monkeypatch) -> None:
     """--no-enqueue-canonical omite la llamada a enqueue_trial."""
     monkeypatch.chdir(tmp_path)
