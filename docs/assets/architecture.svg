@@ -1,77 +1,107 @@
-<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">FEDformer forecasting pipeline architecture</title>
-  <desc id="desc">Pipeline diagram showing data ingestion, training, model inference, forecast output, and downstream risk simulation.</desc>
+<svg width="1280" height="480" viewBox="0 0 1280 480" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Pipeline Overview</title>
+  <desc id="desc">Overview of the FEDformer probabilistic forecasting pipeline, from CSV data and preprocessing through walk-forward training, forecast output, specialist export, and downstream risk evaluation.</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="420" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="480" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F8FAFC"/>
-      <stop offset="1" stop-color="#E2E8F0"/>
+      <stop offset="1" stop-color="#EEF2FF"/>
     </linearGradient>
-    <linearGradient id="cardA" x1="0" y1="0" x2="260" y2="90" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0F172A"/>
-      <stop offset="1" stop-color="#1E293B"/>
+    <linearGradient id="headerChip" x1="0" y1="0" x2="170" y2="38" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#4338CA"/>
     </linearGradient>
-    <linearGradient id="cardB" x1="0" y1="0" x2="260" y2="90" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#14532D"/>
-      <stop offset="1" stop-color="#166534"/>
+    <linearGradient id="cardData" x1="0" y1="0" x2="250" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111827"/>
+      <stop offset="1" stop-color="#1F2937"/>
     </linearGradient>
-    <linearGradient id="cardC" x1="0" y1="0" x2="300" y2="120" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0C4A6E"/>
-      <stop offset="1" stop-color="#0369A1"/>
+    <linearGradient id="cardPrep" x1="0" y1="0" x2="290" y2="94" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#166534"/>
+      <stop offset="1" stop-color="#15803D"/>
     </linearGradient>
-    <linearGradient id="cardD" x1="0" y1="0" x2="260" y2="90" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7C2D12"/>
-      <stop offset="1" stop-color="#C2410C"/>
+    <linearGradient id="cardTrain" x1="0" y1="0" x2="356" y2="196" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
     </linearGradient>
-    <filter id="shadow" x="-20" y="-20" width="1240" height="460" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.12"/>
+    <linearGradient id="cardOutput" x1="0" y1="0" x2="210" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#9333EA"/>
+    </linearGradient>
+    <linearGradient id="cardArtifact" x1="0" y1="0" x2="210" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B45309"/>
+      <stop offset="1" stop-color="#EA580C"/>
+    </linearGradient>
+    <filter id="shadow" x="-40" y="-40" width="1360" height="560" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#0F172A" flood-opacity="0.12"/>
     </filter>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0L10 5L0 10V0Z" fill="#475569"/>
+      <path d="M0 0L10 5L0 10V0Z" fill="#64748B"/>
     </marker>
   </defs>
 
-  <rect x="0" y="0" width="1200" height="420" rx="28" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1280" height="480" rx="32" fill="url(#bg)"/>
 
   <g filter="url(#shadow)">
-    <rect x="48" y="130" width="220" height="96" rx="20" fill="url(#cardA)"/>
-    <text x="74" y="170" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">CSV Data</text>
-    <text x="74" y="202" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="18">Market features, targets,</text>
-    <text x="74" y="226" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="18">optional timestamps</text>
-
-    <rect x="330" y="78" width="260" height="88" rx="20" fill="url(#cardB)"/>
-    <text x="356" y="116" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700">TimeSeriesDataset</text>
-    <text x="356" y="145" fill="#DCFCE7" font-family="Segoe UI, Arial, sans-serif" font-size="17">Window generation</text>
-
-    <rect x="330" y="196" width="260" height="88" rx="20" fill="url(#cardB)"/>
-    <text x="356" y="234" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700">PreprocessingPipeline</text>
-    <text x="356" y="263" fill="#DCFCE7" font-family="Segoe UI, Arial, sans-serif" font-size="17">Scaling, regimes, artifact restore</text>
-
-    <rect x="650" y="90" width="300" height="180" rx="22" fill="url(#cardC)"/>
-    <text x="676" y="128" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">WalkForwardTrainer</text>
-    <text x="676" y="162" fill="#E0F2FE" font-family="Segoe UI, Arial, sans-serif" font-size="18">Temporal splits</text>
-    <text x="676" y="188" fill="#E0F2FE" font-family="Segoe UI, Arial, sans-serif" font-size="18">Anti-leakage evaluation</text>
-    <text x="676" y="214" fill="#E0F2FE" font-family="Segoe UI, Arial, sans-serif" font-size="18">Checkpointing and metrics</text>
-    <rect x="676" y="228" width="248" height="28" rx="14" fill="rgba(255,255,255,0.14)"/>
-    <text x="695" y="248" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">Flow_FEDformer = FEDformer + Flows</text>
-
-    <rect x="1000" y="78" width="152" height="88" rx="20" fill="url(#cardD)"/>
-    <text x="1022" y="116" fill="#FFF7ED" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="700">Forecast</text>
-    <text x="1022" y="145" fill="#FFEDD5" font-family="Segoe UI, Arial, sans-serif" font-size="17">Preds, quantiles,</text>
-    <text x="1022" y="168" fill="#FFEDD5" font-family="Segoe UI, Arial, sans-serif" font-size="17">samples, fold ids</text>
-
-    <rect x="1000" y="206" width="152" height="88" rx="20" fill="url(#cardD)"/>
-    <text x="1022" y="244" fill="#FFF7ED" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Risk Sim</text>
-    <text x="1022" y="273" fill="#FFEDD5" font-family="Segoe UI, Arial, sans-serif" font-size="17">Sharpe, Sortino,</text>
-    <text x="1022" y="296" fill="#FFEDD5" font-family="Segoe UI, Arial, sans-serif" font-size="17">VaR, CVaR, MaxDD</text>
+    <rect x="54" y="40" width="1172" height="398" rx="28" fill="#FFFFFF" fill-opacity="0.78"/>
   </g>
 
-  <path d="M268 178H316" stroke="#475569" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M460 166V184" stroke="#475569" stroke-width="5" stroke-linecap="round"/>
-  <path d="M590 122H630" stroke="#475569" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M590 240H630" stroke="#475569" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M950 166H980" stroke="#475569" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M950 240H980" stroke="#475569" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <rect x="84" y="66" width="170" height="38" rx="19" fill="url(#headerChip)"/>
+  <text x="116" y="91" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Pipeline Overview</text>
 
-  <text x="64" y="54" fill="#0F172A" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700">Pipeline Overview</text>
-  <text x="64" y="84" fill="#475569" font-family="Segoe UI, Arial, sans-serif" font-size="18">From raw time-series data to probabilistic forecasts and downstream risk evaluation</text>
+  <text x="84" y="134" fill="#0F172A" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="700">From raw market data to reusable specialists</text>
+  <text x="84" y="164" fill="#475569" font-family="Segoe UI, Arial, sans-serif" font-size="18">One walk-forward training path produces probabilistic forecasts, release-ready specialists, and downstream risk outputs.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="84" y="228" width="236" height="110" rx="22" fill="url(#cardData)"/>
+    <text x="110" y="266" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700">CSV Data</text>
+    <text x="110" y="294" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="17">OHLCV features, targets,</text>
+    <text x="110" y="318" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="17">optional timestamps</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="380" y="202" width="286" height="74" rx="20" fill="url(#cardPrep)"/>
+    <text x="406" y="232" fill="#F0FDF4" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="700">TimeSeriesDataset</text>
+    <text x="406" y="256" fill="#DCFCE7" font-family="Segoe UI, Arial, sans-serif" font-size="16">Window generation and fold slicing</text>
+
+    <rect x="380" y="290" width="286" height="74" rx="20" fill="url(#cardPrep)"/>
+    <text x="406" y="320" fill="#F0FDF4" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="700">PreprocessingPipeline</text>
+    <text x="406" y="344" fill="#DCFCE7" font-family="Segoe UI, Arial, sans-serif" font-size="16">Scaling, regime features, artifact restore</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="726" y="186" width="356" height="194" rx="24" fill="url(#cardTrain)"/>
+    <text x="756" y="224" fill="#ECFEFF" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">WalkForwardTrainer</text>
+    <text x="756" y="254" fill="#E0F2FE" font-family="Segoe UI, Arial, sans-serif" font-size="17">Temporal splits and anti-leakage evaluation</text>
+    <text x="756" y="280" fill="#E0F2FE" font-family="Segoe UI, Arial, sans-serif" font-size="17">Checkpointing, metrics, and fold aggregation</text>
+
+    <rect x="756" y="302" width="296" height="42" rx="21" fill="rgba(255,255,255,0.14)"/>
+    <text x="777" y="328" fill="#F8FAFC" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Flow_FEDformer = FEDformer backbone + Flows</text>
+
+    <rect x="756" y="354" width="212" height="16" rx="8" fill="rgba(255,255,255,0.18)"/>
+    <rect x="972" y="354" width="80" height="16" rx="8" fill="rgba(255,255,255,0.32)"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1122" y="170" width="120" height="96" rx="22" fill="url(#cardOutput)"/>
+    <text x="1143" y="206" fill="#FAF5FF" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">Forecast</text>
+    <text x="1143" y="230" fill="#F3E8FF" font-family="Segoe UI, Arial, sans-serif" font-size="15">preds, quantiles,</text>
+    <text x="1143" y="250" fill="#F3E8FF" font-family="Segoe UI, Arial, sans-serif" font-size="15">samples, fold ids</text>
+
+    <rect x="1122" y="284" width="120" height="96" rx="22" fill="url(#cardArtifact)"/>
+    <text x="1143" y="320" fill="#FFF7ED" font-family="Segoe UI, Arial, sans-serif" font-size="21" font-weight="700">Outputs</text>
+    <text x="1143" y="344" fill="#FFEDD5" font-family="Segoe UI, Arial, sans-serif" font-size="15">risk metrics,</text>
+    <text x="1143" y="364" fill="#FFEDD5" font-family="Segoe UI, Arial, sans-serif" font-size="15">registry, artifacts</text>
+  </g>
+
+  <path d="M320 283H360" stroke="#64748B" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M523 276V288" stroke="#64748B" stroke-width="5" stroke-linecap="round"/>
+  <path d="M666 239H706" stroke="#64748B" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M666 327H706" stroke="#64748B" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M1082 226H1102" stroke="#64748B" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M1082 334H1102" stroke="#64748B" stroke-width="5" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <text x="346" y="272" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600">prepare</text>
+  <text x="683" y="231" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600">train</text>
+  <text x="683" y="319" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600">evaluate</text>
+  <text x="1090" y="218" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600">serve</text>
+  <text x="1088" y="326" fill="#64748B" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600">publish</text>
 </svg>

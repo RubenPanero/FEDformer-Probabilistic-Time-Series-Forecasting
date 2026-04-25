@@ -139,22 +139,17 @@ python -m inference \
 
 ## Architecture
 
-![Architecture Diagram](docs/assets/architecture.svg)
+<div align="center">
+  <img
+    src="docs/assets/architecture.svg"
+    alt="Pipeline overview from CSV data through dataset preparation, walk-forward training, probabilistic forecasting, inference, and downstream risk evaluation."
+    width="100%"
+  >
+</div>
 
-```mermaid
-flowchart LR
-    A[CSV dataset] --> B[TimeSeriesDataset]
-    B --> C[PreprocessingPipeline]
-    C --> D[WalkForwardTrainer]
-    D --> E[Flow_FEDformer]
-    E --> F[ForecastOutput]
-    F --> G[PortfolioSimulator]
-    F --> H[RiskSimulator]
-    F --> I[Inference CLI]
-    D --> J[Results CSVs]
-    D --> K[Canonical checkpoint]
-    K --> L[model_registry.json]
-```
+The pipeline is organized around one core training path that produces
+probabilistic forecasts, reusable canonical specialists, and downstream risk
+artifacts from the same walk-forward evaluation loop.
 
 Core modules:
 
