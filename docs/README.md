@@ -11,9 +11,12 @@ Current tracked documents:
 
 Local-only documentation remains ignored by `.gitignore`:
 
-- `docs/assets/`
 - `docs/plans/`
 - `docs/superpowers/`
+
+Versioned visual assets used by the repository README now live under:
+
+- `docs/assets/`
 
 The removed `docs/optimization/` tree contained stale optimization material
 that no longer matched the versioned code and tests.

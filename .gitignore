@@ -162,7 +162,6 @@ QWEN.md
 .kilo/plans/
 
 # === Project internal documentation & tooling ===
-docs/assets/
 docs/plans/
 docs/superpowers/
 .codex
