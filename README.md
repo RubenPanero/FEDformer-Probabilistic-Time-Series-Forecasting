@@ -5,208 +5,172 @@
 # FEDformer Probabilistic Time-Series Forecasting
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)]()
+[![Python 3.10 | 3.11](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/compatibility.yml)
 [![CI](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/ci.yml/badge.svg)](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/ci.yml)
+[![Compatibility](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/compatibility.yml/badge.svg)](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/compatibility.yml)
 [![Ruff](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/ruff.yml/badge.svg)](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/ruff.yml)
 [![Pylint](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/pylint.yml/badge.svg)](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/pylint.yml)
 [![Security](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/security.yml/badge.svg)](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/security.yml)
-[![Compatibility](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/compatibility.yml/badge.svg)](https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/actions/workflows/compatibility.yml)
 
-Probabilistic forecasting with `FEDformer`, `Normalizing Flows`, walk-forward
-evaluation, conformal calibration, specialist export, and Optuna search.
+Probabilistic forecasting built around `FEDformer`, `Normalizing Flows`,
+walk-forward validation, conformal calibration, specialist export, and Optuna.
 
-[Quick Start](#quick-start) • [Inference](#inference) • [Results](#results-and-limitations) • [Testing](#testing-and-reproducibility)
+[Quick Start](#quick-start) • [Training](#training) • [Inference](#inference) • [Testing](#testing-and-ci)
 
 </div>
 
-![Repository Hero](docs/assets/fan_chart_nvda.png)
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Who Is This For?](#who-is-this-for)
-- [Visual Demo](#visual-demo)
-- [Quick Start](#quick-start)
-- [Outputs](#outputs)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Inference](#inference)
-- [Data Format](#data-format)
-- [Configuration](#configuration)
-- [Results and Limitations](#results-and-limitations)
-- [Testing and Reproducibility](#testing-and-reproducibility)
-- [Contributing](#contributing)
-- [License](#license)
-- [Credits](#credits)
+![NVDA fan chart generated from the shipped canonical specialist](docs/assets/fan_chart_nvda.png)
 
 ## Overview
 
-This repository packages an uncertainty-aware forecasting pipeline built around
-`FEDformer` plus `Normalizing Flows`. It is designed for use cases where a
-point forecast is not enough and downstream consumers need calibrated bands,
-sampled scenarios, and risk-aware evaluation.
+Source-first probabilistic forecasting for tabular time series, built around a
+`FEDformer` backbone plus a flow-based probabilistic head.
 
-What it provides:
+What you get:
 
-- Walk-forward backtesting with anti-leakage temporal splits
-- Probabilistic outputs with explicit quantiles and sampling-based summaries
-- Financial evaluation with Sharpe, Sortino, drawdown, volatility, VaR, and CVaR
-- Canonical specialist export and reusable inference CLI
-- Optuna-based hyperparameter search with persistent studies
+- calibrated uncertainty bands and quantiles
+- sampling-based scenario generation
+- anti-leakage temporal validation
+- repeatable inference from saved specialists
+- finance-oriented evaluation such as Sharpe, Sortino, drawdown, VaR, and CVaR
 
-| Snapshot | Value |
-|----------|-------|
-| Canonical specialists | `NVDA`, `GOOGL` |
-| Python | `3.10`, `3.11` |
-| Runtime | Single-process CPU/GPU training |
-| Parallelism today | Multi-seed runs and Optuna subprocess trials |
+## Repository Snapshot
 
-## Who Is This For?
+| Surface | Current state |
+| --- | --- |
+| Example datasets in `data/` | `NVDA_features.csv`, `GOOGL_features.csv` |
+| Shipped canonical specialists | `NVDA`, `GOOGL` |
+| Public CLIs | `main.py`, `tune_hyperparams.py`, `python -m inference`, `python -m data.financial_dataset_builder` |
+| Supported CI matrix | Linux and Windows, Python 3.10 and 3.11 |
+| Runtime modes | CPU and optional CUDA |
+| Dev quality gates | Ruff, Pylint, pytest, hook-backed regression checks |
 
-This repository is a good fit if you need:
+## Visual Reference
 
-- probabilistic forecasts instead of point-only predictions
-- walk-forward evaluation that respects temporal ordering
-- finance-oriented metrics such as Sharpe, Sortino, drawdown, VaR, and CVaR
-- reusable specialist checkpoints for repeated inference workflows
+All visuals below come from the shipped `NVDA` specialist and use the same
+documentation asset set under `docs/assets/`.
 
-Typical users:
+| Forecast band | Calibration diagnostics |
+| --- | --- |
+| `p10-p90` interval, `p50` median path, and ground truth. | Reliability view plus PIT histogram for probabilistic quality checks. |
+| ![NVDA fan chart](docs/assets/fan_chart_nvda.png) | ![NVDA calibration diagnostics](docs/assets/calibration_nvda.png) |
 
-- quantitative researchers testing distribution-aware signals
-- ML practitioners working on uncertainty-aware forecasting pipelines
-- engineers building repeatable backtesting and inference workflows around tabular time series
-
-## Visual Demo
-
-| Fan Chart | Calibration |
-|-----------|-------------|
-| Probabilistic band (`p10-p90`), median path (`p50`), and ground truth. | Reliability view plus PIT histogram for probabilistic quality checks. |
-| ![Fan Chart NVDA](docs/assets/fan_chart_nvda.png) | ![Calibration NVDA](docs/assets/calibration_nvda.png) |
-
-> No live demo is hosted right now. The intended evaluation path is local:
-> train, export a canonical specialist, and inspect the generated CSVs and
-> plots.
+> No hosted demo is provided. The intended path is local: inspect the shipped
+> specialists, run inference, then run training or Optuna search as needed.
 
 ## Quick Start
 
-### 1. Install
+The commands below assume `python` resolves to the active environment. On some
+Linux or macOS setups, replace `python` with `python3`.
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting.git
 cd FEDformer-Probabilistic-Time-Series-Forecasting
-
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
 ```
 
-### 2. Run a canonical training job
+### 2. Create and activate a virtual environment
+
+Linux or macOS:
 
 ```bash
-MPLBACKEND=Agg python3 main.py \
-  --csv data/NVDA_features.csv \
-  --targets "Close" \
-  --seq-len 96 \
-  --pred-len 20 \
-  --batch-size 64 \
-  --splits 4 \
-  --return-transform log_return \
-  --metric-space returns \
-  --gradient-clip-norm 0.5 \
-  --seed 7 \
-  --save-results \
-  --save-canonical \
-  --no-show
+python -m venv .venv-linux
+source .venv-linux/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-### 3. Run inference on a saved specialist
+Windows PowerShell:
+
+```powershell
+python -m venv .venv-win
+.venv-win\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+### 3. Optional developer tooling
+
+`ruff` and `pylint` are used by CI and hooks, but they are not installed by
+`requirements.txt`.
 
 ```bash
-python3 -m inference \
+python -m pip install ruff pylint
+```
+
+### 4. Sanity checks
+
+```bash
+python -m pytest -q --collect-only
+python main.py --help
+python tune_hyperparams.py --help
+python -m inference --help
+python -m data.financial_dataset_builder --help
+```
+
+### 5. Inspect shipped specialists
+
+```bash
+python -m inference --list-models
+```
+
+### 6. Run a first inference job
+
+```bash
+python -m inference \
   --ticker NVDA \
   --csv data/NVDA_features.csv \
-  --plot \
-  --output-dir results/
+  --output results/inference_nvda.csv
 ```
 
-## Outputs
-
-Typical artifacts from a training run:
-
-| Artifact | Purpose |
-|----------|---------|
-| `predictions_*.csv` | Forecasts exported from training |
-| `risk_metrics_*.csv` | VaR, CVaR, and related risk outputs |
-| `portfolio_metrics_*.csv` | Strategy-level performance metrics |
-| `training_history_*.csv` | Fold and epoch-level training history |
-| `run_manifest_*.json` | Run metadata and aggregate metrics |
-| `probabilistic_metrics_*.csv` | Coverage, pinball, calibration-style metrics |
-| plots in `results/` | Fan chart and calibration views during inference |
-
-If `--save-canonical` succeeds, the model can be reused later through the
-inference CLI together with its saved preprocessing artifacts.
+> [!NOTE]
+> The repository ships canonical specialists and preprocessing artifacts for
+> `NVDA` and `GOOGL`. Inference is a real model run, not a near-instant CLI
+> smoke check.
 
 ## Architecture
 
 ![Architecture Diagram](docs/assets/architecture.svg)
 
-High-level flow:
-
-```text
-CSV -> TimeSeriesDataset / PreprocessingPipeline
-    -> WalkForwardTrainer
-        -> Flow_FEDformer
-            -> FEDformer encoder/decoder
-            -> Normalizing Flows
-    -> ForecastOutput
-    -> RiskSimulator + PortfolioSimulator
+```mermaid
+flowchart LR
+    A[CSV dataset] --> B[TimeSeriesDataset]
+    B --> C[PreprocessingPipeline]
+    C --> D[WalkForwardTrainer]
+    D --> E[Flow_FEDformer]
+    E --> F[ForecastOutput]
+    F --> G[PortfolioSimulator]
+    F --> H[RiskSimulator]
+    F --> I[Inference CLI]
+    D --> J[Results CSVs]
+    D --> K[Canonical checkpoint]
+    K --> L[model_registry.json]
 ```
 
 Core modules:
 
-- `main.py`: training, evaluation, result writing, canonical export
-- `config.py`: `FEDformerConfig` and grouped settings
-- `models/`: FEDformer backbone and flow layers
-- `training/`: trainer, scheduling, checkpoints, `ForecastOutput`
-- `data/`: datasets, preprocessing, financial dataset helpers
-- `inference/`: specialist loading and prediction CLI
-- `simulations/`: risk and portfolio simulation
-- `utils/`: metrics, plotting, experiment I/O
-- `tune_hyperparams.py`: Optuna search runner
-- `scripts/`: automation and verification helpers
-- `tests/`: pytest suite
+| Path | Responsibility |
+| --- | --- |
+| `main.py` | Training, walk-forward evaluation, metrics, result writing, canonical export |
+| `config.py` | `FEDformerConfig`, grouped settings, presets |
+| `models/` | FEDformer backbone and flow layers |
+| `training/` | Trainer, scheduling, checkpoints, `ForecastOutput` |
+| `data/` | Datasets, preprocessing, market dataset builder |
+| `inference/` | Specialist loading and prediction CLI |
+| `simulations/` | Risk and portfolio simulation |
+| `utils/` | Metrics, plotting, calibration, registry helpers |
+| `scripts/` | Automation, validation, hook installers |
+| `tests/` | Pytest suite |
 
-## Installation
+## Training
 
-### System assumptions
-
-This project is documented and validated primarily on Linux.
-
-Recommended prerequisites:
-
-- Python `3.10` or `3.11`
-- `venv`
-- a working C or C++ build toolchain if a dependency needs compilation
-- optional CUDA-capable GPU for faster training
-
-### Environment variables
-
-No API key is required for the active market-dataset builder flow. If you use
-optional third-party tools outside the default pipeline, configure their
-credentials separately.
-
-## Usage
-
-### Canonical training runs
-
-NVDA:
+### Canonical training run: NVDA
 
 ```bash
-MPLBACKEND=Agg python3 main.py \
+python main.py \
   --csv data/NVDA_features.csv \
-  --targets "Close" \
+  --targets Close \
   --seq-len 96 \
   --pred-len 20 \
   --batch-size 64 \
@@ -220,12 +184,12 @@ MPLBACKEND=Agg python3 main.py \
   --no-show
 ```
 
-GOOGL:
+### Canonical training run: GOOGL
 
 ```bash
-MPLBACKEND=Agg python3 main.py \
+python main.py \
   --csv data/GOOGL_features.csv \
-  --targets "Close" \
+  --targets Close \
   --seq-len 96 \
   --pred-len 20 \
   --batch-size 64 \
@@ -239,13 +203,16 @@ MPLBACKEND=Agg python3 main.py \
   --no-show
 ```
 
-### Advanced training example
+### Custom dataset example
+
+Use this pattern for your own CSV instead of relying on repository-specific
+sample files:
 
 ```bash
-MPLBACKEND=Agg python3 main.py \
-  --csv data/financial_data.csv \
-  --targets "close_price" \
-  --date-col "date" \
+python main.py \
+  --csv path/to/your_timeseries.csv \
+  --targets Close \
+  --date-col date \
   --seq-len 96 \
   --label-len 48 \
   --pred-len 24 \
@@ -258,7 +225,6 @@ MPLBACKEND=Agg python3 main.py \
   --batch-size 64 \
   --splits 5 \
   --use-checkpointing \
-  --grad-accum-steps 1 \
   --learning-rate 1e-4 \
   --weight-decay 1e-5 \
   --scheduler-type cosine \
@@ -268,10 +234,14 @@ MPLBACKEND=Agg python3 main.py \
   --no-show
 ```
 
-### Hyperparameter search
+> [!TIP]
+> In headless environments, set `MPLBACKEND=Agg` before running plotting
+> commands.
+
+## Hyperparameter Search
 
 ```bash
-python3 tune_hyperparams.py \
+python tune_hyperparams.py \
   --csv data/NVDA_features.csv \
   --n-trials 8 \
   --n-splits 4 \
@@ -279,7 +249,7 @@ python3 tune_hyperparams.py \
   --study-objective sharpe
 ```
 
-The current Optuna search space includes:
+Current public search controls include:
 
 - `seq_len`
 - `pred_len`
@@ -292,46 +262,45 @@ The current Optuna search space includes:
 - `label_len`
 - `dropout`
 
-<details>
-<summary>Useful helper scripts</summary>
-
-- `python3 scripts/run_multi_seed.py --csv data/NVDA_features.csv --targets Close --seeds 7 42 123 --extra-args --seq-len 96 --pred-len 20 --batch-size 64`
-- `python3 scripts/run_ablation_matrix.py`
-- `python3 scripts/verify_cp_walkforward.py --report-only`
-- `python3 scripts/validate_forecast.py --help`
-
-</details>
+The Optuna entrypoint defaults to `--compile-mode none`, which avoids compile
+overhead during trial subprocesses.
 
 ## Inference
 
-The public inference surface is function-based and CLI-accessible.
-
-Examples:
+The public inference surface is the `inference` module:
 
 ```bash
-python3 -m inference --ticker NVDA --csv data/NVDA_features.csv
-python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --output results/preds.csv
-python3 -m inference --ticker NVDA --csv data/NVDA_features.csv --plot --output-dir results/
-python3 -m inference --list-models
+python -m inference --list-models
+python -m inference --ticker NVDA --csv data/NVDA_features.csv
+python -m inference --ticker NVDA --csv data/NVDA_features.csv --output results/preds.csv
+python -m inference --ticker NVDA --csv data/NVDA_features.csv --plot --output-dir results/
 ```
 
 Inference notes:
 
-- Canonical inference requires a checkpoint produced with `--save-canonical`
-- preprocessing must be restored, not re-fit, during inference
-- default generated plot names use the lowercase ticker inside the selected
-  `--output-dir`
-- the repository currently ships canonical specialists for `NVDA` and `GOOGL`
+- canonical inference expects a model registered in `checkpoints/model_registry.json`
+- preprocessing is restored from saved artifacts and must not be re-fit
+- default plot outputs are written under the selected `--output-dir`
+- the default inference registry is `checkpoints/model_registry.json`
 
-## Data Format
+## Data
 
-Expected CSV characteristics:
+### Current repository data surface
 
-- one time column
+The public repo currently keeps only these example datasets under `data/`:
+
+- `data/NVDA_features.csv`
+- `data/GOOGL_features.csv`
+
+### Expected CSV shape
+
+Expected inputs:
+
+- one date or timestamp column
 - one or more numeric feature columns
-- target columns selected with `--targets`
+- one or more target columns selected with `--targets`
 
-Typical financial datasets include fields such as:
+Typical financial columns:
 
 - `Date`
 - `Open`
@@ -343,69 +312,163 @@ Typical financial datasets include fields such as:
 Example:
 
 ```csv
-date,close_price,volume,volatility,rsi
-2023-01-01,100.5,1000000,0.15,45.2
-2023-01-02,101.2,1200000,0.18,47.8
+date,Close,Volume,VIX
+2024-01-02,100.5,1000000,13.2
+2024-01-03,101.2,1200000,13.7
 ```
 
-To build a market dataset:
+### Build a dataset with yfinance
 
 ```bash
-python3 -m data.financial_dataset_builder --symbol NVDA --output_dir data
+python -m data.financial_dataset_builder --symbol NVDA --output_dir data
 ```
+
+No API key is required for the active builder flow.
+
+## Outputs
+
+Typical artifacts from a training run:
+
+| Artifact | Purpose |
+| --- | --- |
+| `predictions_*.csv` | Forecast exports |
+| `risk_metrics_*.csv` | VaR, CVaR, and related risk outputs |
+| `portfolio_metrics_*.csv` | Strategy-level performance metrics |
+| `training_history_*.csv` | Fold and epoch-level training history |
+| `run_manifest_*.json` | Run metadata and aggregate metrics |
+| `probabilistic_metrics_*.csv` | Coverage, pinball, and calibration-style metrics |
+| plots in `results/` | Fan chart and calibration views |
+
+If `--save-canonical` succeeds, the last fold checkpoint is copied into
+`checkpoints/`, preprocessing artifacts are saved, and the specialist is
+registered for future inference.
 
 ## Configuration
 
-There are two relevant configuration surfaces:
+There are two important configuration surfaces:
 
 - CLI defaults in `main.py`
 - constructor defaults in `FEDformerConfig`
 
-They are not identical by design. CLI runs use larger, more practical defaults
-than the raw config object.
+They are intentionally not identical. The CLI uses more practical defaults for
+training runs than the raw config object.
 
 Useful CLI groups:
 
-- Data and splits: `--csv`, `--targets`, `--date-col`, `--seq-len`,
-  `--label-len`, `--pred-len`, `--splits`, `--batch-size`
-- Optimization: `--learning-rate`, `--weight-decay`, `--scheduler-type`,
-  `--warmup-epochs`, `--patience`, `--min-delta`, `--gradient-clip-norm`
-- Runtime: `--use-checkpointing`, `--grad-accum-steps`, `--deterministic`,
-  `--compile-mode`, `--mc-dropout-eval-samples`
+- Data and splits: `--csv`, `--targets`, `--date-col`, `--seq-len`, `--label-len`, `--pred-len`, `--splits`, `--batch-size`
+- Optimization: `--learning-rate`, `--weight-decay`, `--scheduler-type`, `--warmup-epochs`, `--patience`, `--min-delta`, `--gradient-clip-norm`
+- Runtime: `--use-checkpointing`, `--grad-accum-steps`, `--deterministic`, `--compile-mode`, `--mc-dropout-eval-samples`
 - Fine-tuning: `--finetune-from`, `--freeze-backbone`, `--finetune-lr`
 - Output: `--save-fig`, `--save-results`, `--save-canonical`, `--no-show`
-- Probabilistic evaluation: `--return-transform`, `--metric-space`,
-  `--conformal-calibration`, `--cp-walkforward`
+- Probabilistic evaluation: `--return-transform`, `--metric-space`, `--conformal-calibration`, `--cp-walkforward`
 
 Defaults worth calling out:
 
-- CLI defaults for sequence lengths: `seq_len=96`, `label_len=48`,
-  `pred_len=24`
-- Direct `FEDformerConfig` defaults: `seq_len=10`, `label_len=5`, `pred_len=5`
-- CLI default for `--grad-accum-steps`: `1`
-- Direct `FEDformerConfig` default for `gradient_accumulation_steps`: `2`
-- Direct `FEDformerConfig` default for `mc_dropout_eval_samples`: `20`
-- Odd `pred_len` values are accepted, but even values are strongly recommended
-  for affine coupling stability
-- Preset `fourier_optimized` keeps defaults intact but provides `modes=48` for
-  opt-in performance experiments
+- CLI defaults: `seq_len=96`, `label_len=48`, `pred_len=24`
+- `FEDformerConfig` constructor defaults: `seq_len=10`, `label_len=5`, `pred_len=5`
+- CLI default `--grad-accum-steps`: `1`
+- direct config default `gradient_accumulation_steps`: `2`
+- current default `mc_dropout_eval_samples`: `20`
+- `pred_len` can be odd, but even values are strongly recommended for affine coupling stability
+- `fourier_optimized` is an opt-in preset with `modes=48`
+- `--compile-mode none` is the canonical explicit disable sentinel
 
 Authoritative help:
 
 ```bash
-python3 main.py --help
-python3 tune_hyperparams.py --help
-python3 -m inference --help
+python main.py --help
+python tune_hyperparams.py --help
+python -m inference --help
+python -m data.financial_dataset_builder --help
 ```
+
+## Testing and CI
+
+### Fast sanity and regression commands
+
+```bash
+python -m pytest -q --collect-only
+python -m pytest -q -m "not slow"
+python main.py --help
+python tune_hyperparams.py --help
+python -m inference --help
+python scripts/verify_cp_walkforward.py --help
+python scripts/validate_forecast.py --help
+```
+
+### Focused optimization regression slice
+
+```bash
+python -m pytest -q \
+  tests/test_critical_bottlenecks.py \
+  tests/test_trainer_scheduling.py \
+  tests/test_tune_hyperparams.py \
+  tests/test_inference.py \
+  tests/test_reproducibility.py
+```
+
+### Full test suite
+
+```bash
+python -m pytest -q
+```
+
+### CLI end-to-end coverage
+
+```bash
+python -m pytest -q tests/test_cli_e2e.py -m slow
+```
+
+### Ruff and Pylint
+
+Install them first if they are not already available:
+
+```bash
+python -m pip install ruff pylint
+ruff check .
+ruff format --check .
+pylint --disable=all --enable=E,F config.py main.py training data models inference utils
+```
+
+### Git hook installers
+
+Linux or macOS:
+
+```bash
+bash scripts/install_git_hooks.sh
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_git_hooks.ps1
+```
+
+Manual hook entrypoints on Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\hooks\pre-commit.ps1
+powershell -ExecutionPolicy Bypass -File scripts\hooks\pre-push.ps1
+```
+
+Current regression coverage is aligned across:
+
+- `scripts/hooks/pre-push.ps1`
+- `.github/workflows/ci.yml`
+- `.github/workflows/compatibility.yml`
+- `.github/workflows/critical-fixes.yml`
+
+`tests/test_critical_bottlenecks_benchmarks.py` remains opt-in benchmark-only
+coverage rather than part of the default fast gate.
 
 ## Results and Limitations
 
-Canonical benchmark results currently documented for `seed=7`:
+Canonical benchmark references for `seed=7`:
 
-| Ticker | Sharpe | Sortino | Max Drawdown |
-|--------|--------|---------|--------------|
-| NVDA   | +0.990 | +1.857  | -54.2%       |
-| GOOGL  | +0.737 | +1.009  | -40.2%       |
+| Ticker | Sharpe | Sortino | Max drawdown |
+| --- | --- | --- | --- |
+| NVDA | +0.990 | +1.857 | -54.2% |
+| GOOGL | +0.737 | +1.009 | -40.2% |
 
 Shared canonical setup:
 
@@ -418,163 +481,47 @@ Shared canonical setup:
 - `gradient_clip_norm=0.5`
 - `seed=7`
 
-Current probabilistic output behavior:
+Current probabilistic behavior:
 
 - explicit quantiles are carried through the pipeline
-- the current default quantile set is `p10 / p50 / p90`
-- `preds_*` remains the p50 compatibility path
-- inference may additionally export sample mean summaries when MC samples are
-  available
+- the default quantile set is `p10 / p50 / p90`
+- `preds_*` remains the p50 compatibility surface
+- inference can export sample-based summaries when MC samples are available
 
 Current limitations:
 
 - no distributed training implementation
 - `pred_len` is best kept even for affine coupling compatibility
-- walk-forward conformal calibration is only meaningful when enough folds exist
-- `--cp-walkforward` with very small `--splits` can legitimately produce `0`
-  calibrated folds
+- walk-forward conformal calibration needs enough folds to be meaningful
+- `--cp-walkforward` with very small `--splits` can legitimately produce zero calibrated folds
+- benchmark guardrails are regression-oriented, not promises of absolute runtime on every machine
 
-## Testing and Reproducibility
+## Next Steps
 
-Fast local validation:
+- Expand the specialist catalog beyond `NVDA` and `GOOGL` with additional
+  assets so the repository covers a broader set of market behaviors and makes
+  cross-ticker comparison more useful.
+- Add a `MarketEncoder` module that conditions the model on cross-asset signals
+  such as `VIX` and `SPY`, improving adaptation to systemic volatility regimes
+  instead of relying only on the locally detected regime within each series.
 
-```bash
-pytest -q -m "not slow"
-```
+## Additional Documentation
 
-Focused semantic regression slice for the current optimization work:
-
-```bash
-pytest -q \
-  tests/test_critical_bottlenecks.py \
-  tests/test_trainer_scheduling.py \
-  tests/test_tune_hyperparams.py \
-  tests/test_inference.py \
-  tests/test_reproducibility.py
-```
-
-Full test suite:
-
-```bash
-pytest -q
-```
-
-Opt-in CLI end-to-end coverage:
-
-```bash
-pytest -q tests/test_cli_e2e.py -m slow
-```
-
-Lint and CI-parity checks:
-
-```bash
-ruff check .
-ruff format --check .
-python main.py --help
-python tune_hyperparams.py --help
-python -m inference --help
-pytest -q -m "not slow"
-```
-
-Windows hook entrypoints:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\hooks\pre-commit.ps1
-powershell -ExecutionPolicy Bypass -File scripts\hooks\pre-push.ps1
-```
-
-Current regression coverage for the optimization branch is wired through:
-
-- `scripts/hooks/pre-push.ps1`
-- `.github/workflows/ci.yml`
-- `.github/workflows/compatibility.yml`
-- `.github/workflows/critical-fixes.yml`
-
-CLI end-to-end automation added in the current session:
-
-- `tests/test_cli_e2e.py` covers real subprocess workflows for:
-  - `main.py`
-  - `python -m inference`
-  - `python -m inference --plot`
-  - `scripts/verify_cp_walkforward.py`
-  - controlled positive `--save-canonical`
-  - minimal `tune_hyperparams.py` orchestration
-- `.github/workflows/compatibility.yml` now exposes an opt-in
-  `CLI End-to-End (py3.11)` job gated behind `workflow_dispatch`
-- summary artifact: `docs/tests/test-summary.md`
-
-Those fast slices include `tests/test_critical_bottlenecks.py` but keep
-`tests/test_critical_bottlenecks_benchmarks.py` opt-in as benchmark-only
-validation.
-
-Tracked technical documentation for the current repository state:
-
-- [docs/README.md](/abs/path/C:/Users/rbglz/Documents/PROYECTOS_PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/docs/README.md)
-- [docs/repository_technical_status.md](/abs/path/C:/Users/rbglz/Documents/PROYECTOS_PYTHON/FEDformer-Probabilistic-Time-Series-Forecasting/docs/repository_technical_status.md)
-
-Optimization guardrails:
-
-- contractual benchmark budgets currently exist only for
-  `tests/test_critical_bottlenecks_benchmarks.py`:
-  - `mc_dropout`: `time_delta_pct <= +5%`
-  - `fourier_modes`: `time_delta_pct <= +15%`
-- `flow_checkpointing` remains benchmarked for equivalence and observability,
-  but it is not a speed guardrail because its contract is memory/training
-  oriented, not CPU speed
-- synthetic benchmark output is useful for relative regressions in the harness;
-  it is not a substitute for canonical NVDA/GOOGL runs on your target hardware
-- structural optimizations in Task 4 stay behind explicit controls:
-  - `torch.compile` can be disabled explicitly with `--compile-mode none`
-  - Legacy compatibility: `--compile-mode ""` is still accepted, but `none` is
-    the canonical sentinel
-  - preprocessing refit reuse is opt-in via
-    `allow_reuse_fitted_fold_preprocessor`
-  - Optuna still preserves the subprocess/public-contract path while reducing
-    redundant overhead
-
-Recent trainer-runtime hardening in the optimization work covers:
-
-- effective `DataLoader` runtime config (`spawn`, `prefetch_factor`,
-  `pin_memory`, seeded workers)
-- `_prepare_batch()` using `non_blocking` only when `pin_memory` is actually
-  effective
-- `_eval_epoch()` averaging only finite losses while discarding invalid batches
-
-Recommended smoke checks:
-
-```bash
-python3 main.py --help
-python3 tune_hyperparams.py --help
-python3 -m inference --help
-python3 scripts/verify_cp_walkforward.py --help
-```
-
-Reproducibility notes:
-
-- use `--seed <N>` and optionally `--deterministic`
-- the canonical repository benchmark seed is `7`
-- `MPLBACKEND=Agg` is recommended for headless Linux runs
+- [docs/README.md](docs/README.md)
+- [docs/repository_technical_status.md](docs/repository_technical_status.md)
+- [docs/tests/test-summary.md](docs/tests/test-summary.md)
 
 ## Contributing
 
-Contributions are welcome.
-
 Before opening a PR:
 
-1. Run the explicit lint, CLI smoke, and pytest commands from the testing section
-2. Keep changes focused and documented
-3. Update `README.md` when changing public CLI behavior
-4. Add or update tests for runtime-facing changes
+1. Run the explicit lint, smoke, and pytest commands from the testing section.
+2. Keep changes focused and documented.
+3. Update `README.md` when changing public CLI behavior.
+4. Add or update tests for runtime-facing changes.
 
-For this repository, replace the old `make ci-check` habit with the explicit
-commands above or the versioned hooks under `scripts/hooks/`.
-
-Suggested PR contents:
-
-- motivation
-- summary of changes
-- testing evidence
-- notes on backward compatibility when relevant
+This repository does not use `make ci-check`; use the explicit commands above
+or the versioned hooks under `scripts/hooks/`.
 
 ## License
 
@@ -588,8 +535,7 @@ specialist inference utilities.
 
 References:
 
-- Zhou et al., "FEDformer: Frequency Enhanced Decomposed Transformer for
-  Long-term Series Forecasting"
+- Zhou et al., "FEDformer: Frequency Enhanced Decomposed Transformer for Long-term Series Forecasting"
 - Dinh et al., "Density Estimation Using Real NVP"
 
 Maintainer: Ruben Panero

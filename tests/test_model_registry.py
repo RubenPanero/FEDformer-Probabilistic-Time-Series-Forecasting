@@ -380,7 +380,7 @@ def test_save_canonical_omits_below_min_sharpe(tmp_path: Path, monkeypatch) -> N
 
     with patch("main.register_specialist") as mock_reg:
         main_module._save_canonical_specialist(
-            "data/MSFT_features.csv", args, cfg, dataset, metrics
+            "data/NVDA_features.csv", args, cfg, dataset, metrics
         )
         mock_reg.assert_not_called()
         # Artefactos de preprocessing NO deben guardarse si el modelo es rechazado

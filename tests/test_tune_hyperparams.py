@@ -234,7 +234,7 @@ def test_objective_prunes_when_seq_len_too_short() -> None:
     trial = _mock_trial(seq_len=48, pred_len=20)
 
     with pytest.raises(optuna.TrialPruned):
-        th.objective(trial, "data/MSFT_features.csv", 4, Path("results"))
+        th.objective(trial, "data/NVDA_features.csv", 4, Path("results"))
 
 
 def test_objective_prunes_when_label_len_exceeds_seq_len() -> None:
@@ -262,7 +262,7 @@ def test_objective_prunes_when_label_len_exceeds_seq_len() -> None:
         patch("subprocess.run", return_value=mock_proc),
         pytest.raises(optuna.TrialPruned),
     ):
-        th.objective(trial, "data/MSFT_features.csv", 4, Path("results"))
+        th.objective(trial, "data/NVDA_features.csv", 4, Path("results"))
 
 
 def test_objective_penalizes_high_var(tmp_path: Path) -> None:
@@ -279,7 +279,7 @@ def test_objective_penalizes_high_var(tmp_path: Path) -> None:
         patch("subprocess.run", return_value=mock_proc),
         patch("tune_hyperparams._current_time", return_value=ts_before),
     ):
-        result = th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+        result = th.objective(trial, "data/NVDA_features.csv", 4, tmp_path / "results")
 
     # Sharpe base = 0.8; penalización VaR → 0.8 × 0.5 = 0.4
     assert abs(result - 0.4) < 1e-6
@@ -299,7 +299,7 @@ def test_objective_penalizes_negative_sortino(tmp_path: Path) -> None:
         patch("subprocess.run", return_value=mock_proc),
         patch("tune_hyperparams._current_time", return_value=ts_before),
     ):
-        result = th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+        result = th.objective(trial, "data/NVDA_features.csv", 4, tmp_path / "results")
 
     # Sharpe base = 0.6; penalización Sortino → 0.6 - 0.3 = 0.3
     assert abs(result - 0.3) < 1e-6
@@ -313,7 +313,7 @@ def test_objective_returns_minus_one_on_subprocess_failure(tmp_path: Path) -> No
     mock_proc.stderr = "error simulado"
 
     with patch("subprocess.run", return_value=mock_proc):
-        result = th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+        result = th.objective(trial, "data/NVDA_features.csv", 4, tmp_path / "results")
 
     assert result == -1.0
 
@@ -337,7 +337,7 @@ def test_objective_cmd_excludes_save_canonical(tmp_path: Path) -> None:
         patch("subprocess.run", side_effect=mock_run),
         patch("tune_hyperparams._current_time", return_value=ts_before),
     ):
-        th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+        th.objective(trial, "data/NVDA_features.csv", 4, tmp_path / "results")
 
     assert "--save-canonical" not in captured_cmd
 
@@ -375,7 +375,7 @@ def test_objective_cmd_includes_fase6_hp_flags(tmp_path: Path) -> None:
         patch("subprocess.run", side_effect=mock_run),
         patch("tune_hyperparams._current_time", return_value=ts_before),
     ):
-        th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+        th.objective(trial, "data/NVDA_features.csv", 4, tmp_path / "results")
 
     expected_flags = [
         "--e-layers",
@@ -410,7 +410,7 @@ def test_objective_cmd_includes_seed_and_compile_mode(tmp_path: Path) -> None:
     ):
         th.objective(
             trial,
-            "data/MSFT_features.csv",
+            "data/NVDA_features.csv",
             4,
             tmp_path / "results",
             seed=7,
@@ -445,7 +445,7 @@ def test_objective_disables_wandb_in_subprocess_env(tmp_path: Path) -> None:
         patch("subprocess.run", side_effect=mock_run),
         patch("tune_hyperparams._current_time", return_value=ts_before),
     ):
-        th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+        th.objective(trial, "data/NVDA_features.csv", 4, tmp_path / "results")
 
     assert captured_env["WANDB_MODE"] == "disabled"
     assert captured_env["WANDB_DISABLED"] == "true"
@@ -483,7 +483,7 @@ def test_objective_logs_expanded_search_space(tmp_path: Path, caplog) -> None:
         patch("tune_hyperparams._current_time", return_value=ts_before),
         caplog.at_level("INFO", logger="tune_hyperparams"),
     ):
-        th.objective(trial, "data/MSFT_features.csv", 4, tmp_path / "results")
+        th.objective(trial, "data/NVDA_features.csv", 4, tmp_path / "results")
 
     assert any("label_len" in record.message for record in caplog.records)
     assert any("e_layers" in record.message for record in caplog.records)

@@ -11,11 +11,11 @@ Los trials donde seq_len < pred_len*3 se podan sin entrenar.
 
 Uso:
     # Búsqueda básica (20 trials in-memory)
-    python3 tune_hyperparams.py --csv data/MSFT_features.csv
+    python3 tune_hyperparams.py --csv data/NVDA_features.csv
 
     # Con persistencia SQLite (reanudable)
-    python3 tune_hyperparams.py --csv data/MSFT_features.csv \\
-        --n-trials 20 --storage-path optuna_studies/msft.db
+    python3 tune_hyperparams.py --csv data/NVDA_features.csv \\
+        --n-trials 20 --storage-path optuna_studies/nvda.db
 
     # Buscar Y registrar el mejor resultado en model_registry
     python3 tune_hyperparams.py --csv data/NVDA_features.csv \\
@@ -154,7 +154,7 @@ def _parse_portfolio_csv(results_dir: Path, ticker_stem: str, after_ts: float) -
 
     Args:
         results_dir: Directorio donde se guardan los CSVs de resultados.
-        ticker_stem: Stem del archivo CSV del ticker (ej. "MSFT_features").
+        ticker_stem: Stem del archivo CSV del ticker (ej. "NVDA_features").
         after_ts: Timestamp Unix mínimo del archivo (inicio del trial).
 
     Returns:
@@ -716,7 +716,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--csv",
-        help="Ruta al CSV del ticker a optimizar (ej. data/MSFT_features.csv).",
+        help="Ruta al CSV del ticker a optimizar (ej. data/NVDA_features.csv).",
     )
     parser.add_argument(
         "--n-trials",
