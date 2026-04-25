@@ -19,7 +19,7 @@ walk-forward validation, conformal calibration, specialist export, and Optuna.
 
 </div>
 
-![NVDA fan chart generated from the shipped canonical specialist](docs/assets/fan_chart_nvda.png)
+![NVDA fan chart generated from the published canonical specialist](docs/assets/fan_chart_nvda.png)
 
 ## Overview
 
@@ -39,7 +39,7 @@ What you get:
 | Surface | Current state |
 | --- | --- |
 | Example datasets in `data/` | `NVDA_features.csv`, `GOOGL_features.csv` |
-| Shipped canonical specialists | `NVDA`, `GOOGL` |
+| Canonical specialist distribution | GitHub Release assets for `NVDA`, `GOOGL` |
 | Public CLIs | `main.py`, `tune_hyperparams.py`, `python -m inference`, `python -m data.financial_dataset_builder` |
 | Supported CI matrix | Linux and Windows, Python 3.10 and 3.11 |
 | Runtime modes | CPU and optional CUDA |
@@ -47,7 +47,7 @@ What you get:
 
 ## Visual Reference
 
-All visuals below come from the shipped `NVDA` specialist and use the same
+All visuals below come from the published `NVDA` specialist and use the same
 documentation asset set under `docs/assets/`.
 
 | Forecast band | Calibration diagnostics |
@@ -55,7 +55,7 @@ documentation asset set under `docs/assets/`.
 | `p10-p90` interval, `p50` median path, and ground truth. | Reliability view plus PIT histogram for probabilistic quality checks. |
 | ![NVDA fan chart](docs/assets/fan_chart_nvda.png) | ![NVDA calibration diagnostics](docs/assets/calibration_nvda.png) |
 
-> No hosted demo is provided. The intended path is local: inspect the shipped
+> No hosted demo is provided. The intended path is local: fetch the published
 > specialists, run inference, then run training or Optuna search as needed.
 
 ## Quick Start
@@ -109,13 +109,19 @@ python -m inference --help
 python -m data.financial_dataset_builder --help
 ```
 
-### 5. Inspect shipped specialists
+### 5. Download canonical specialists
+
+```bash
+python scripts/fetch_specialists.py --all
+```
+
+### 6. Inspect available specialists
 
 ```bash
 python -m inference --list-models
 ```
 
-### 6. Run a first inference job
+### 7. Run a first inference job
 
 ```bash
 python -m inference \
@@ -125,8 +131,10 @@ python -m inference \
 ```
 
 > [!NOTE]
-> The repository ships canonical specialists and preprocessing artifacts for
-> `NVDA` and `GOOGL`. Inference is a real model run, not a near-instant CLI
+> Canonical specialists are distributed as GitHub Release assets, not committed
+> to the Git history. `python scripts/fetch_specialists.py --all` downloads the
+> current published artifacts, validates their `sha256`, and installs them
+> under `checkpoints/`. Inference is a real model run, not a near-instant CLI
 > smoke check.
 
 ## Architecture
@@ -343,6 +351,36 @@ If `--save-canonical` succeeds, the last fold checkpoint is copied into
 `checkpoints/`, preprocessing artifacts are saved, and the specialist is
 registered for future inference.
 
+## Specialist Artifacts
+
+Canonical specialists are published outside the Git history as GitHub Release
+assets. The versioned metadata lives in:
+
+- `checkpoints/model_registry.json`
+- `checkpoints/artifacts.manifest.json`
+
+Consumer workflow:
+
+```bash
+python scripts/fetch_specialists.py --all
+python -m inference --list-models
+```
+
+Maintainer workflow:
+
+```bash
+python scripts/prepare_specialist_release.py
+```
+
+That command prepares the upload bundle under
+`artifacts_archive/specialist_release_assets/` and refreshes the tracked
+manifest with URLs, file sizes, and `sha256` checksums for:
+
+- `nvda_canonical.pt`
+- `googl_canonical.pt`
+- `nvda_preprocessing.zip`
+- `googl_preprocessing.zip`
+
 ## Configuration
 
 There are two important configuration surfaces:
@@ -507,6 +545,7 @@ Current limitations:
 
 ## Additional Documentation
 
+- [checkpoints/README.md](checkpoints/README.md)
 - [docs/README.md](docs/README.md)
 - [docs/repository_technical_status.md](docs/repository_technical_status.md)
 - [docs/tests/test-summary.md](docs/tests/test-summary.md)

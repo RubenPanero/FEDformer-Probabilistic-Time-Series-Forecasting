@@ -56,7 +56,11 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # === Machine learning artifacts ===
-checkpoints/
+checkpoints/**
+!checkpoints/
+!checkpoints/README.md
+!checkpoints/model_registry.json
+!checkpoints/artifacts.manifest.json
 wandb/
 lightning_logs/
 tensorboard/
