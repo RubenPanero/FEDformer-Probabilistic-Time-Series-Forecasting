@@ -348,11 +348,20 @@ def _parse_arguments() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "torch.compile mode: 'max-autotune', 'default', or '' (disabled). "
+            "torch.compile mode: 'max-autotune', 'default', or 'none' (disabled). "
+            "Legacy empty-string disablement ('') is still accepted for compatibility. "
             "If not specified, uses FEDformerConfig default ('max-autotune')."
         ),
     )
     return parser.parse_args()
+
+
+def _normalize_compile_mode_arg(compile_mode: str) -> str:
+    """Canonicaliza sentinels heredados de compile_mode a 'none'."""
+    normalized = compile_mode.strip().lower()
+    if normalized in {"", "none", "off", "false", "disabled"}:
+        return "none"
+    return compile_mode
 
 
 def _validate_inputs(args: argparse.Namespace) -> List[str]:
@@ -441,7 +450,7 @@ def _create_config(
     if args.rehearsal_lr_mult is not None:
         config.rehearsal_lr_mult = args.rehearsal_lr_mult
     if args.compile_mode is not None:
-        config.compile_mode = args.compile_mode
+        config.compile_mode = _normalize_compile_mode_arg(args.compile_mode)
     if args.mc_dropout_eval_samples is not None:
         config.mc_dropout_eval_samples = args.mc_dropout_eval_samples
 

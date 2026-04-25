@@ -505,8 +505,9 @@ Optimization guardrails:
 - synthetic benchmark output is useful for relative regressions in the harness;
   it is not a substitute for canonical NVDA/GOOGL runs on your target hardware
 - structural optimizations in Task 4 stay behind explicit controls:
-  - `torch.compile` can be disabled explicitly with `--compile-mode ""` or
-    `--compile-mode none`
+  - `torch.compile` can be disabled explicitly with `--compile-mode none`
+  - Legacy compatibility: `--compile-mode ""` is still accepted, but `none` is
+    the canonical sentinel
   - preprocessing refit reuse is opt-in via
     `allow_reuse_fitted_fold_preprocessor`
   - Optuna still preserves the subprocess/public-contract path while reducing
