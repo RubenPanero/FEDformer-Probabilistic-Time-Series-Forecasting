@@ -557,6 +557,22 @@ Before opening a PR:
 This repository does not use `make ci-check`; use the explicit commands above
 or the versioned hooks under `scripts/hooks/`.
 
+## Disclaimer
+
+This repository is provided exclusively for educational, research, and
+experimentation purposes.
+
+It is not financial advice, not an investment recommendation, and not a
+production trading system. Any forecasts, metrics, specialist artifacts, or
+example workflows included here must not be interpreted as a promise of future
+performance.
+
+By using this repository, you accept that all financial use, including any
+for-profit or live-market deployment, is done entirely at your own risk. The
+authors and maintainers disclaim responsibility for financial losses, missed
+profits, trading decisions, or any direct or indirect damages derived from such
+use.
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE).
