@@ -459,6 +459,12 @@ Full test suite:
 pytest -q
 ```
 
+Opt-in CLI end-to-end coverage:
+
+```bash
+pytest -q tests/test_cli_e2e.py -m slow
+```
+
 Lint and CI-parity checks:
 
 ```bash
@@ -483,6 +489,19 @@ Current regression coverage for the optimization branch is wired through:
 - `.github/workflows/ci.yml`
 - `.github/workflows/compatibility.yml`
 - `.github/workflows/critical-fixes.yml`
+
+CLI end-to-end automation added in the current session:
+
+- `tests/test_cli_e2e.py` covers real subprocess workflows for:
+  - `main.py`
+  - `python -m inference`
+  - `python -m inference --plot`
+  - `scripts/verify_cp_walkforward.py`
+  - controlled positive `--save-canonical`
+  - minimal `tune_hyperparams.py` orchestration
+- `.github/workflows/compatibility.yml` now exposes an opt-in
+  `CLI End-to-End (py3.11)` job gated behind `workflow_dispatch`
+- summary artifact: `docs/tests/test-summary.md`
 
 Those fast slices include `tests/test_critical_bottlenecks.py` but keep
 `tests/test_critical_bottlenecks_benchmarks.py` opt-in as benchmark-only
