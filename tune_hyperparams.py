@@ -389,7 +389,7 @@ def _build_trial_env() -> dict[str, str]:
 
 
 def _normalize_compile_mode_arg(compile_mode: str) -> str:
-    """Usa sentinels explícitos al propagar compile_mode por CLI."""
+    """Usa 'none' como sentinel canónico y conserva compatibilidad heredada."""
     normalized = compile_mode.strip().lower()
     if normalized in {"", "none", "off", "false", "disabled"}:
         return "none"
@@ -427,7 +427,7 @@ def objective(
     results_dir: Path,
     study_objective: str = "sharpe",
     seed: int = 7,
-    compile_mode: str = "",
+    compile_mode: str = "none",
 ) -> float:
     """Entrena Flow_FEDformer con los hiperparámetros sugeridos y retorna el score.
 
@@ -442,7 +442,9 @@ def objective(
         results_dir: Directorio de resultados para parsear CSVs.
         study_objective: Modo de score ("sharpe", "composite", "multi-objective").
         seed: Seed para reproducibilidad (debe coincidir con baselines).
-        compile_mode: Modo de torch.compile para el subprocess ("" = desactivado).
+        compile_mode: Modo de torch.compile para el subprocess.
+            'none' es el sentinel canónico de desactivación; '' sigue aceptado
+            solo como compatibilidad heredada.
 
     Returns:
         Score penalizado, o -1.0 si el trial falló.
@@ -645,7 +647,7 @@ def _run_best_params(
     n_splits: int,
     save_canonical: bool,
     seed: int = 7,
-    compile_mode: str = "",
+    compile_mode: str = "none",
 ) -> None:
     """Re-entrena con los mejores hiperparámetros encontrados por Optuna.
 
@@ -655,7 +657,9 @@ def _run_best_params(
         n_splits: Número de folds walk-forward.
         save_canonical: Si True, registra en model_registry con --save-canonical.
         seed: Seed para reproducibilidad.
-        compile_mode: Modo de torch.compile ("" = desactivado).
+        compile_mode: Modo de torch.compile.
+            'none' es el sentinel canónico de desactivación; '' sigue aceptado
+            solo como compatibilidad heredada.
     """
     cmd = [
         sys.executable,
@@ -770,11 +774,12 @@ def main() -> None:
     parser.add_argument(
         "--compile-mode",
         type=str,
-        default="",
+        default="none",
         help=(
             "Modo de torch.compile para el subprocess main.py. "
-            "Default '' (desactivado) — evita overhead de compilación en trials. "
-            "Opciones: '', 'default', 'max-autotune'."
+            "Default 'none' (desactivado) — evita overhead de compilación en trials. "
+            "Compatibilidad heredada: '' también desactiva compile. "
+            "Opciones canónicas: 'none', 'default', 'max-autotune'."
         ),
     )
     parser.add_argument(

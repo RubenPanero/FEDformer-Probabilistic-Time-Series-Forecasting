@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Tests para sequential_finetuner y main CLI: flags, propagación de config."""
 
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +13,7 @@ from torch.utils.data import Subset
 
 from config import FEDformerConfig
 from data import TimeSeriesDataset
+from main import _create_config
 from models.fedformer import Flow_FEDformer
 from training.forecast_output import ForecastOutput
 from training.sequential_finetuner import _load_symbols_from_file, finetune_sequence
@@ -56,6 +59,67 @@ def test_config_accepts_finetune_runtime_fields() -> None:
     assert cfg.finetune_from == "checkpoints/mock.pt"
     assert cfg.freeze_backbone is True
     assert cfg.finetune_lr == 1e-5
+
+
+def test_create_config_normalizes_legacy_empty_compile_mode() -> None:
+    """main CLI canoniza '' a 'none' antes de poblar FEDformerConfig."""
+    args = MagicMock(
+        wandb_project="proj",
+        wandb_entity=None,
+        date_col=None,
+        preset=None,
+        pred_len=24,
+        seq_len=96,
+        label_len=48,
+        batch_size=32,
+        seed=42,
+        deterministic=False,
+        return_transform="none",
+        metric_space="returns",
+        use_checkpointing=False,
+        grad_accum_steps=1,
+        freeze_backbone=False,
+        finetune_from=None,
+        finetune_lr=None,
+        e_layers=None,
+        d_layers=None,
+        n_flow_layers=None,
+        flow_hidden_dim=None,
+        epochs=None,
+        dropout=None,
+        weight_decay=None,
+        learning_rate=None,
+        scheduler_type=None,
+        warmup_epochs=None,
+        patience=None,
+        min_delta=None,
+        gradient_clip_norm=None,
+        rehearsal_k=None,
+        rehearsal_epochs=None,
+        rehearsal_lr_mult=None,
+        compile_mode="",
+        mc_dropout_eval_samples=None,
+    )
+
+    config = _create_config(args, ["Close"], FIXTURE_CSV)
+
+    assert config.compile_mode == "none"
+
+
+def test_main_cli_help_uses_none_as_canonical_compile_disable_sentinel() -> None:
+    """El --help de main.py debe documentar 'none' como sentinel canónico."""
+    result = subprocess.run(
+        [sys.executable, "main.py", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0
+    assert "--compile-mode" in result.stdout
+    assert "'none' (disabled)" in result.stdout
+    assert "Legacy empty-string disablement" in result.stdout
+    assert "('') is still accepted for compatibility." in result.stdout
 
 
 def test_trainer_finetune_checkpoint_and_freeze(tmp_path: Path) -> None:

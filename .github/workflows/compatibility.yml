@@ -121,3 +121,26 @@ jobs:
             tests/test_tune_hyperparams.py \
             tests/test_reproducibility.py \
             -m "not slow" --maxfail=1
+
+  cli-e2e:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    name: CLI End-to-End (py3.11)
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: "**/requirements.txt"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run CLI E2E suite
+        run: pytest -q tests/test_cli_e2e.py -m slow --maxfail=1

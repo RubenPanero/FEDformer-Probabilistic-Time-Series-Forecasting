@@ -11,6 +11,8 @@ Tests unitarios para tune_hyperparams.py:
 """
 
 import math
+import subprocess
+import sys
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -120,6 +122,33 @@ def test_parse_portfolio_csv_returns_correct_sharpe(tmp_path: Path) -> None:
     result = th._parse_portfolio_csv(tmp_path / "results", "MSFT_features", ts_before)
     assert abs(result["sharpe"] - 0.75) < 1e-6
     assert abs(result["sortino"] - 1.2) < 1e-6
+
+
+def test_normalize_compile_mode_arg_uses_none_as_canonical_sentinel() -> None:
+    """Los sentinels heredados deben normalizarse a 'none'."""
+    for raw in ("", "none", "off", "false", "disabled"):
+        assert th._normalize_compile_mode_arg(raw) == "none"
+
+
+def test_tune_hyperparams_cli_help_uses_none_as_canonical_compile_disable_sentinel() -> (
+    None
+):
+    """El --help del tuner debe documentar 'none' como sentinel canónico."""
+    result = subprocess.run(
+        [sys.executable, "tune_hyperparams.py", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0
+    assert "--compile-mode" in result.stdout
+    assert "Default 'none' (desactivado)" in result.stdout
+    assert "Compatibilidad heredada:" in result.stdout
+    assert "''" in result.stdout
+    assert "'none'" in result.stdout
+    assert "'default'" in result.stdout
+    assert "'max-autotune'" in result.stdout
 
 
 def test_parse_portfolio_csv_accepts_legacy_ticker_suffix(tmp_path: Path) -> None:

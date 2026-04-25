@@ -459,6 +459,12 @@ Full test suite:
 pytest -q
 ```
 
+Opt-in CLI end-to-end coverage:
+
+```bash
+pytest -q tests/test_cli_e2e.py -m slow
+```
+
 Lint and CI-parity checks:
 
 ```bash
@@ -484,6 +490,19 @@ Current regression coverage for the optimization branch is wired through:
 - `.github/workflows/compatibility.yml`
 - `.github/workflows/critical-fixes.yml`
 
+CLI end-to-end automation added in the current session:
+
+- `tests/test_cli_e2e.py` covers real subprocess workflows for:
+  - `main.py`
+  - `python -m inference`
+  - `python -m inference --plot`
+  - `scripts/verify_cp_walkforward.py`
+  - controlled positive `--save-canonical`
+  - minimal `tune_hyperparams.py` orchestration
+- `.github/workflows/compatibility.yml` now exposes an opt-in
+  `CLI End-to-End (py3.11)` job gated behind `workflow_dispatch`
+- summary artifact: `docs/tests/test-summary.md`
+
 Those fast slices include `tests/test_critical_bottlenecks.py` but keep
 `tests/test_critical_bottlenecks_benchmarks.py` opt-in as benchmark-only
 validation.
@@ -505,8 +524,9 @@ Optimization guardrails:
 - synthetic benchmark output is useful for relative regressions in the harness;
   it is not a substitute for canonical NVDA/GOOGL runs on your target hardware
 - structural optimizations in Task 4 stay behind explicit controls:
-  - `torch.compile` can be disabled explicitly with `--compile-mode ""` or
-    `--compile-mode none`
+  - `torch.compile` can be disabled explicitly with `--compile-mode none`
+  - Legacy compatibility: `--compile-mode ""` is still accepted, but `none` is
+    the canonical sentinel
   - preprocessing refit reuse is opt-in via
     `allow_reuse_fitted_fold_preprocessor`
   - Optuna still preserves the subprocess/public-contract path while reducing
