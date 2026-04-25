@@ -1,0 +1,92 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-03-21",
+  "specialists": {
+    "NVDA": {
+      "checkpoint": "checkpoints/nvda_canonical.pt",
+      "trained_at": "2026-03-21",
+      "config": {
+        "seq_len": 96,
+        "pred_len": 20,
+        "n_splits": 4,
+        "return_transform": "log_return",
+        "metric_space": "returns",
+        "gradient_clip_norm": 0.5,
+        "batch_size": 64,
+        "label_len": 48,
+        "seed": 7,
+        "target_features": [
+          "Close"
+        ],
+        "d_model": 512,
+        "n_heads": 8,
+        "d_ff": 2048,
+        "e_layers": 2,
+        "d_layers": 1,
+        "modes": 48,
+        "dropout": 0.1,
+        "n_flow_layers": 4,
+        "flow_hidden_dim": 64,
+        "enc_in": 11,
+        "dec_in": 11
+      },
+      "metrics": {
+        "sharpe": 0.9904417786067612,
+        "sortino": 1.8574300351351105,
+        "max_drawdown": -0.5421263919469815,
+        "volatility": 0.024129447328608562
+      },
+      "data": {
+        "file": "data/NVDA_features.csv",
+        "rows": 1724,
+        "features": 11,
+        "preprocessing_artifacts": "checkpoints/nvda_preprocessing"
+      },
+      "training_command": "MPLBACKEND=Agg python3 main.py --csv data/NVDA_features.csv --targets Close --seq-len 96 --pred-len 20 --batch-size 64 --splits 4 --return-transform log_return --metric-space returns --gradient-clip-norm 0.5 --save-results --no-show --save-canonical",
+      "notes": "Auto-registrado por --save-canonical en 2026-03-21."
+    },
+    "GOOGL": {
+      "checkpoint": "checkpoints/googl_canonical.pt",
+      "trained_at": "2026-03-21",
+      "config": {
+        "seq_len": 96,
+        "pred_len": 20,
+        "n_splits": 4,
+        "return_transform": "log_return",
+        "metric_space": "returns",
+        "gradient_clip_norm": 0.5,
+        "batch_size": 64,
+        "label_len": 48,
+        "seed": 7,
+        "target_features": [
+          "Close"
+        ],
+        "d_model": 512,
+        "n_heads": 8,
+        "d_ff": 2048,
+        "e_layers": 2,
+        "d_layers": 1,
+        "modes": 48,
+        "dropout": 0.1,
+        "n_flow_layers": 4,
+        "flow_hidden_dim": 64,
+        "enc_in": 11,
+        "dec_in": 11
+      },
+      "metrics": {
+        "sharpe": 0.7367586779177259,
+        "sortino": 1.0093640461245454,
+        "max_drawdown": -0.402051067846185,
+        "volatility": 0.013945582408856927
+      },
+      "data": {
+        "file": "data/GOOGL_features.csv",
+        "rows": 1725,
+        "features": 11,
+        "preprocessing_artifacts": "checkpoints/googl_preprocessing"
+      },
+      "training_command": "MPLBACKEND=Agg python3 main.py --csv data/GOOGL_features.csv --targets Close --seq-len 96 --pred-len 20 --batch-size 64 --splits 4 --return-transform log_return --metric-space returns --gradient-clip-norm 0.5 --save-results --no-show --save-canonical",
+      "notes": "Auto-registrado por --save-canonical en 2026-03-21."
+    }
+  }
+}

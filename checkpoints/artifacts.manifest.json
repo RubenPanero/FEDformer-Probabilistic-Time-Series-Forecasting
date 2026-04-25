@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "repo": "RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting",
+  "release_tag": "latest",
+  "generated_at": "2026-04-25T21:45:44.455595+00:00",
+  "artifacts": {
+    "NVDA": {
+      "registry_key": "NVDA",
+      "checkpoint": {
+        "asset_name": "nvda_canonical.pt",
+        "url": "https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/releases/latest/download/nvda_canonical.pt",
+        "sha256": "f24f4810967a9afa285c0e376f680cbcbf7d55fe798417f5961c208781fb897b",
+        "size_bytes": 143457419,
+        "install_path": "checkpoints/nvda_canonical.pt"
+      },
+      "preprocessing": {
+        "asset_name": "nvda_preprocessing.zip",
+        "url": "https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/releases/latest/download/nvda_preprocessing.zip",
+        "sha256": "c68ced53a30ba34f5ae0ff4b0dd5fe972980d36938fb56e5a4df3d67fde4edcc",
+        "size_bytes": 2312,
+        "install_dir": "checkpoints/nvda_preprocessing",
+        "required_files": [
+          "metadata.json",
+          "scaler.pkl",
+          "schema.json"
+        ],
+        "format": "zip"
+      }
+    },
+    "GOOGL": {
+      "registry_key": "GOOGL",
+      "checkpoint": {
+        "asset_name": "googl_canonical.pt",
+        "url": "https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/releases/latest/download/googl_canonical.pt",
+        "sha256": "68a714fd7d8a4e6e2e4c9726ffcac95644b8d97fe95cd860a01912bfa505dc0f",
+        "size_bytes": 143457419,
+        "install_path": "checkpoints/googl_canonical.pt"
+      },
+      "preprocessing": {
+        "asset_name": "googl_preprocessing.zip",
+        "url": "https://github.com/RubenPanero/FEDformer-Probabilistic-Time-Series-Forecasting/releases/latest/download/googl_preprocessing.zip",
+        "sha256": "db9746ab167b87034e4e75d5acf8eb8fb7ab825aaf60a3cd0d00df4d2e5b6337",
+        "size_bytes": 2306,
+        "install_dir": "checkpoints/googl_preprocessing",
+        "required_files": [
+          "metadata.json",
+          "scaler.pkl",
+          "schema.json"
+        ],
+        "format": "zip"
+      }
+    }
+  }
+}
