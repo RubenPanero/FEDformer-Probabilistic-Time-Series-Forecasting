@@ -537,11 +537,28 @@ Current limitations:
 - Add a `MarketEncoder` module that conditions the model on cross-asset signals
   such as `VIX` and `SPY`, improving adaptation to systemic volatility regimes
   instead of relying only on the locally detected regime within each series.
+- Run controlled feature-expansion experiments with new technical indicators
+  (for example `RSI`, `MACD`, `ATR`, realized volatility, and volume-derived
+  signals) and compare probabilistic calibration and risk-adjusted metrics
+  against the current baseline.
+- Add macro-aware input variants (for example policy rates, inflation prints,
+  unemployment, and yield-curve spreads) aligned to market dates, then evaluate
+  whether they improve regime transitions and out-of-sample stability.
+- Add a sentiment signal pipeline (news/headline or social sentiment index) as
+  an additional exogenous feature block and measure its incremental value on
+  directional accuracy, tail risk behavior, and calibration drift.
+- Extend the `MarketEncoder` roadmap with a `Mixture of Experts (MoE)` variant
+  where experts specialize by market regime and a router selects expert weights
+  from macro, volatility, and sentiment context.
 
 ## Additional Documentation
 
 - [checkpoints/README.md](checkpoints/README.md)
 - [docs/README.md](docs/README.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/project-overview.md](docs/project-overview.md)
+- [docs/development-guide.md](docs/development-guide.md)
+- [docs/source-tree-analysis.md](docs/source-tree-analysis.md)
 - [docs/repository_technical_status.md](docs/repository_technical_status.md)
 - [docs/tests/test-summary.md](docs/tests/test-summary.md)
 

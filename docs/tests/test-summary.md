@@ -17,7 +17,6 @@
 - Scope: real CLI subprocess execution in isolated temporary workdirs
 
 ## Notes
-- No `_bmad/bmm/config.yaml` was present in this repo, so this summary uses the fallback path `docs/tests/test-summary.md`
 - The CLI suite is marked `slow` because it launches real subprocess workflows
 - `verify_cp_walkforward.py` is covered through a real negative-path manifest report on a tiny fixture run
 - `inference --plot` is now covered with real PNG artifact generation in an isolated output directory
